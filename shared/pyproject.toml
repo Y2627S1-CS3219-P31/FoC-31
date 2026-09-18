@@ -1,0 +1,18 @@
+# Packaging metadata for the shared library.
+# (Backend service *dependencies* live in each service's requirements.txt;
+#  this file exists only so `pip install -e ../shared` works.)
+[project]
+name = "foc-shared"
+version = "0.1.0"
+description = "Shared contracts (events, auth headers, error envelope) for FoC services."
+requires-python = ">=3.12"
+dependencies = [
+    "pydantic>=2.7",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["foc_shared"]

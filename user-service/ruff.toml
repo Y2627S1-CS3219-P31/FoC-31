@@ -1,0 +1,11 @@
+# Ruff lint/format config (tooling only; deps live in requirements.txt).
+line-length = 100
+target-version = "py312"
+
+[lint]
+select = ["E", "F", "I", "UP", "B"]
+# UP042: allow the `str, Enum` idiom (widely used; kept for readability).
+ignore = ["UP042"]
+
+[lint.isort]
+known-first-party = ["app", "foc_shared"]

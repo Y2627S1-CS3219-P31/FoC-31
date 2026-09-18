@@ -1,0 +1,59 @@
+# CI: lint + test every backend service (N2H DevOps hook, project N4).
+# Uses the same tooling as local dev so `make lint test` == CI.
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  backend:
+    name: Lint & test (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - api-gateway
+          - user-service
+          - supplier-service
+          - order-service
+          - credit-service
+          - notification-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install deps (service + shared)
+        working-directory: ${{ matrix.service }}
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ../shared
+          pip install -r requirements.txt
+          pip install ruff
+
+      - name: Lint
+        working-directory: ${{ matrix.service }}
+        run: ruff check .
+
+      - name: Test
+        working-directory: ${{ matrix.service }}
+        run: pytest
+
+  frontend:
+    name: Build (frontend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install & build
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build

@@ -1,0 +1,253 @@
+# ─────────────────────────────────────────────────────────────
+# FoC — Friend on Campus · Docker Compose (local deployment)
+# ─────────────────────────────────────────────────────────────
+# Mandatory containerized setup (M7). Brings up:
+#   - 5 backend microservices (FastAPI) + custom API gateway
+#   - 1 React (Vite) frontend
+#   - 1 PostgreSQL instance per backend service (DB-per-service)
+#   - 1 RabbitMQ broker (async/event-driven workflow, M6)
+#
+# Usage:  cp .env.example .env && docker compose up --build
+# All env values are sourced from the git-ignored .env file.
+# ─────────────────────────────────────────────────────────────
+
+name: foc
+
+# Reusable healthcheck/settings anchors -----------------------
+x-postgres-common: &postgres-common
+  image: postgres:16-alpine
+  restart: unless-stopped
+  environment:
+    POSTGRES_USER: ${POSTGRES_USER}
+    POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  networks: [foc-net]
+
+services:
+  # ==========================================================
+  # API Gateway — single entry point (backlog: API Gateway F1)
+  # ==========================================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: api-gateway/Dockerfile
+    env_file: [.env]
+    environment:
+      USER_SERVICE_URL: ${USER_SERVICE_URL}
+      SUPPLIER_SERVICE_URL: ${SUPPLIER_SERVICE_URL}
+      ORDER_SERVICE_URL: ${ORDER_SERVICE_URL}
+      CREDIT_SERVICE_URL: ${CREDIT_SERVICE_URL}
+      NOTIFICATION_SERVICE_URL: ${NOTIFICATION_SERVICE_URL}
+    ports:
+      - "${GATEWAY_PORT:-8080}:8000"
+    depends_on:
+      user-service: {condition: service_healthy}
+      supplier-service: {condition: service_healthy}
+      order-service: {condition: service_healthy}
+      credit-service: {condition: service_healthy}
+      notification-service: {condition: service_healthy}
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================
+  # Backend microservices
+  # ==========================================================
+  user-service:
+    build:
+      context: .
+      dockerfile: user-service/Dockerfile
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${USER_DATABASE_URL}
+    depends_on:
+      user-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  supplier-service:
+    build:
+      context: .
+      dockerfile: supplier-service/Dockerfile
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${SUPPLIER_DATABASE_URL}
+    volumes:
+      - ./data:/data:ro   # seed CSV + images (supplier F4 seeding)
+    depends_on:
+      supplier-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order-service:
+    build:
+      context: .
+      dockerfile: order-service/Dockerfile
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${ORDER_DATABASE_URL}
+    depends_on:
+      order-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  credit-service:
+    build:
+      context: .
+      dockerfile: credit-service/Dockerfile
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${CREDIT_DATABASE_URL}
+    depends_on:
+      credit-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  notification-service:
+    build:
+      context: .
+      dockerfile: notification-service/Dockerfile
+    env_file: [.env]
+    environment:
+      DATABASE_URL: ${NOTIFICATION_DATABASE_URL}
+    depends_on:
+      notification-db: {condition: service_healthy}
+      rabbitmq: {condition: service_healthy}
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================
+  # Frontend (React + Vite responsive SPA)
+  # ==========================================================
+  frontend:
+    build: ./frontend
+    env_file: [.env]
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api-gateway
+    networks: [foc-net]
+
+  # ==========================================================
+  # Databases — one Postgres per service
+  # ==========================================================
+  user-db:
+    <<: *postgres-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${USER_DB_NAME}
+    volumes: [user-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${USER_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  supplier-db:
+    <<: *postgres-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${SUPPLIER_DB_NAME}
+    volumes: [supplier-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${SUPPLIER_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  order-db:
+    <<: *postgres-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${ORDER_DB_NAME}
+    volumes: [order-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${ORDER_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  credit-db:
+    <<: *postgres-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${CREDIT_DB_NAME}
+    volumes: [credit-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${CREDIT_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  notification-db:
+    <<: *postgres-common
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${NOTIFICATION_DB_NAME}
+    volumes: [notification-db-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${NOTIFICATION_DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================
+  # Message broker (RabbitMQ) — event-driven workflow (M6)
+  # ==========================================================
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS}
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management UI
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  foc-net:
+    driver: bridge
+
+volumes:
+  user-db-data:
+  supplier-db-data:
+  order-db-data:
+  credit-db-data:
+  notification-db-data:
