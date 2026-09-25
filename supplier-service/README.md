@@ -21,14 +21,17 @@ which users may request errands, and exposes discovery + lookup APIs
 
 ```text
 app/
-├── main.py
+├── main.py            # app wiring + lifespan (init_db)
 ├── config.py
-├── db.py
-├── api/routes/        # health, suppliers (stubs)
-├── models/            # ORM models (stub)
-├── schemas/           # DTOs (stub)
-├── services/          # business logic + seeder.py (stub)
-└── repositories/      # persistence (stub)
+├── db.py              # async engine, session, init_db
+├── errors.py          # error-envelope exception handlers
+├── api/
+│   ├── deps.py        # RBAC (require_admin) + service DI
+│   └── routes/        # health, suppliers (CRUD)
+├── models/            # Supplier ORM model
+├── schemas/           # Pydantic DTOs (camelCase)
+├── services/          # supplier_service.py + seeder.py
+└── repositories/      # supplier_repo.py (persistence)
 ```
 
 The seed CSV is mounted read-only at `/data/csv/supplier-seed-data.csv`
