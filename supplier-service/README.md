@@ -43,4 +43,16 @@ make test-supplier-service
 
 Database: `supplier-db` (PostgreSQL). Exposes `GET /health`.
 
+## API
+
+The supplier-service contract is documented in `docs/`:
+
+- [`supplier-service-api.md`](../docs/supplier-service-api.md) — human-readable
+  reference (endpoints, auth/RBAC, data model, errors, pagination, versioning).
+- [`supplier-service-openapi.yaml`](../docs/supplier-service-openapi.yaml) —
+  machine-readable OpenAPI 3.1 spec.
+
+At runtime, FastAPI also serves the live spec at `/openapi.json` and
+interactive docs at `/docs`.
+
 > Status: **scaffold**. Endpoints return `501 Not Implemented` until built.
