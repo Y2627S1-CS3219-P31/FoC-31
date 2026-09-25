@@ -1,0 +1,316 @@
+# AI-influenced: drafted with OpenCode (Claude Sonnet); see ai/usage-log.md.
+
+openapi: 3.1.0
+
+info:
+  title: FoC Supplier Service API
+  version: 0.1.0
+  description: >-
+    Supplier discovery, detail, and management for the Friend on Campus (FoC)
+    platform. The API Gateway is the only public entry point and proxies
+    `/api/suppliers/*` to this service, injecting the trusted `X-User-Id` and
+    `X-User-Role` headers. Endpoints marked `x-status: stubbed` have a route
+    today (returning 501 until implemented); those marked `planned` are defined
+    by the backlog but not yet routed. See docs/supplier-service-api.md.
+
+servers:
+  - url: /api
+    description: Public, via the API Gateway (client traffic).
+  - url: http://supplier-service:8000
+    description: Direct, service-to-service on the Docker network.
+
+tags:
+  - name: suppliers
+    description: Supplier discovery, detail, and management.
+
+paths:
+  /suppliers:
+    get:
+      tags: [suppliers]
+      summary: List / filter / search active suppliers
+      operationId: listSuppliers
+      description: >-
+        Lists active suppliers. Deactivated suppliers are excluded (F1.4).
+        Returns an empty list (not 404) when nothing matches (F1.4.1, F2.2.3).
+      x-status: stubbed
+      x-backlog: [F2, F2.1.1, F2.1.2, F2.2, F5.1.2]
+      parameters:
+        - name: category
+          in: query
+          description: Filter by one or more categories (F2.1.1).
+          required: false
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/Category' }
+          style: form
+          explode: true
+        - name: zone
+          in: query
+          description: Filter by campus zone/location (F2.1.2).
+          required: false
+          schema: { type: string }
+        - name: q
+          in: query
+          description: Case-insensitive keyword search over name + location (F2.2).
+          required: false
+          schema: { type: string }
+        - name: page
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, default: 1 }
+        - name: page_size
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: A paginated list of active suppliers.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SupplierList' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [suppliers]
+      summary: Create a supplier
+      operationId: createSupplier
+      description: Admin-only creation of a supplier record (F1.1).
+      x-status: stubbed
+      x-backlog: [F1.1, F1.1.1, F1.1.2]
+      security:
+        - GatewayIdentity: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierCreate' }
+      responses:
+        '201':
+          description: Supplier created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /suppliers/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+        description: Supplier identifier.
+    get:
+      tags: [suppliers]
+      summary: Get supplier detail
+      operationId: getSupplier
+      description: >-
+        Returns the full details of a supplier, including active/deactivated
+        status (F3.1.1). Also used by other services to validate a supplier by
+        id (F5.1). 404 with an explanatory message when missing (F3.2, F3.2.1).
+      x-status: stubbed
+      x-backlog: [F3, F3.1, F3.1.1, F3.2, F3.2.1, F5.1, F5.1.1]
+      responses:
+        '200':
+          description: The supplier.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [suppliers]
+      summary: Update a supplier
+      operationId: updateSupplier
+      description: >-
+        Admin-only update of name, category, or campus location and other
+        editable fields (F1.2). Category updates use the same validation as
+        creation (F1.2.1).
+      x-status: planned
+      x-backlog: [F1.2, F1.2.1]
+      security:
+        - GatewayIdentity: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SupplierUpdate' }
+      responses:
+        '200':
+          description: The updated supplier.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/ValidationError' }
+
+  /suppliers/{id}/deactivate:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string }
+        description: Supplier identifier.
+    post:
+      tags: [suppliers]
+      summary: Deactivate a supplier
+      operationId: deactivateSupplier
+      description: >-
+        Admin-only soft delete (F1.3). The record remains retrievable (F1.3.1)
+        and is excluded from active discovery (F1.4), but is preserved for
+        historical orders (N4). Intended to trigger the order-cancellation
+        cascade in a later sprint (see event-catalog.md).
+      x-status: planned
+      x-backlog: [F1.3, F1.3.1, F1.4]
+      security:
+        - GatewayIdentity: []
+      responses:
+        '200':
+          description: The deactivated supplier.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Supplier' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+
+components:
+  securitySchemes:
+    GatewayIdentity:
+      type: apiKey
+      in: header
+      name: X-User-Role
+      description: >-
+        Trusted role header injected by the API Gateway (`admin` or `client`);
+        paired with `X-User-Id`. Services must never trust client-asserted
+        roles. Operations secured here require role `admin`.
+
+  responses:
+    BadRequest:
+      description: Malformed request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { code: bad_request, message: "Invalid query parameter 'page'." }
+    Unauthorized:
+      description: Missing or invalid authentication (enforced at the gateway).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { code: unauthorized, message: "Authentication required." }
+    Forbidden:
+      description: Authenticated but not permitted for this operation.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { code: forbidden, message: "Admin role required." }
+    NotFound:
+      description: Supplier not found.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { code: not_found, message: "Supplier 'sup_999' was not found." }
+    Conflict:
+      description: State conflict.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { code: conflict, message: "Supplier is already deactivated." }
+    ValidationError:
+      description: Validation failed.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorEnvelope' }
+          example: { code: validation_error, message: "Field 'category' is not in the allowed set." }
+
+  schemas:
+    Category:
+      type: string
+      description: >-
+        Predefined supplier category (F1.1.2). Values derived from the seed
+        dataset; the canonical set is owned by the team.
+      enum: [Food, "Food/Coffee", Shopping, Printing]
+
+    Supplier:
+      type: object
+      required: [id, name, category, campusLocation, active]
+      properties:
+        id: { type: string, examples: [sup_001] }
+        name: { type: string, examples: ["Anna's x Soup Union"] }
+        category: { $ref: '#/components/schemas/Category' }
+        campusLocation: { type: string, examples: ["Central Library"] }
+        building: { type: [string, "null"], examples: ["Central Library"] }
+        floor: { type: [string, "null"], examples: ["1"] }
+        locationDescription: { type: [string, "null"], examples: ["Next to NUS Co-op"] }
+        latitude: { type: [number, "null"], examples: [1.296444] }
+        longitude: { type: [number, "null"], examples: [103.773032] }
+        startingTime: { type: [string, "null"], examples: ["0900hrs"] }
+        closingTime: { type: [string, "null"], examples: ["1800hrs"] }
+        imageUrl: { type: [string, "null"] }
+        active:
+          type: boolean
+          description: true = active, false = deactivated (F3.1.1).
+          examples: [true]
+
+    SupplierCreate:
+      type: object
+      required: [name, category, campusLocation]
+      description: Mandatory fields per F1.1.1; category validated per F1.1.2.
+      properties:
+        name: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        campusLocation: { type: string }
+        building: { type: [string, "null"] }
+        floor: { type: [string, "null"] }
+        locationDescription: { type: [string, "null"] }
+        latitude: { type: [number, "null"] }
+        longitude: { type: [number, "null"] }
+        startingTime: { type: [string, "null"] }
+        closingTime: { type: [string, "null"] }
+        imageUrl: { type: [string, "null"] }
+      additionalProperties: false
+
+    SupplierUpdate:
+      type: object
+      description: Any subset of editable fields (F1.2).
+      properties:
+        name: { type: string }
+        category: { $ref: '#/components/schemas/Category' }
+        campusLocation: { type: string }
+        building: { type: [string, "null"] }
+        floor: { type: [string, "null"] }
+        locationDescription: { type: [string, "null"] }
+        latitude: { type: [number, "null"] }
+        longitude: { type: [number, "null"] }
+        startingTime: { type: [string, "null"] }
+        closingTime: { type: [string, "null"] }
+        imageUrl: { type: [string, "null"] }
+      additionalProperties: false
+
+    SupplierList:
+      type: object
+      required: [items, page, pageSize, total]
+      properties:
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/Supplier' }
+        page: { type: integer, minimum: 1, examples: [1] }
+        pageSize: { type: integer, minimum: 1, examples: [20] }
+        total: { type: integer, minimum: 0, examples: [1] }
+
+    ErrorEnvelope:
+      type: object
+      required: [code, message]
+      description: Shared error shape (foc_shared.errors.ErrorEnvelope).
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code.
+          enum: [validation_error, bad_request, unauthorized, forbidden, not_found, conflict]
+        message:
+          type: string
+          description: Human-readable explanation.
