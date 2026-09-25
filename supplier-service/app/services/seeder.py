@@ -54,8 +54,7 @@ def _row_to_supplier(row: dict[str, str]) -> Supplier:
 
 
 async def _seed(session: AsyncSession, csv_path: Path) -> int:
-    # Source CSV is Windows-1252 encoded (contains cp1252 curly apostrophes,
-    # e.g. "Prince George's Park"); decode with that codec to load it faithfully.
+    # this is done as there is a non utf-8 character in the csv file for some reason
     with csv_path.open(newline="", encoding="cp1252") as fh:
         rows = list(csv.DictReader(fh))
 

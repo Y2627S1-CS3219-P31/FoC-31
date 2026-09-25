@@ -70,3 +70,53 @@ Format for each entry:
   design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
+
+## 25/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Sonnet)
+- Scope: supplier-service implementation (backlog Supplier F1–F5). Implemented,
+  under team-owned design decisions and the pre-agreed API contract: the
+  Supplier ORM model + init_db; Pydantic DTOs (camelCase) with the locked
+  Category enum; repository (CRUD, case-insensitive keyword search over
+  name/building/location, category+zone filters, pagination); service layer
+  (404/409/validation rules); RBAC dependency reading the gateway-injected
+  X-User-Id/X-User-Role headers (admin-only create/update/deactivate);
+  error-envelope exception handlers; /api/suppliers CRUD routes + app wiring
+  (lifespan init_db); and the idempotent CSV seeder (backlog F4). Also added
+  aiosqlite as a test dependency and a flake8-bugbear ruff setting for
+  FastAPI DI defaults.
+
+  Separately, while implementing against the existing docs/OpenAPI, the tool
+  flagged four inconsistencies between those docs and the actual seed data /
+  gateway routing: no `campusLocation` column in the CSV, a mismatched base
+  path, an unlocked category enum, and PATCH/deactivate listed as planned
+  rather than implemented. The team reviewed each and decided the resolution
+  (see Prompt 2); the tool then applied only those team-decided resolutions
+  to the docs and code. The tool did not choose the field name, base path,
+  enum values, or which endpoints to implement — it surfaced the mismatch and
+  the team resolved it.
+
+  All product requirements and the endpoint/schema/error-code contract were
+  decided by the team beforehand; the tool implemented that agreed design and
+  did not make requirements or architecture decisions.
+
+- Prompt(s):
+  1. "Help me implement the supplier service based on the API spec and the
+     documentation/architecture in the docs folder … this is for the D2
+     milestone." (+ pointed the tool at the CS3219 docs and data.zip seed data.)
+  2. Tool surfaced the four inconsistencies above; team discussed and decided:
+     rename campusLocation→building (no such CSV column), keep the 4
+     categories as-is, load the CSV bytes as-is, implement full CRUD incl.
+     PATCH+deactivate, and mount routes at /api/suppliers to match the
+     gateway (updating docs to match). These decisions were then given back
+     to the tool to apply.
+  3. "Use TDD, feel free to use subagent-driven development, commit at each
+     step, keep commit messages succinct."
+- Author review:
+  I have reviewed all generated files against the team's agreed contract. Ran
+  `make test-supplier-service` (46 passing) and `ruff check`/`format`
+  (clean). Spot-checked the running service: RBAC 403 (non-admin) / 201
+  (admin create), 422 on bad category, deactivate 200 then 409 on repeat,
+  404 on missing supplier. Confirmed the idempotent seeder re-run produces
+  0 new rows on a second pass (21 → 0). Confirmed docs/OpenAPI match the
+  team-decided contract from Prompt 2.
