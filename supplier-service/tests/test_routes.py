@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 
+import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -132,6 +133,14 @@ def test_update_admin_only(client):
 def test_update_missing_404(client):
     resp = client.patch("/api/suppliers/sup_missing", json={"name": "New"}, headers=ADMIN)
     assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("field", ["name", "category", "building"])
+def test_update_null_required_field_returns_422(client, field):
+    created = _create(client)
+    resp = client.patch(f"/api/suppliers/{created['id']}", json={field: None}, headers=ADMIN)
+    assert resp.status_code == 422
+    assert resp.json()["code"] == "validation_error"
 
 
 def test_deactivate_flow(client):

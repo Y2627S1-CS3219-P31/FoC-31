@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -45,6 +45,19 @@ class SupplierUpdate(_CamelModel):
     starting_time: str | None = None
     closing_time: str | None = None
     image_url: str | None = None
+
+    _REQUIRED_FIELDS = ("name", "category", "building")
+
+    @model_validator(mode="after")
+    def _reject_explicit_null_required(self) -> SupplierUpdate:
+        cleared = [
+            f
+            for f in self._REQUIRED_FIELDS
+            if f in self.model_fields_set and getattr(self, f) is None
+        ]
+        if cleared:
+            raise ValueError(f"{', '.join(cleared)} cannot be null.")
+        return self
 
 
 class Supplier(_CamelModel):

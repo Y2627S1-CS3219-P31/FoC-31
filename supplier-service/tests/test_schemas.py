@@ -46,3 +46,21 @@ def test_update_all_optional():
     assert u.name == "New Name"
     # only set fields are exported
     assert u.model_dump(exclude_unset=True, by_alias=True) == {"name": "New Name"}
+
+
+def test_update_omitting_required_fields_is_allowed():
+    # not providing them at all is fine (partial update)
+    u = SupplierUpdate(floor="2")
+    assert u.model_dump(exclude_unset=True) == {"floor": "2"}
+
+
+@pytest.mark.parametrize("field", ["name", "category", "building"])
+def test_update_rejects_explicit_null_on_required_fields(field):
+    with pytest.raises(ValidationError):
+        SupplierUpdate(**{field: None})
+
+
+def test_update_allows_explicit_null_on_optional_fields():
+    u = SupplierUpdate(floor=None, imageUrl=None)
+    dumped = u.model_dump(exclude_unset=True, by_alias=True)
+    assert dumped == {"floor": None, "imageUrl": None}

@@ -55,3 +55,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         detail = first.get("msg", "Invalid request.")
         message = f"{loc}: {detail}" if loc else detail
         return _envelope("validation_error", message, 422)
+
+    @app.exception_handler(Exception)
+    async def _unhandled_handler(_: Request, exc: Exception) -> JSONResponse:
+        # Catch-all: no response ever falls outside the error envelope. The raw
+        # exception detail is deliberately not leaked to the client.
+        return _envelope("internal_error", "An unexpected error occurred.", 500)
