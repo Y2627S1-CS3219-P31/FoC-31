@@ -55,4 +55,5 @@ The supplier-service contract is documented in `docs/`:
 At runtime, FastAPI also serves the live spec at `/openapi.json` and
 interactive docs at `/docs`.
 
-> Status: **scaffold**. Endpoints return `501 Not Implemented` until built.
+> Status: **implemented**. List, detail, create, update, and deactivate are
+> served at `/api/suppliers`; run `make seed` to load the baseline catalog.

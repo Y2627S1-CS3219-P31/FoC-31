@@ -9,14 +9,12 @@ info:
     Supplier discovery, detail, and management for the Friend on Campus (FoC)
     platform. The API Gateway is the only public entry point and proxies
     `/api/suppliers/*` to this service, injecting the trusted `X-User-Id` and
-    `X-User-Role` headers. Endpoints marked `x-status: stubbed` have a route
-    today (returning 501 until implemented); those marked `planned` are defined
-    by the backlog but not yet routed. See docs/supplier-service-api.md.
+    `X-User-Role` headers. See docs/supplier-service-api.md.
 
 servers:
   - url: /api
     description: Public, via the API Gateway (client traffic).
-  - url: http://supplier-service:8000
+  - url: http://supplier-service:8000/api
     description: Direct, service-to-service on the Docker network.
 
 tags:
@@ -32,7 +30,6 @@ paths:
       description: >-
         Lists active suppliers. Deactivated suppliers are excluded (F1.4).
         Returns an empty list (not 404) when nothing matches (F1.4.1, F2.2.3).
-      x-status: stubbed
       x-backlog: [F2, F2.1.1, F2.1.2, F2.2, F5.1.2]
       parameters:
         - name: category
@@ -75,7 +72,6 @@ paths:
       summary: Create a supplier
       operationId: createSupplier
       description: Admin-only creation of a supplier record (F1.1).
-      x-status: stubbed
       x-backlog: [F1.1, F1.1.1, F1.1.2]
       security:
         - GatewayIdentity: []
@@ -109,7 +105,6 @@ paths:
         Returns the full details of a supplier, including active/deactivated
         status (F3.1.1). Also used by other services to validate a supplier by
         id (F5.1). 404 with an explanatory message when missing (F3.2, F3.2.1).
-      x-status: stubbed
       x-backlog: [F3, F3.1, F3.1.1, F3.2, F3.2.1, F5.1, F5.1.1]
       responses:
         '200':
@@ -127,7 +122,6 @@ paths:
         Admin-only update of name, category, or campus location and other
         editable fields (F1.2). Category updates use the same validation as
         creation (F1.2.1).
-      x-status: planned
       x-backlog: [F1.2, F1.2.1]
       security:
         - GatewayIdentity: []
@@ -163,7 +157,6 @@ paths:
         and is excluded from active discovery (F1.4), but is preserved for
         historical orders (N4). Intended to trigger the order-cancellation
         cascade in a later sprint (see event-catalog.md).
-      x-status: planned
       x-backlog: [F1.3, F1.3.1, F1.4]
       security:
         - GatewayIdentity: []
@@ -231,19 +224,18 @@ components:
     Category:
       type: string
       description: >-
-        Predefined supplier category (F1.1.2). Values derived from the seed
-        dataset; the canonical set is owned by the team.
+        Predefined supplier category (F1.1.2). These four values are canonical
+        and match the seed dataset's Type column exactly.
       enum: [Food, "Food/Coffee", Shopping, Printing]
 
     Supplier:
       type: object
-      required: [id, name, category, campusLocation, active]
+      required: [id, name, category, building, active]
       properties:
         id: { type: string, examples: [sup_001] }
         name: { type: string, examples: ["Anna's x Soup Union"] }
         category: { $ref: '#/components/schemas/Category' }
-        campusLocation: { type: string, examples: ["Central Library"] }
-        building: { type: [string, "null"], examples: ["Central Library"] }
+        building: { type: string, examples: ["Central Library"] }
         floor: { type: [string, "null"], examples: ["1"] }
         locationDescription: { type: [string, "null"], examples: ["Next to NUS Co-op"] }
         latitude: { type: [number, "null"], examples: [1.296444] }
@@ -258,13 +250,12 @@ components:
 
     SupplierCreate:
       type: object
-      required: [name, category, campusLocation]
+      required: [name, category, building]
       description: Mandatory fields per F1.1.1; category validated per F1.1.2.
       properties:
         name: { type: string }
         category: { $ref: '#/components/schemas/Category' }
-        campusLocation: { type: string }
-        building: { type: [string, "null"] }
+        building: { type: string }
         floor: { type: [string, "null"] }
         locationDescription: { type: [string, "null"] }
         latitude: { type: [number, "null"] }
@@ -280,8 +271,7 @@ components:
       properties:
         name: { type: string }
         category: { $ref: '#/components/schemas/Category' }
-        campusLocation: { type: string }
-        building: { type: [string, "null"] }
+        building: { type: string }
         floor: { type: [string, "null"] }
         locationDescription: { type: [string, "null"] }
         latitude: { type: [number, "null"] }
