@@ -11,6 +11,18 @@ from app.schemas.orders import OrderCreate
 from app.services.lifecycle import OrderStatus
 
 
+class OrderNotFoundError(Exception):
+    def __init__(self, order_id: int) -> None:
+        self.order_id = order_id
+        super().__init__(f"Order '{order_id}' was not found.")
+
+
+class OrderAccessDeniedError(Exception):
+    def __init__(self, order_id: int) -> None:
+        self.order_id = order_id
+        super().__init__(f"You do not have permission to access order '{order_id}'.")
+
+
 async def create_order(
     session: AsyncSession,
     order_data: OrderCreate,
@@ -31,3 +43,16 @@ async def list_available_orders(session: AsyncSession, requester_id: str) -> lis
         status=OrderStatus.OPEN.value,
         now=datetime.now(UTC),
     )
+
+
+async def get_order_for_requester(
+    session: AsyncSession,
+    order_id: int,
+    requester_id: str,
+) -> Order:
+    order = await order_repository.get_order(session, order_id)
+    if order is None:
+        raise OrderNotFoundError(order_id)
+    if order.requester_id != requester_id:
+        raise OrderAccessDeniedError(order_id)
+    return order

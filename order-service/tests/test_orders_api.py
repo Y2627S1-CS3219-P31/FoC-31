@@ -107,3 +107,21 @@ def test_list_orders_returns_available_orders(
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [1]
+
+
+def test_get_order_maps_access_denial_to_error_envelope(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_get(_session, order_id, _requester_id):
+        raise order_routes.order_service.OrderAccessDeniedError(order_id)
+
+    monkeypatch.setattr(order_routes.order_service, "get_order_for_requester", fake_get)
+
+    response = client.get("/orders/1", headers={"X-User-Id": "user-2"})
+
+    assert response.status_code == 403
+    assert response.json() == {
+        "code": "forbidden",
+        "message": "You do not have permission to access order '1'.",
+    }

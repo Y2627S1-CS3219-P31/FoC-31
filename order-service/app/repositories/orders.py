@@ -33,6 +33,10 @@ async def create_order(
     return database_order
 
 
+async def get_order(session: AsyncSession, order_id: int) -> Order | None:
+    return await session.get(Order, order_id)
+
+
 async def list_available_orders(
     session: AsyncSession,
     *,
