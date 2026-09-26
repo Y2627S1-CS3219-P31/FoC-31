@@ -6,6 +6,7 @@ import bcrypt
 from jose import jwt
 
 from app.config import settings
+from foc_shared.auth import Role
 
 JWT_ALGORITHM = "HS256"
 _BCRYPT_MAX_BYTES = 72
@@ -23,6 +24,10 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 def issue_access_token(*, user_id: str, role: str) -> tuple[str, int]:
     """returns (token, ttl_seconds)"""
+    if not settings.jwt_secret:
+        raise RuntimeError("JWT_SECRET is not configured")
+    if role not in {member.value for member in Role}:
+        raise ValueError("invalid user role")
     now = int(time.time())
     ttl = settings.jwt_access_token_ttl
     payload = {"sub": user_id, "role": role, "iat": now, "exp": now + ttl}

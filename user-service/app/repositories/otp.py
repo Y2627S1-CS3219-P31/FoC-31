@@ -36,3 +36,22 @@ class OtpRepository:
             .values(consumed_at=datetime.now(UTC).replace(tzinfo=None))
         )
         return result.rowcount > 0
+
+    async def increment_attempts(self, otp_id: str, *, max_attempts: int) -> int:
+        result = await self._session.execute(
+            update(OtpCode)
+            .where(
+                OtpCode.id == otp_id,
+                OtpCode.consumed_at.is_(None),
+                OtpCode.attempts < max_attempts,
+            )
+            .values(attempts=OtpCode.attempts + 1)
+        )
+        await self._session.flush()
+        if result.rowcount == 0:
+            return max_attempts
+
+        attempts = await self._session.scalar(
+            select(OtpCode.attempts).where(OtpCode.id == otp_id)
+        )
+        return int(attempts or max_attempts)

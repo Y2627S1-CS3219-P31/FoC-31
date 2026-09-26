@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.main import app
 from app.services import notification
 
@@ -54,6 +55,24 @@ def test_verify_with_wrong_code_returns_400(monkeypatch):
     assert resp.status_code == 400
 
 
+def test_otp_wrong_attempts_are_limited(monkeypatch):
+    _register(monkeypatch)
+
+    for _ in range(settings.otp_max_attempts - 1):
+        response = client.post(
+            "/users/otp/verify",
+            json={"email": NUS_EMAIL, "code": "000000"},
+        )
+        assert response.status_code == 400
+
+    locked = client.post(
+        "/users/otp/verify",
+        json={"email": NUS_EMAIL, "code": "000000"},
+    )
+    assert locked.status_code == 400
+    assert "too many attempts" in locked.json()["detail"]
+
+
 def test_full_register_verify_login_flow(monkeypatch):
     reg_resp, code = _register(monkeypatch)
     assert reg_resp.status_code == 201
@@ -78,6 +97,7 @@ def test_reregister_unverified_email_issues_new_otp_instead_of_409(monkeypatch):
     first_resp, first_code = _register(monkeypatch)
     assert first_resp.status_code == 201
 
+    monkeypatch.setattr(settings, "otp_resend_cooldown_seconds", 0)
     second_resp, second_code = _register(
         monkeypatch, password="a-different-password1", display_name="Alice B."
     )
@@ -110,6 +130,10 @@ def test_reregister_already_verified_email_still_conflicts(monkeypatch):
 def test_resend_otp_for_unverified_account(monkeypatch):
     _, first_code = _register(monkeypatch)
 
+    # The production cooldown is enabled; disable it for this unit test so
+    # the test does not wait for a wall-clock interval.
+    monkeypatch.setattr(settings, "otp_resend_cooldown_seconds", 0)
+
     captured: dict[str, str] = {}
     monkeypatch.setattr(
         notification, "send_otp_email", lambda email, code: captured.update(code=code)
@@ -123,17 +147,19 @@ def test_resend_otp_for_unverified_account(monkeypatch):
     assert verify_resp.status_code == 200
 
 
-def test_resend_otp_unknown_email_returns_404(monkeypatch):
+def test_resend_otp_unknown_email_returns_generic_success(monkeypatch):
     resp = client.post("/users/otp/resend", json={"email": "nobody@u.nus.edu"})
-    assert resp.status_code == 404
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "Verification code sent. Check your email."
 
 
-def test_resend_otp_already_verified_returns_400(monkeypatch):
+def test_resend_otp_already_verified_returns_generic_success(monkeypatch):
     reg_resp, code = _register(monkeypatch)
     client.post("/users/otp/verify", json={"email": NUS_EMAIL, "code": code})
 
     resp = client.post("/users/otp/resend", json={"email": NUS_EMAIL})
-    assert resp.status_code == 400
+    assert resp.status_code == 200
+    assert resp.json()["message"] == "Verification code sent. Check your email."
 
 
 def test_profile_requires_identity_header(monkeypatch):

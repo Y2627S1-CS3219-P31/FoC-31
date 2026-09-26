@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.user import User
@@ -13,6 +13,10 @@ class UserRepository:
     async def list_all(self, *, limit: int = 50, offset: int = 0) -> list[User]:
         result = await self._session.execute(select(User).limit(limit).offset(offset))
         return list(result.scalars().all())
+
+    async def count_all(self) -> int:
+        result = await self._session.execute(select(func.count()).select_from(User))
+        return int(result.scalar_one())
 
     async def get_by_email(self, email: str) -> User | None:
         result = await self._session.execute(select(User).where(User.email == email))

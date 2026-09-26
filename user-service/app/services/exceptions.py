@@ -24,3 +24,19 @@ class AccountNotFoundError(Exception):
 
 class AccountEmailAlreadyVerifiedError(Exception):
     pass
+
+
+class NotificationDeliveryError(Exception):
+    pass
+
+
+class OtpRateLimitError(Exception):
+    pass
+
+
+class UserNotFoundError(Exception):
+    pass
+
+
+class CannotModifyAdminError(Exception):
+    pass

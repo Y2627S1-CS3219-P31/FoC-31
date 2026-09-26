@@ -20,13 +20,13 @@ orchestrator and have no DB access of their own.
 | Orchestrator | `app/services/user.py` (`UserService`) | The only component that spans both repositories in one transaction — e.g. `register()` writes a `User` row and an `OtpCode` row together. |
 | Security | `app/services/security.py` | Password hashing (`bcrypt`) and JWT issuance (`sub`/`role`/`exp` — must match api-gateway's verifier). Stateless. |
 | OTP codes | `app/services/otp.py` | Generate/hash a 6-digit code, compute its 5-minute expiry. Stateless. |
-| Notification | `app/services/notification.py` | `send_otp_email()` — dev-only log today; the wiring point for a real mailer or notification-service later. |
-| Events | `app/services/events.py` | The only component that talks to RabbitMQ. Publishes `UserRegistered`; best-effort (a broker outage never blocks a request). |
+| Notification | `app/services/notification.py` | `send_otp_email()` — sends through the configured SMTP provider without logging OTP values. |
+| Events | `app/services/events.py` | Stores `UserRegistered` in a transactional outbox and retries RabbitMQ delivery in the background. |
 | Exceptions | `app/services/exceptions.py` | Domain errors (`EmailAlreadyRegisteredError`, `InvalidOtpError`, etc.) — routes catch these, never raw ones from repositories. |
 | User repository | `app/repositories/user.py` | CRUD on `User` rows. |
 | OTP repository | `app/repositories/otp.py` | CRUD on `OtpCode` rows; `mark_consumed()` is an atomic conditional `UPDATE` used to close a verify-race. |
 | Models | `app/models/user.py`, `app/models/otp.py` | SQLAlchemy ORM: `User`, `OtpCode`/`OtpPurpose`. |
-| DB session | `app/db.py` | Async SQLAlchemy engine/session against `user-db` (PostgreSQL). |
+| DB session | `app/db.py` | Async SQLAlchemy engine/session against `user-db` (PostgreSQL); startup creates the schema and optionally performs idempotent first-admin bootstrap. |
 
 ## Diagram
 
@@ -45,7 +45,7 @@ flowchart TD
         US["user.py<br/><i>UserService — orchestrator</i>"]
         SEC["security.py<br/><i>hash/verify password, issue JWT</i>"]
         OTP["otp.py<br/><i>generate/hash code, expiry</i>"]
-        NOTIF["notification.py<br/><i>send_otp_email (dev-only log)</i>"]
+        NOTIF["notification.py<br/><i>send_otp_email (SMTP)</i>"]
         EVT["events.py<br/><i>publish_user_registered</i>"]
     end
 
@@ -78,7 +78,7 @@ flowchart TD
     UM --- DB
     OM --- DB
 
-    EVT -.->|"publishes UserRegistered<br/>(AMQP, best-effort)"| MQ
+    EVT -.->|"dispatches UserRegistered<br/>(AMQP, retryable outbox)"| MQ
 
     classDef sync fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a1a;
     classDef async fill:#fdf3e6,stroke:#b8863a,color:#1a1a1a;
@@ -115,11 +115,15 @@ flowchart TD
   They're safe to unit-test without a DB and safe to call from anywhere in
   `services` without worrying about transaction boundaries.
 - **`notification.py` and `events.py` are the service's only two external
-  side-effect boundaries** (besides the DB): one talks to an email
-  provider (currently stubbed as a log line), the other to RabbitMQ. Both
-  are isolated behind a single function so swapping the real mailer in, or
-  hardening the broker call with retries, touches one file each.
-- **Identity on `/users/me` comes from `X-User-Id`, injected by the
+  side-effect boundaries** (besides the DB): one talks to the configured SMTP
+  provider, the other dispatches a transactional RabbitMQ outbox. OTP values
+  are never logged, and broker outages leave a durable retryable record while
+  the dispatcher logs failures at error level.
+- **First-admin bootstrap runs during startup only when both bootstrap
+  credentials are configured.** It validates the same admin request schema,
+  uses application password hashing, is idempotent, and takes a PostgreSQL
+  advisory lock so concurrent instances cannot create duplicate admins.
+- **Identity on `/api/users/me` comes from `X-User-Id`, injected by the
   gateway** — user-service never decodes a JWT itself. The gateway is the
   system's sole JWT verifier; this service only issues tokens (`login`) and
   trusts headers on the way back in.

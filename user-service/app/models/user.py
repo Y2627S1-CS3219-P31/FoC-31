@@ -19,9 +19,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     email_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
-    display_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    contact_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    
+    display_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    contact_number: Mapped[str | None] = mapped_column(String(8), nullable=True)
+
     role: Mapped[str] = mapped_column(String(20), default=Role.CLIENT.value, nullable=False)
     is_suspended: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(

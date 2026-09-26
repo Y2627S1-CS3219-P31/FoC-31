@@ -1,16 +1,36 @@
 from __future__ import annotations
 
-import logging
+import smtplib
+from email.message import EmailMessage
 
-logger = logging.getLogger(__name__)
+from app.config import settings
+from app.services.exceptions import NotificationDeliveryError
 
 
 def send_otp_email(email: str, code: str) -> None:
-    """Deliver the OTP code to the user.
+    """Deliver an OTP through the configured SMTP provider.
 
-    TODO(team): wire this to a real mailer, or to notification-service once
-    it exposes an inbound API/queue for it. For now this just logs the code
-    so the register -> verify -> login flow can be built and tested locally
-    without an email provider. Do not ship this to anything real users touch.
+    OTP values are deliberately never written to logs. Missing mail
+    configuration fails explicitly so the API cannot report a code as sent
+    when no delivery mechanism exists.
     """
-    logger.info("OTP for %s: %s (dev-only log, not a real email send)", email, code)
+    if not settings.smtp_host:
+        raise NotificationDeliveryError("SMTP is not configured")
+
+    message = EmailMessage()
+    message["Subject"] = "FoC email verification code"
+    message["From"] = settings.smtp_from
+    message["To"] = email
+    message.set_content(
+        f"Your FoC verification code is {code}. It expires in 5 minutes."
+    )
+
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=10) as client:
+            if settings.smtp_starttls:
+                client.starttls()
+            if settings.smtp_username:
+                client.login(settings.smtp_username, settings.smtp_password or "")
+            client.send_message(message)
+    except (OSError, smtplib.SMTPException) as exc:
+        raise NotificationDeliveryError("OTP email delivery failed") from exc

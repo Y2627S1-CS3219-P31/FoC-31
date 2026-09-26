@@ -23,6 +23,7 @@ class OtpCode(Base):
     )
     purpose: Mapped[str] = mapped_column(String(30), nullable=False)
     code_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    attempts: Mapped[int] = mapped_column(default=0, nullable=False)
 
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), nullable=False)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)

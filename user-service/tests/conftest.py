@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import os
 from unittest.mock import AsyncMock
+
+os.environ.setdefault("JWT_SECRET", "test-secret-that-is-long-enough")
 
 import pytest
 from sqlalchemy import create_engine

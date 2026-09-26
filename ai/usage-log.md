@@ -117,3 +117,28 @@ Format for each entry:
   design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
+
+
+---
+
+## 26/09/2026 — Javier Enrique Wong
+
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Helped understanding the transactional outbox pattern 
+  for reliable RabbitMQ event delivery; implementing secure, idempotent 
+  first-admin bootstrap on application startup; OTP rate limiting, 
+  failed-attempt tracking, and temporary lockout behavior; 
+  updating `user-service/docs/api-contract.md` with endpoint paths, 
+  request bodies, headers, response payloads, validation rules, 
+  and status codes; and updating user-service and API gateway tests 
+  to match the `/users` internal prefix
+- Prompt(s):
+  1. "Explain the outbox pattern and how to implement"
+  2. "How should OTP rate limiting and failed-attempt handling be
+     implemented?"
+  3. "Update `api-contract.md` to document current API request and
+     response contracts based on the source code"
+  4. "Help update pytest after the code changes"
+- Author review: Reviewed the generated explanations and code changes,
+  checked and verified that the updated Python files compile successfully.
+  Reviewed api-contracts as well.

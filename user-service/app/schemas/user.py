@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -10,10 +11,14 @@ _ALLOWED_EMAIL_DOMAIN = "u.nus.edu"
 _PASSWORD_MIN_LENGTH = 8
 
 class RegisterRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str = Field(min_length=_PASSWORD_MIN_LENGTH, max_length=72)
-    display_name: str = Field(min_length=1, max_length=100)
-    contact_number: str | None = Field(default=None, max_length=20)
+    display_name: str = Field(min_length=1, max_length=50)
+    contact_number: str | None = Field(
+        default=None, max_length=8, pattern=r"^[89]\d{7}$"
+    )
 
     @field_validator("email")
     @classmethod
@@ -32,6 +37,10 @@ class RegisterRequest(BaseModel):
             raise ValueError("password must contain both letters and digits")
         return v
 
+
+class CreateAdminRequest(RegisterRequest):
+    """Validated account details for an administrator created by an admin."""
+
 class RegisterResponse(BaseModel):
     id: str
     email: EmailStr
@@ -39,6 +48,8 @@ class RegisterResponse(BaseModel):
 
 
 class LoginRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     email: EmailStr
     password: str
 
@@ -60,9 +71,33 @@ class ProfileResponse(BaseModel):
     email_verified: bool
 
 
+class AdminUserResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: EmailStr
+    display_name: str
+    contact_number: str | None
+    role: Role
+    email_verified: bool
+    is_suspended: bool
+    created_at: datetime
+
+
+class AdminUserListResponse(BaseModel):
+    items: list[AdminUserResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class ProfileUpdateRequest(BaseModel):
-    display_name: str | None = Field(default=None, min_length=1, max_length=100)
-    contact_number: str | None = Field(default=None, max_length=20)
+    model_config = ConfigDict(extra="forbid")
+
+    display_name: str | None = Field(default=None, min_length=1, max_length=50)
+    contact_number: str | None = Field(
+        default=None, max_length=8, pattern=r"^[89]\d{7}$"
+    )
 
     @model_validator(mode="after")
     def _at_least_one_field(self) -> ProfileUpdateRequest:

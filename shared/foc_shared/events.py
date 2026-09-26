@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OrderEventType(str, Enum):
@@ -25,6 +25,7 @@ class OrderEvent(BaseModel):
     reason: str | None = None
 
 class UserRegisteredEvent(BaseModel):
-    """So credit-service can provision the account's initial credit balance"""
+    event_type: str = "UserRegistered"
     user_id: str
     email: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
