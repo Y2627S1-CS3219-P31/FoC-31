@@ -111,9 +111,16 @@ class CreditService:
 
         existing = await self._reservations.get_by_order_id(order_id)
         if existing is not None:
+            # Idempotent retry: order-service may re-attempt a reserve call
+            # after a timeout. An identical reservation succeeds as-is.
+            if existing.user_id == user_id and existing.amount == amount:
+                return existing
             raise ConflictError(f"Credits for order '{order_id}' are already reserved.")
 
         if amount > account.available_balance:
+            available = account.available_balance
+            # Release the row lock before doing network I/O.
+            await self._session.rollback()
             await publisher.publish_reservation_event(
                 ReservationEvent(
                     event_type=CreditEventType.CREDIT_RESERVATION_REJECTED,
@@ -126,7 +133,7 @@ class CreditService:
                 )
             )
             raise InsufficientCreditsError(
-                f"User '{user_id}' has only {account.available_balance} available "
+                f"User '{user_id}' has only {available} available "
                 f"credit(s); cannot reserve {amount}."
             )
 
@@ -152,8 +159,11 @@ class CreditService:
             await self._session.commit()
         except IntegrityError:
             # N1.2.2: the unique order_id constraint caught a concurrent
-            # duplicate reservation; surface it as a clean conflict.
+            # duplicate reservation. An identical retry is a success.
             await self._session.rollback()
+            existing = await self._reservations.get_by_order_id(order_id)
+            if existing is not None and existing.user_id == user_id and existing.amount == amount:
+                return existing
             raise ConflictError(f"Credits for order '{order_id}' are already reserved.") from None
         await self._session.refresh(reservation)
         await publisher.publish_reservation_event(
@@ -247,12 +257,17 @@ class CreditService:
                 f"Reservation '{reservation.id}' is {reservation.status} and cannot be transferred."
             )
 
-        # reservation.user_id is a FK to credit_accounts, so the requester row
-        # always exists (no account deletion exists in the system).
-        requester = await self._accounts.get_for_update(reservation.user_id)
-        courier = await self._accounts.get_for_update(courier_id)
+        # Lock both accounts in a deterministic (sorted) order so concurrent
+        # transfers between the same pair cannot deadlock each other. The
+        # requester row always exists (FK to credit_accounts).
+        locked: dict[str, CreditAccount | None] = {}
+        for user_id in sorted({reservation.user_id, courier_id}):
+            locked[user_id] = await self._accounts.get_for_update(user_id)
+
+        courier = locked.get(courier_id)
         if courier is None:
             raise NotFoundError(f"No credit account exists for courier '{courier_id}'.")
+        requester = locked[reservation.user_id]
 
         requester.reserved_balance -= reservation.amount
         courier.available_balance += reservation.amount
@@ -262,7 +277,9 @@ class CreditService:
                 user_id=reservation.user_id,
                 counterparty_user_id=courier_id,
                 kind=TransactionKind.TRANSFER.value,
-                amount=-reservation.amount,
+                # The outflow was already recorded at reservation time; keeping
+                # this entry at 0 makes history sum to the balance (F5.2).
+                amount=0,
                 reservation_id=reservation.id,
                 order_id=reservation.order_id,
             )
