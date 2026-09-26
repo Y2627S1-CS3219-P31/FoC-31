@@ -97,6 +97,8 @@ Format for each entry:
   and confirmed every test passes; checked that no test asserts on behavior
   the code doesn't actually implement.
   
+---
+
 ## 25/09/2026 — John Gao Jiahao
 
 - Tool: Claude Code (model: Claude Sonnet)
@@ -119,6 +121,56 @@ Format for each entry:
   merged, pending final team review.
 
 
+## 25/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Sonnet)
+- Scope: supplier-service implementation (backlog Supplier F1–F5). Implemented,
+  under team-owned design decisions and the pre-agreed API contract: the
+  Supplier ORM model + init_db; Pydantic DTOs (camelCase) with the locked
+  Category enum; repository (CRUD, case-insensitive keyword search over
+  name/building/location, category+zone filters, pagination); service layer
+  (404/409/validation rules); RBAC dependency reading the gateway-injected
+  X-User-Id/X-User-Role headers (admin-only create/update/deactivate);
+  error-envelope exception handlers; /api/suppliers CRUD routes + app wiring
+  (lifespan init_db); and the idempotent CSV seeder (backlog F4). Also added
+  aiosqlite as a test dependency and a flake8-bugbear ruff setting for
+  FastAPI DI defaults.
+
+  Separately, while implementing against the existing docs/OpenAPI, the tool
+  flagged four inconsistencies between those docs and the actual seed data /
+  gateway routing: no `campusLocation` column in the CSV, a mismatched base
+  path, an unlocked category enum, and PATCH/deactivate listed as planned
+  rather than implemented. The team reviewed each and decided the resolution
+  (see Prompt 2); the tool then applied only those team-decided resolutions
+  to the docs and code. The tool did not choose the field name, base path,
+  enum values, or which endpoints to implement — it surfaced the mismatch and
+  the team resolved it.
+
+  All product requirements and the endpoint/schema/error-code contract were
+  decided by the team beforehand; the tool implemented that agreed design and
+  did not make requirements or architecture decisions.
+
+- Prompt(s):
+  1. "Help me implement the supplier service based on the API spec and the
+     documentation/architecture in the docs folder … this is for the D2
+     milestone." (+ pointed the tool at the CS3219 docs and data.zip seed data.)
+  2. Tool surfaced the four inconsistencies above; team discussed and decided:
+     rename campusLocation→building (no such CSV column), keep the 4
+     categories as-is, load the CSV bytes as-is, implement full CRUD incl.
+     PATCH+deactivate, and mount routes at /api/suppliers to match the
+     gateway (updating docs to match). These decisions were then given back
+     to the tool to apply.
+  3. "Use TDD, feel free to use subagent-driven development, commit at each
+     step, keep commit messages succinct."
+- Author review:
+  I have reviewed all generated files against the team's agreed contract. Ran
+  `make test-supplier-service` (46 passing) and `ruff check`/`format`
+  (clean). Spot-checked the running service: RBAC 403 (non-admin) / 201
+  (admin create), 422 on bad category, deactivate 200 then 409 on repeat,
+  404 on missing supplier. Confirmed the idempotent seeder re-run produces
+  0 new rows on a second pass (21 → 0). Confirmed docs/OpenAPI match the
+  team-decided contract from Prompt 2.
+  
 ---
 
 ## 26/09/2026 — Javier Enrique Wong
@@ -142,3 +194,36 @@ Format for each entry:
 - Author review: Reviewed the generated explanations and code changes,
   checked and verified that the updated Python files compile successfully.
   Reviewed api-contracts as well.
+- Scope: Documentation and test generation only, scoped to `api-gateway`.
+  Updated `docs/architecture.md` and `docs/flowchart.md` (the internal
+  layering diagram and the resolve → authorize → forward request pipeline)
+  to match the current source code. Generated `tests/test_routing.py`
+  (`resolve_upstream`'s known-prefix, unknown-prefix, and partial-segment
+  boundary cases) and `tests/test_gateway.py` (`GatewayService`'s
+  resolve/authorize/forward behavior, including the public-route,
+  missing-token, invalid-token, and valid-token outcomes, and that
+  `forward()` actually strips client-supplied `Authorization`/`X-User-*`
+  headers before proxying). Also fixed a stale import path in
+  `tests/test_auth.py` (`app.auth` → `app.services.auth`). No architecture
+  or design decisions were made by the tool — the docs describe layering
+  and behavior that already existed in the code.
+- Prompt(s):
+  1. "Given this architecuture.md and flowchart.md update based on the
+     source code."
+  2. "Also generate pytest:  `test_routing.py` covering `resolve_upstream`,
+     unknown-prefix, and partial-segment cases and `test_gateway.py` 
+     covering `GatewayService` resolve, authorize, forward behavior, and 
+     fix `test_auth.py` below."
+- Author review: Reviewed `docs/architecture.md`/`flowchart.md` against the
+  actual resulting file layout for accuracy. Ran the generated suite and
+  confirmed every test passes; checked that no test asserts on behavior the
+  code doesn't actually implement.
+  
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway 
+  routes, routing table, authentication behavior, path rewriting, CORS settings, 
+  and error responses
+- Prompt(s): "generate api-contract.md for api-gateway based on below"
+- Author review: Compared the contract against `proxy.py`, `routing.py`, `auth.py`,
+  `gateway.py`, and gateway configuration, then corrected the documentation to 
+  distinguish gateway `/api/...` routes from backend routes.
