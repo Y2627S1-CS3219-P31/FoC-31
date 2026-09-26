@@ -20,9 +20,7 @@ async def lifespan(_: FastAPI):
         inserted = await seed_suppliers()
         logger.info("Supplier seeder inserted %d new row(s).", inserted)
     else:
-        logger.warning(
-            "Seed CSV not found at %s; skipping startup seed.", SEED_CSV_PATH
-        )
+        logger.warning("Seed CSV not found at %s; skipping startup seed.", SEED_CSV_PATH)
     yield
 
 

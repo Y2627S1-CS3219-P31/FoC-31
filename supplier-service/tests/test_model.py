@@ -6,15 +6,11 @@ from app.models.supplier import Supplier
 
 
 async def test_supplier_defaults_active_true(session):
-    supplier = Supplier(
-        id="sup_001", name="Anna's", category="Food", building="Central Library"
-    )
+    supplier = Supplier(id="sup_001", name="Anna's", category="Food", building="Central Library")
     session.add(supplier)
     await session.commit()
 
-    row = (
-        await session.execute(select(Supplier).where(Supplier.id == "sup_001"))
-    ).scalar_one()
+    row = (await session.execute(select(Supplier).where(Supplier.id == "sup_001"))).scalar_one()
     assert row.name == "Anna's"
     assert row.category == "Food"
     assert row.building == "Central Library"
@@ -41,9 +37,7 @@ async def test_supplier_optional_fields_persist(session):
     session.add(supplier)
     await session.commit()
 
-    row = (
-        await session.execute(select(Supplier).where(Supplier.id == "sup_002"))
-    ).scalar_one()
+    row = (await session.execute(select(Supplier).where(Supplier.id == "sup_002"))).scalar_one()
     assert row.location_description == "Opp LT16"
     assert row.latitude == 1.2940156
     assert row.active is False

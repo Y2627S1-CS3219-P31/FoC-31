@@ -31,9 +31,7 @@ async def test_seed_is_idempotent(session):
 async def test_seed_maps_columns(session):
     await seeder.seed_suppliers(session=session, csv_path=CSV)
     row = (
-        await session.execute(
-            select(Supplier).where(Supplier.name == "Anna's x Soup Union")
-        )
+        await session.execute(select(Supplier).where(Supplier.name == "Anna's x Soup Union"))
     ).scalar_one()
     assert row.category == "Food"
     assert row.building == "Central Library"
