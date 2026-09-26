@@ -75,3 +75,24 @@ Format for each entry:
   4. "make commit msg for all my changes"
 - Author review: Regenerated `architecture.md` and `flowchart.md` against the
   current source code and reviewed both against `app/` for accuracy.
+
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Test generation only, scoped to `user-service/tests/`: `conftest.py`
+  (per-test isolated sqlite fixture instead of the real Postgres, and a
+  mocked RabbitMQ publish so tests don't need a live broker), `test_auth.py`
+  (unit coverage for the token-verification and trusted-header-building
+  helpers), and `test_user_flow.py` (register → verify/resend-otp → login →
+  profile, covering the happy path plus validation, conflict, and
+  auth-failure branches). No new behavior, validation rules, or design
+  decisions were introduced by the tool — every assertion targets logic
+  already implemented in `app/services/user.py` and
+  `app/api/routes/users.py`; the tool only wrote pytest coverage for it.
+- Prompt(s):
+  1. "Write pytest for user Service: register, login, OTP
+     verify, resend, and profile, including reregister while unverified
+     and already verified, plus a fixture so the suite runs
+     against isolated DB and mocked rabbitMQ publish instead of
+     the real psql."
+- Author review: Ran the generated suite against the current implementation
+  and confirmed every test passes; checked that no test asserts on behavior
+  the code doesn't actually implement.
