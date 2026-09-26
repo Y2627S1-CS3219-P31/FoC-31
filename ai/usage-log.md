@@ -96,3 +96,24 @@ Format for each entry:
 - Author review: Ran the generated suite against the current implementation
   and confirmed every test passes; checked that no test asserts on behavior
   the code doesn't actually implement.
+  
+## 25/09/2026 — John Gao Jiahao
+
+- Tool: Claude Code (model: Claude Sonnet)
+- Scope: supplier-service API documentation. The team designed and agreed on
+  the endpoint set, field names, enums, and error codes for supplier-service. The tool was used only to write up that agreed design as a
+  Markdown reference and an OpenAPI 3.1 YAML file, and to cross-check the two
+  against each other and against the existing code and contracts for
+  consistency. No endpoint, schema, or interface decisions were made by the
+  tool.
+- Prompt(s):
+  1. "Here is our agreed endpoint spec for supplier-service:[Txt File]. Write this up as (a) a Markdown API reference
+     and (b) an OpenAPI 3.1 YAML file, matching our existing docs style." → clarified to supplier-service only.
+  2. "Cross-check the Markdown and YAML against each other and against the
+     current supplier-service code/contracts for mismatches"
+  3. "Implement the formatting fixes" (with a follow-up to hold off on committing pending
+     review).
+- Author review: Confirmed the Markdown and YAML match the team's agreed
+  design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
+  parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
+  merged, pending final team review.
