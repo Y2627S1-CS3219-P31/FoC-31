@@ -59,7 +59,7 @@ def test_create_order_uses_collection_url_and_authenticated_requester(
 ) -> None:
     captured: dict[str, object] = {}
 
-    async def fake_create(session, order, requester_id):
+    async def fake_create(session, order, requester_id, _supplier_client, _credit_client):
         captured.update(session=session, order=order, requester_id=requester_id)
         return stored_order(requester_id=requester_id)
 
@@ -93,20 +93,85 @@ def test_create_order_rejects_past_deadline(client: TestClient) -> None:
     assert response.status_code == 422
 
 
-def test_list_orders_returns_available_orders(
+def test_list_orders_returns_requester_orders(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     async def fake_list(_session, requester_id):
-        assert requester_id == "courier-1"
-        return [stored_order(requester_id="user-1")]
+        assert requester_id == "user-1"
+        return [stored_order(requester_id=requester_id)]
 
-    monkeypatch.setattr(order_routes.order_service, "list_available_orders", fake_list)
+    monkeypatch.setattr(order_routes.order_service, "list_requester_orders", fake_list)
 
-    response = client.get("/orders", headers={"X-User-Id": "courier-1"})
+    response = client.get("/orders", headers={"X-User-Id": "user-1"})
 
     assert response.status_code == 200
     assert [item["id"] for item in response.json()] == [1]
+    assert all(item["requester_id"] == "user-1" for item in response.json())
+
+
+@pytest.mark.parametrize(
+    ("service_error", "expected_status", "expected_code"),
+    [
+        (
+            order_routes.order_service.SupplierNotFoundError("Supplier 'missing' was not found."),
+            422,
+            "supplier_not_found",
+        ),
+        (
+            order_routes.order_service.SupplierInactiveError("Supplier 'sup_001' is deactivated."),
+            409,
+            "supplier_inactive",
+        ),
+        (
+            order_routes.order_service.CreditReservationError("Insufficient credits."),
+            409,
+            "credit_reservation_failed",
+        ),
+    ],
+)
+def test_create_order_maps_business_errors(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    service_error: Exception,
+    expected_status: int,
+    expected_code: str,
+) -> None:
+    async def fake_create(*_args):
+        raise service_error
+
+    monkeypatch.setattr(order_routes.order_service, "create_order", fake_create)
+
+    response = client.post(
+        "/orders",
+        headers={"X-User-Id": "user-1"},
+        json=order_payload(),
+    )
+
+    assert response.status_code == expected_status
+    assert response.json()["code"] == expected_code
+
+
+def test_create_order_maps_dependency_failure_to_service_unavailable(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_create(*_args):
+        raise order_routes.order_service.DependencyUnavailableError(
+            "credit",
+            "Credit Service could not be reached.",
+        )
+
+    monkeypatch.setattr(order_routes.order_service, "create_order", fake_create)
+
+    response = client.post(
+        "/orders",
+        headers={"X-User-Id": "user-1"},
+        json=order_payload(),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["code"] == "credit_service_unavailable"
 
 
 def test_get_order_maps_access_denial_to_error_envelope(

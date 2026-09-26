@@ -10,7 +10,7 @@ from app.models.orders import Order
 from app.schemas.orders import OrderCreate
 
 
-async def create_order(
+async def stage_order(
     session: AsyncSession,
     order_data: OrderCreate,
     requester_id: str,
@@ -23,14 +23,12 @@ async def create_order(
     )
 
     session.add(database_order)
-    try:
-        await session.commit()
-        await session.refresh(database_order)
-    except Exception:
-        await session.rollback()
-        raise
-
+    await session.flush()
     return database_order
+
+
+async def commit_order(session: AsyncSession) -> None:
+    await session.commit()
 
 
 async def get_order(session: AsyncSession, order_id: int) -> Order | None:
@@ -54,6 +52,15 @@ async def list_available_orders(
         )
         .order_by(Order.deadline.asc(), Order.id.asc())
     )
+    result = await session.scalars(statement)
+    return list(result.all())
+
+
+async def list_orders_for_requester(
+    session: AsyncSession,
+    requester_id: str,
+) -> list[Order]:
+    statement = select(Order).where(Order.requester_id == requester_id).order_by(Order.id.asc())
     result = await session.scalars(statement)
     return list(result.all())
 

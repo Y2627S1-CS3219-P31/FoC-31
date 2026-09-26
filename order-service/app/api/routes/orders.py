@@ -7,6 +7,9 @@ from fastapi import APIRouter, Depends, Header, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.dependencies import get_credit_client, get_supplier_client
+from app.clients.credits import CreditClient
+from app.clients.suppliers import SupplierClient
 from app.db import get_session
 from app.schemas.orders import OrderCreate, OrderResponse
 from app.services import orders as order_service
@@ -30,8 +33,33 @@ async def create_order(
     order: OrderCreate,
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> OrderResponse:
-    return await order_service.create_order(session, order, requester_id)
+    supplier_client: Annotated[SupplierClient, Depends(get_supplier_client)],
+    credit_client: Annotated[CreditClient, Depends(get_credit_client)],
+) -> OrderResponse | JSONResponse:
+    try:
+        return await order_service.create_order(
+            session,
+            order,
+            requester_id,
+            supplier_client,
+            credit_client,
+        )
+    except order_service.SupplierNotFoundError as error:
+        return error_response(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "supplier_not_found",
+            str(error),
+        )
+    except order_service.SupplierInactiveError as error:
+        return error_response(status.HTTP_409_CONFLICT, "supplier_inactive", str(error))
+    except order_service.CreditReservationError as error:
+        return error_response(status.HTTP_409_CONFLICT, "credit_reservation_failed", str(error))
+    except order_service.DependencyUnavailableError as error:
+        return error_response(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"{error.dependency}_service_unavailable",
+            str(error),
+        )
 
 
 @router.get("", response_model=list[OrderResponse])
@@ -39,7 +67,7 @@ async def list_orders(
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[OrderResponse]:
-    return await order_service.list_available_orders(session, requester_id)
+    return await order_service.list_requester_orders(session, requester_id)
 
 
 @router.get("/{order_id}", response_model=OrderResponse)
