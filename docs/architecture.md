@@ -25,9 +25,41 @@ internally **layered** (`api/routes` → `services` → `repositories`).
 
 ## Diagram
 
-TODO: add a labelled architecture diagram (see L6 "Guidelines for Architecture
-Diagrams": title, legend, explained elements, labelled relationships with
-protocols). A text sketch lives in the root `README.md`.
+### Supplier Service (C4 Level 3 — Component)
+
+<!-- AI-influenced: diagram drafted with OpenCode (Claude Opus); see ai/usage-log.md -->
+
+![Supplier Service — C4 Component Diagram](./supplier-service-architecture.png)
+
+Source: `supplier-service-architecture.svg` (scalable) and the editable
+`supplier-service-architecture.excalidraw.json`. Built to the L6 "Guidelines
+for Architecture Diagrams": titled + labelled, legend explaining notation,
+acronyms expanded (RBAC, CRUD), each element described in 1–2 lines, and every
+relationship labelled with direction + intent.
+
+This is a **design-level** view: it describes the service's responsibilities
+and interactions rather than its implementation. Internally the service is
+layered **Interface → Domain → Persistence**:
+
+- **API / Interface Layer** — exposes supplier operations, validates input, and
+  enforces RBAC using the role passed by the gateway.
+- **Supplier Domain Logic** — CRUD & lifecycle (activate/deactivate), discovery
+  (category/zone filtering + keyword search), single-supplier lookup, and
+  status validation for other services.
+- **Data Seeding** — one-time idempotent load of the baseline catalog.
+- **Persistence Layer** + **Domain Model** — data access/queries with pagination
+  over the `Supplier` entity (name, category, campus location, active status).
+
+External relationships: the **API Gateway** (sole entry for client traffic,
+supplies verified identity + role), the **Order Service** (validates a supplier
+by ID before creating orders), the read-only **baseline catalog data**, the
+shared **contracts library**, and **RabbitMQ** (dashed — the planned Sprint 3
+supplier-deactivation cascade). State is persisted to the service-owned
+`supplier-db`.
+
+TODO (other services): add matching component diagrams for user-, order-,
+credit-, and notification-service, plus a system-level Container (C4 L2) view.
+A text sketch lives in the root `README.md`.
 
 ## Key decisions (fill in — team-authored, not AI)
 
