@@ -27,9 +27,12 @@ async def create_order(
     return await order_service.create_order(session, order, requester_id)
 
 
-@router.get("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def list_orders() -> dict[str, str]:
-    return {"detail": "not implemented"}
+@router.get("", response_model=list[OrderResponse])
+async def list_orders(
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OrderResponse]:
+    return await order_service.list_available_orders(session, requester_id)
 
 
 @router.get("/{order_id}", status_code=status.HTTP_501_NOT_IMPLEMENTED)

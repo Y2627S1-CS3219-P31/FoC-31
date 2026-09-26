@@ -91,3 +91,19 @@ def test_create_order_rejects_past_deadline(client: TestClient) -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_list_orders_returns_available_orders(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_list(_session, requester_id):
+        assert requester_id == "courier-1"
+        return [stored_order(requester_id="user-1")]
+
+    monkeypatch.setattr(order_routes.order_service, "list_available_orders", fake_list)
+
+    response = client.get("/orders", headers={"X-User-Id": "courier-1"})
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [1]
