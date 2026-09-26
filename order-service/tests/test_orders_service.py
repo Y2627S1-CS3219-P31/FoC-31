@@ -31,6 +31,17 @@ def make_order(
     )
 
 
+async def test_get_order_only_allows_requester(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        order_service.order_repository,
+        "get_order",
+        AsyncMock(return_value=make_order(requester_id="user-1")),
+    )
+
+    with pytest.raises(order_service.OrderAccessDeniedError):
+        await order_service.get_order_for_requester(object(), 1, "user-2")
+
+
 async def test_delete_open_unassigned_order(monkeypatch: pytest.MonkeyPatch) -> None:
     order = make_order()
     monkeypatch.setattr(
