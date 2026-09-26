@@ -49,3 +49,29 @@ Format for each entry:
   Endpoints are intentionally stubbed (`501 Not Implemented`); business logic,
   auth/RBAC enforcement, and event wiring remain to be implemented and reviewed
   by the team.
+
+## 25/09/2026 — Javier Enrique Wong
+
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Documentation generation only, scoped to `user-service/docs/`
+  (`architecture.md` and `flowchart.md`). The tool wrote the prose (component
+  tables, explained-elements bullets) and Mermaid diagrams describing
+  user-service's existing internal layering (`api/routes` → `services` →
+  `repositories` → `models`), its two external boundaries (`user-db`,
+  RabbitMQ), and its auth/OTP request flows. No architecture or design
+  decisions were made by the tool — the layering convention, component
+  boundaries, and models (`EmailOtp`, later renamed `OtpCode`, and `User`)
+  were already implemented in the code by the team beforehand. The docs were
+  regenerated a second time after the source code changed, purely to bring
+  the documentation back in sync — the tool re-read the existing `app/`
+  source and updated the write-up and diagrams to match, again without
+  introducing any new design decisions.
+- Prompt(s):
+  1. "Draw out architecture.md and flowchart.md" — with the `api/` and
+     `services` layers, and the `EmailOtp` and `User` models, described 
+     to the tool in a table.
+  2. "Update architecture.md and flowchart.md based on the source code."
+  3. "Update this usage-log.md."
+  4. "make commit msg for all my changes"
+- Author review: Regenerated `architecture.md` and `flowchart.md` against the
+  current source code and reviewed both against `app/` for accuracy.

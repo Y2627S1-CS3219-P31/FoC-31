@@ -23,3 +23,8 @@ class OrderEvent(BaseModel):
     courier_id: str | None = None
     timestamp: datetime
     reason: str | None = None
+
+class UserRegisteredEvent(BaseModel):
+    """So credit-service can provision the account's initial credit balance"""
+    user_id: str
+    email: str
