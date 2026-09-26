@@ -8,6 +8,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db import Base
 
+# NOTE: sqlite ignores `SELECT ... FOR UPDATE`, so row-locking behaviour
+# (N1.2.2) is only truly exercised against Postgres (future platform tests).
+
 
 @pytest_asyncio.fixture
 async def session() -> AsyncGenerator[AsyncSession, None]:

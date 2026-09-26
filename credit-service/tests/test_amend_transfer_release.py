@@ -104,6 +104,11 @@ async def test_transfer_moves_reserved_credits_to_courier(session, monkeypatch):
     assert transfer_txn.counterparty_user_id == "requester"
     assert transfer_txn.order_id == "order-1"
 
+    requester_txns = await service.list_transactions("requester")
+    requester_transfer = next(t for t in requester_txns if t.kind == TransactionKind.TRANSFER.value)
+    assert requester_transfer.amount == 0  # outflow already recorded at reservation
+    assert requester_transfer.counterparty_user_id == "courier"
+
 
 async def test_transfer_is_idempotent(session, monkeypatch):
     monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
@@ -200,3 +205,21 @@ async def test_release_after_transfer_conflicts(session, monkeypatch):
 
     with pytest.raises(ConflictError):
         await service.release_for_order("order-1")
+
+
+async def test_history_sums_to_balance_after_transfer(session, monkeypatch):
+    """F5.2: income + outflow must add up to the current balance."""
+    monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
+    service = CreditService(session)
+    await service.ensure_account("requester")
+    await service.ensure_account("courier")
+    await service.reserve(user_id="requester", order_id="order-1", amount=30)
+    await service.transfer_for_order("order-1", "courier")
+
+    requester = await service.get_balances("requester")
+    requester_total = sum(t.amount for t in await service.list_transactions("requester", limit=200))
+    assert requester_total == requester.available_balance + requester.reserved_balance
+
+    courier = await service.get_balances("courier")
+    courier_total = sum(t.amount for t in await service.list_transactions("courier", limit=200))
+    assert courier_total == courier.available_balance + courier.reserved_balance

@@ -78,12 +78,29 @@ async def test_reserve_requires_an_account(session):
         await service.reserve(user_id="ghost", order_id="order-1", amount=10)
 
 
-async def test_reserve_same_order_twice_conflicts(session, monkeypatch):
+async def test_reserve_retry_same_amount_returns_existing(session, monkeypatch):
+    """Order-service retrying after a timeout gets the existing reservation
+    back instead of a 409 (idempotent retry)."""
+    events: list = []
+    monkeypatch.setattr(publisher, "publish_reservation_event", _collect(events))
+    service = CreditService(session)
+    first = await _reserve(service)
+
+    second = await service.reserve(user_id="user-1", order_id="order-1", amount=40)
+
+    assert second.id == first.id
+    account = await service.get_balances("user-1")
+    assert account.available_balance == 60  # no double deduction
+    accepted = [e for e in events if e.event_type == CreditEventType.CREDIT_RESERVATION_ACCEPTED]
+    assert len(accepted) == 1  # no duplicate event
+
+
+async def test_reserve_same_order_different_amount_conflicts(session, monkeypatch):
     monkeypatch.setattr(publisher, "publish_reservation_event", _collect([]))
     service = CreditService(session)
     await _reserve(service)
     with pytest.raises(ConflictError):
-        await _reserve(service)
+        await service.reserve(user_id="user-1", order_id="order-1", amount=10)
     account = await service.get_balances("user-1")
     assert account.available_balance == 60  # only one reservation happened
 
@@ -117,3 +134,27 @@ async def test_reserve_concurrent_duplicate_yields_conflict(session, monkeypatch
     account = await service.get_balances("user-1")
     assert account.available_balance == 60  # losing insert fully rolled back
     assert account.reserved_balance == 40
+
+
+async def test_reserve_concurrent_identical_retry_returns_existing(session, monkeypatch):
+    """A concurrent duplicate with identical parameters is treated as a
+    successful retry, not a conflict."""
+    monkeypatch.setattr(publisher, "publish_reservation_event", _collect([]))
+    service = CreditService(session)
+    await _reserve(service)
+
+    original = service._reservations.get_by_order_id
+    state = {"calls": 0}
+
+    async def _race(order_id):
+        if state["calls"] == 0:
+            state["calls"] += 1
+            return None  # only the pre-check races; the re-query sees the row
+        return await original(order_id)
+
+    monkeypatch.setattr(service._reservations, "get_by_order_id", _race)
+    second = await service.reserve(user_id="user-1", order_id="order-1", amount=40)
+
+    assert second.amount == 40
+    account = await service.get_balances("user-1")
+    assert account.available_balance == 60
