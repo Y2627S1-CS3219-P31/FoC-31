@@ -125,3 +125,19 @@ def test_get_order_maps_access_denial_to_error_envelope(
         "code": "forbidden",
         "message": "You do not have permission to access order '1'.",
     }
+
+
+def test_delete_order_returns_no_content(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_delete(_session, order_id, requester_id):
+        assert order_id == 1
+        assert requester_id == "user-1"
+
+    monkeypatch.setattr(order_routes.order_service, "delete_order_for_requester", fake_delete)
+
+    response = client.delete("/orders/1", headers={"X-User-Id": "user-1"})
+
+    assert response.status_code == 204
+    assert response.content == b""

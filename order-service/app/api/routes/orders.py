@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -56,6 +56,18 @@ async def get_order(
         return error_response(status.HTTP_403_FORBIDDEN, "forbidden", str(error))
 
 
-@router.post("/{order_id}/accept", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def accept_order(order_id: str) -> dict[str, str]:
-    return {"detail": "not implemented"}
+@router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_order(
+    order_id: int,
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> Response:
+    try:
+        await order_service.delete_order_for_requester(session, order_id, requester_id)
+    except order_service.OrderNotFoundError as error:
+        return error_response(status.HTTP_404_NOT_FOUND, "not_found", str(error))
+    except order_service.OrderAccessDeniedError as error:
+        return error_response(status.HTTP_403_FORBIDDEN, "forbidden", str(error))
+    except order_service.OrderStateConflictError as error:
+        return error_response(status.HTTP_409_CONFLICT, "invalid_order_state", str(error))
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

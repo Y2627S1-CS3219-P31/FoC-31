@@ -56,3 +56,12 @@ async def list_available_orders(
     )
     result = await session.scalars(statement)
     return list(result.all())
+
+
+async def delete_order(session: AsyncSession, order: Order) -> None:
+    await session.delete(order)
+    try:
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        raise
