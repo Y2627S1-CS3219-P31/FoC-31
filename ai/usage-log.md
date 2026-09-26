@@ -71,7 +71,7 @@ Format for each entry:
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
 
-## 26/09/2026 — _TBD (fill in your name)_
+## 26/09/2026 — Frank Yu / Zhou Shiyao
 
 - Tool: GitHub Copilot (model: DeepSeek V4 Pro)
 - Scope: credit-service implementation per the team's D1 backlog (Credit
@@ -88,8 +88,15 @@ Format for each entry:
   team's existing PR patterns (supplier-service layering/error envelope,
   user-service event publishing); the tool only implemented the chosen design.
 - Prompt(s):
-  1. "请你通读这个文档的credit service的FR和NFR部分 … 照着需求文档，以及已有的pr中值得参考的部分，完整写完credit service。严格按D1的要求实现，不要私自添加功能。"
-- Author review: _TBD — review the generated code against the D1 backlog,
-  run `make test-credit-service` and `ruff check`, and confirm the chosen
-  route prefix (`/credits`) and exchange names (`foc.events`,
-  `foc.credit.events`) with the team before merging.
+  1. "Read the Credit Service FR and NFR sections of this document; based on the D1 requirements document and the parts of the existing PRs worth following, produce the credit service implementation. Implement strictly per D1; do not add features on your own."
+  2. "Review your implementation: reuse shared project components as much as possible, minimise coupling with other services, and keep the layers clean."
+  3. "Audit all security checks and defensive code; remove defensive code that guards impossible situations, and make the code as simple as possible."
+  4. "Fix: dead-letter invalid events, idempotent reserve retries, fixed account lock ordering, no double-counting in transaction history, and releasing the row lock before publishing events."
+- Author review: Both authors reviewed the generated code against the D1 backlog
+  (Credit F1–F5, N1–N2) and the shared event contracts. Verified with
+  `pytest` (55 tests passing) and `ruff check`/`ruff format` (clean).
+  Incorporated PR #7 review feedback (dead-lettering invalid events,
+  idempotent reserve retries, fixed lock ordering, history amounts summing
+  to balances, releasing the row lock before publishing). Open items
+  confirmed with the team before merging: route prefix (`/credits`) and
+  exchange names (`foc.events`, `foc.credit.events`).
