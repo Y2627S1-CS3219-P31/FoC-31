@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OrderEventType(str, Enum):
@@ -23,3 +23,9 @@ class OrderEvent(BaseModel):
     courier_id: str | None = None
     timestamp: datetime
     reason: str | None = None
+
+class UserRegisteredEvent(BaseModel):
+    event_type: str = "UserRegistered"
+    user_id: str
+    email: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
