@@ -18,6 +18,7 @@ import logging
 from functools import partial
 
 import aio_pika
+from pydantic import ValidationError
 
 from app.config import settings
 from app.db import SessionLocal
@@ -103,6 +104,13 @@ class CreditEventConsumer:
         try:
             event = model.model_validate_json(message.body)
             await handler(event)
+        except ValidationError:
+            # Malformed or out-of-date payload: dead-letter it. Requeueing
+            # would retry it forever and clog the queue.
+            logger.error(
+                "Invalid event payload; dead-lettering (body=%s)", message.body, exc_info=True
+            )
+            await message.nack(requeue=False)
         except ServiceError:
             # Data/business mismatch (e.g. completion with no reservation):
             # log and acknowledge so a poison message does not loop forever.
