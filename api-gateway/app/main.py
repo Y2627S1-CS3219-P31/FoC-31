@@ -1,3 +1,4 @@
+# AI-influenced: implemented with Codex; see ai/usage-log.md.
 from __future__ import annotations
 
 import httpx
@@ -6,7 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes import health
 from app.auth import is_public
-from app.routing import resolve_upstream
+from app.routing import resolve_upstream, resolve_upstream_path
 from foc_shared.auth import HEADER_USER_ID, HEADER_USER_ROLE
 
 app = FastAPI(title="FoC API Gateway", version="0.1.0")
@@ -38,7 +39,7 @@ async def proxy(path: str, request: Request) -> Response:
     async with httpx.AsyncClient(base_url=upstream, timeout=10.0) as client:
         upstream_resp = await client.request(
             method=request.method,
-            url=full_path,
+            url=resolve_upstream_path(full_path),
             headers=fwd_headers,
             params=request.query_params,
             content=body,

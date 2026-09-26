@@ -1,13 +1,30 @@
+# AI-influenced: implemented with Codex; see ai/usage-log.md.
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Header, status
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.db import get_session
+from app.schemas.orders import OrderCreate, OrderResponse
+from app.services import orders as order_service
+from foc_shared.auth import HEADER_USER_ID
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 
 
-@router.post("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
-async def create_order() -> dict[str, str]:
-    return {"detail": "not implemented"}
+@router.post(
+    "",
+    response_model=OrderResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_order(
+    order: OrderCreate,
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrderResponse:
+    return await order_service.create_order(session, order, requester_id)
 
 
 @router.get("", status_code=status.HTTP_501_NOT_IMPLEMENTED)
