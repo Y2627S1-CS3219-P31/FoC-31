@@ -12,7 +12,7 @@ from app.schemas.supplier import (
 )
 from app.services.supplier_service import SupplierService
 
-router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
+router = APIRouter(prefix="/suppliers", tags=["suppliers"])
 
 
 @router.get("", response_model=SupplierList)

@@ -59,4 +59,6 @@ At runtime, FastAPI also serves the live spec at `/openapi.json` and
 interactive docs at `/docs`.
 
 > Status: **implemented**. List, detail, create, update, and deactivate are
-> served at `/api/suppliers`; run `make seed` to load the baseline catalog.
+> served at `/suppliers`; run `make seed` to load the baseline catalog. Public
+> clients reach these through the API gateway at `/api/suppliers` — the gateway
+> strips the `/api` prefix before forwarding to this service.

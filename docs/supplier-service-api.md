@@ -18,7 +18,8 @@ kept in sync — endpoint set, field names, enums, and error codes are identical
 
 - **Public base URL** (through the gateway): `/api/suppliers`
 - **Internal base URL** (service-to-service, on the Docker network):
-  `http://supplier-service:8000/api/suppliers`
+  `http://supplier-service:8000/suppliers` — the service exposes routes
+  without the `/api` prefix; the gateway adds `/api` for public client traffic.
 - **Media type:** `application/json` (UTF-8)
 - **Live schema:** each FastAPI service also serves its auto-generated spec at
   `/openapi.json` and interactive docs at `/docs`. This file is the curated,
@@ -27,7 +28,7 @@ kept in sync — endpoint set, field names, enums, and error codes are identical
 The API Gateway is the **only** public entry point. It strips any
 client-supplied identity headers, authenticates the caller, and injects the
 trusted headers below before proxying `/api/suppliers/*` to the service
-(`ROUTE_TABLE` in `api-gateway/app/routing.py`). Backend services are never
+(`ROUTE_TABLE` in `api-gateway/app/services/routing.py`). Backend services are never
 exposed to clients directly.
 
 ---
@@ -250,8 +251,9 @@ deactivated supplier — Order F1.1.6).
 
 - **Auth:** trusted services (via the gateway/internal network).
 - Reuses the public read shape: service-to-service callers hit
-  `GET /api/suppliers/{id}` on the Docker network (no separate internal
-  endpoint). `GET /api/suppliers` supports pagination for list/search (F5.1.2).
+  `GET /suppliers/{id}` on the Docker network (no separate internal
+  endpoint). `GET /suppliers` supports pagination for list/search (F5.1.2).
+  (Public clients reach these as `/api/suppliers*` via the gateway.)
 
 ---
 

@@ -14,8 +14,11 @@ info:
 servers:
   - url: /api
     description: Public, via the API Gateway (client traffic).
-  - url: http://supplier-service:8000/api
-    description: Direct, service-to-service on the Docker network.
+  - url: http://supplier-service:8000
+    description: >-
+      Direct, service-to-service on the Docker network. The service exposes
+      routes without the `/api` prefix (e.g. `/suppliers`); the gateway adds
+      the public `/api` prefix for client traffic.
 
 tags:
   - name: suppliers
