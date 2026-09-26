@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     order_service_url: str = "http://order-service:8000"
     credit_service_url: str = "http://credit-service:8000"
     notification_service_url: str = "http://notification-service:8000"
+    cors_allowed_origins: str = "http://localhost:5173"
 
 
 settings = Settings()

@@ -50,6 +50,8 @@ Format for each entry:
   auth/RBAC enforcement, and event wiring remain to be implemented and reviewed
   by the team.
 
+---
+
 ## 25/09/2026 — John Gao Jiahao
 
 - Tool: Claude Code (model: Claude Sonnet)
@@ -120,3 +122,42 @@ Format for each entry:
   404 on missing supplier. Confirmed the idempotent seeder re-run produces
   0 new rows on a second pass (21 → 0). Confirmed docs/OpenAPI match the
   team-decided contract from Prompt 2.
+  
+---
+
+## 26/09/2026 — Javier Enrique Wong
+
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Documentation and test generation only, scoped to `api-gateway`.
+  Updated `docs/architecture.md` and `docs/flowchart.md` (the internal
+  layering diagram and the resolve → authorize → forward request pipeline)
+  to match the current source code. Generated `tests/test_routing.py`
+  (`resolve_upstream`'s known-prefix, unknown-prefix, and partial-segment
+  boundary cases) and `tests/test_gateway.py` (`GatewayService`'s
+  resolve/authorize/forward behavior, including the public-route,
+  missing-token, invalid-token, and valid-token outcomes, and that
+  `forward()` actually strips client-supplied `Authorization`/`X-User-*`
+  headers before proxying). Also fixed a stale import path in
+  `tests/test_auth.py` (`app.auth` → `app.services.auth`). No architecture
+  or design decisions were made by the tool — the docs describe layering
+  and behavior that already existed in the code.
+- Prompt(s):
+  1. "Given this architecuture.md and flowchart.md update based on the
+     source code."
+  2. "Also generate pytest:  `test_routing.py` covering `resolve_upstream`,
+     unknown-prefix, and partial-segment cases and `test_gateway.py` 
+     covering `GatewayService` resolve, authorize, forward behavior, and 
+     fix `test_auth.py` below."
+- Author review: Reviewed `docs/architecture.md`/`flowchart.md` against the
+  actual resulting file layout for accuracy. Ran the generated suite and
+  confirmed every test passes; checked that no test asserts on behavior the
+  code doesn't actually implement.
+  
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway 
+  routes, routing table, authentication behavior, path rewriting, CORS settings, 
+  and error responses
+- Prompt(s): "generate api-contract.md for api-gateway based on below"
+- Author review: Compared the contract against `proxy.py`, `routing.py`, `auth.py`,
+  `gateway.py`, and gateway configuration, then corrected the documentation to 
+  distinguish gateway `/api/...` routes from backend routes.
