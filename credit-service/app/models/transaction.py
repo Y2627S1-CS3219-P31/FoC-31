@@ -26,7 +26,8 @@ class CreditTransaction(Base):
 
     `user_id` is the account whose balance changed; `counterparty_user_id` is
     the other associated user, when one exists (Credit F5.1.2). `amount` is
-    signed: positive = income, negative = outflow (Credit F5.2).
+    signed: positive = income, negative = outflow, 0 = settlement of an
+    already-recorded outflow (Credit F5.2).
     """
 
     __tablename__ = "credit_transactions"
