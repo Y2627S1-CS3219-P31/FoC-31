@@ -21,14 +21,17 @@ which users may request errands, and exposes discovery + lookup APIs
 
 ```text
 app/
-├── main.py
+├── main.py            # app wiring + lifespan (init_db)
 ├── config.py
-├── db.py
-├── api/routes/        # health, suppliers (stubs)
-├── models/            # ORM models (stub)
-├── schemas/           # DTOs (stub)
-├── services/          # business logic + seeder.py (stub)
-└── repositories/      # persistence (stub)
+├── db.py              # async engine, session, init_db
+├── errors.py          # error-envelope exception handlers
+├── api/
+│   ├── deps.py        # RBAC (require_admin) + service DI
+│   └── routes/        # health, suppliers (CRUD)
+├── models/            # Supplier ORM model
+├── schemas/           # Pydantic DTOs (camelCase)
+├── services/          # supplier_service.py + seeder.py
+└── repositories/      # supplier_repo.py (persistence)
 ```
 
 The seed CSV is mounted read-only at `/data/csv/supplier-seed-data.csv`
@@ -55,4 +58,7 @@ The supplier-service contract is documented in `docs/`:
 At runtime, FastAPI also serves the live spec at `/openapi.json` and
 interactive docs at `/docs`.
 
-> Status: **scaffold**. Endpoints return `501 Not Implemented` until built.
+> Status: **implemented**. List, detail, create, update, and deactivate are
+> served at `/suppliers`; run `make seed` to load the baseline catalog. Public
+> clients reach these through the API gateway at `/api/suppliers` — the gateway
+> strips the `/api` prefix before forwarding to this service.
