@@ -66,6 +66,8 @@ class GatewayService:
         fwd_headers.update(injected_headers)
         body = await request.body()
 
+        # The gateway owns the public /api prefix. Backend services expose
+        # their internal routes without that prefix.
         backend_path = full_path[4:] if full_path.startswith("/api/") else full_path
         if not backend_path:
             backend_path = "/"

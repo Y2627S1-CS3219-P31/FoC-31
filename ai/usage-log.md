@@ -103,3 +103,11 @@ Format for each entry:
   confirmed every test passes; checked that no test asserts on behavior the
   code doesn't actually implement.
   
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway 
+  routes, routing table, authentication behavior, path rewriting, CORS settings, 
+  and error responses
+- Prompt(s): "generate api-contract.md for api-gateway based on below"
+- Author review: Compared the contract against `proxy.py`, `routing.py`, `auth.py`,
+  `gateway.py`, and gateway configuration, then corrected the documentation to 
+  distinguish gateway `/api/...` routes from backend routes.

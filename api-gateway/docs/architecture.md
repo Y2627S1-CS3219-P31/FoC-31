@@ -15,12 +15,12 @@ it proxies to, over HTTP.
 
 | Component | File | Responsibility |
 | --- | --- | --- |
-| Proxy route | `app/api/routes/proxy.py` | The catch-all `/api/{path:path}` handler. HTTP-only: calls `GatewayService`, maps its domain exceptions to `ErrorEnvelope` JSON responses with the right status code. No routing/auth/forwarding logic lives here. |
+| Proxy route | `app/api/routes/proxy.py` | The catch-all `/api/{path:path}` handler. HTTP-only: calls `GatewayService`, maps its domain exceptions to ErrorEnvelope-shaped JSON responses with the right status code. No routing/auth/forwarding logic lives here. |
 | Health route | `app/api/routes/health.py` | `GET /health` liveness check. |
 | Orchestrator | `app/services/gateway.py` (`GatewayService`) | The only component that sequences the three steps of handling one request: resolve the upstream, authorize the caller, forward the request. Owns the header-stripping rules on both the request and response side. |
-| Auth | `app/services/auth.py` | `authenticate()` (JWT verify), `is_public()`, `build_trusted_headers()`. Delegates the actual public-route list and matching logic to `foc_shared.auth` (shared with user-service — see "Known failure mode" history in `flowchart.md`). |
+| Auth | `app/services/auth.py` | `authenticate()` (JWT verify), `is_public()`, `build_trusted_headers()`. Uses the public-route list from `foc_shared.auth`; route matching remains in this gateway module. |
 | Routing | `app/services/routing.py` | `ROUTE_TABLE` (path prefix → backend base URL) and `resolve_upstream()`. Pure lookup, no I/O. |
-| Exceptions | `app/services/exceptions.py` | `RouteNotFoundError`, `MissingBearerTokenError`, `InvalidTokenError` — routes catch these, never a raw `None`-check scattered across handlers. |
+| Exceptions | `app/services/exceptions.py` | `RouteNotFoundError`, `MissingBearerTokenError`, `InvalidTokenError`, and `UpstreamServiceError` — routes catch these in one place. |
 | Config | `app/config.py` | Env-driven settings: `jwt_secret`, backend service URLs. |
 
 ## Diagram
@@ -40,10 +40,10 @@ flowchart TD
         GW["gateway.py<br/><i>GatewayService — orchestrator</i>"]
         AUTH["auth.py<br/><i>authenticate, is_public,<br/>build_trusted_headers</i>"]
         ROUTE["routing.py<br/><i>ROUTE_TABLE, resolve_upstream</i>"]
-        EXC["exceptions.py<br/><i>RouteNotFoundError,<br/>MissingBearerTokenError,<br/>InvalidTokenError</i>"]
+        EXC["exceptions.py<br/><i>RouteNotFoundError,<br/>MissingBearerTokenError,<br/>InvalidTokenError,<br/>UpstreamServiceError</i>"]
     end
 
-    Shared["foc_shared.auth<br/><i>PUBLIC_ROUTE_PREFIXES,<br/>is_public_route</i>"]
+    Shared["foc_shared.auth<br/><i>PUBLIC_ROUTE_PREFIXES</i>"]
     Backends["Backend services<br/><i>user-, supplier-, order-,<br/>credit-, notification-service</i>"]
 
     Client -->|HTTP| Proxy
@@ -73,8 +73,8 @@ flowchart TD
 ### Explained elements
 
 - **`proxy.py` never touches routing, auth, or `httpx` directly.** It calls
-  `GatewayService` and translates exactly three domain exceptions into HTTP
-  responses (404, 401 ×2). This mirrors user-service's routes-only-translate
+  `GatewayService` and translates four domain exceptions into HTTP responses
+  (404, 401 ×2, and 502). This mirrors user-service's routes-only-translate
   convention — one place decides the status-code mapping, not one per
   handler.
 - **`GatewayService.resolve()` runs before `.authorize()`.** An unknown
@@ -84,14 +84,12 @@ flowchart TD
   changes what an attacker probing for valid paths can infer from status
   codes.
 - **`auth.py` doesn't own the public-route list.** `PUBLIC_ROUTE_PREFIXES`
-  and the matching logic live in `foc_shared.auth`, imported by both this
-  service and asserted against by user-service's own tests. This exists
-  because the two once drifted out of sync silently (see
-  `flowchart.md`) — this is the fix, not incidental sharing.
+  lives in `foc_shared.auth`, while `auth.py` owns the matching logic and JWT
+  verification. This keeps the public contract shared without moving gateway
+  behavior into the shared package.
 - **No repositories/models layer.** Nothing here is persisted; the gateway
   is stateless by design. The "external boundary" for this service is
   entirely outbound HTTP to backend services, not a database.
-- **Response error shape is shared, not local.** `ErrorEnvelope` (`code`,
-  `message`) comes from `foc_shared.errors` — the same contract every other
-  service uses for its own error responses, so a client parses one shape
-  everywhere.
+- **Response error shape is shared, not local.** The gateway returns JSON with
+  the shared `ErrorEnvelope` fields (`code`, `message`) from
+  `foc_shared.errors`, so clients can parse one error shape everywhere.
