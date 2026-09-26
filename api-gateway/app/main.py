@@ -9,7 +9,8 @@ from app.config import settings
 app = FastAPI(title="FoC API Gateway", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in settings.cors_allowed_origins.split(",") if origin.strip()],
+    allow_origins=[origin.strip() 
+                   for origin in settings.cors_allowed_origins.split(",") if origin.strip()],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
