@@ -49,3 +49,33 @@ Format for each entry:
   Endpoints are intentionally stubbed (`501 Not Implemented`); business logic,
   auth/RBAC enforcement, and event wiring remain to be implemented and reviewed
   by the team.
+
+---
+
+## 26/09/2026 — Javier Enrique Wong
+
+- Tool: Claude (claude.ai, model: Claude Sonnet 5)
+- Scope: Documentation and test generation only, scoped to `api-gateway`.
+  Updated `docs/architecture.md` and `docs/flowchart.md` (the internal
+  layering diagram and the resolve → authorize → forward request pipeline)
+  to match the current source code. Generated `tests/test_routing.py`
+  (`resolve_upstream`'s known-prefix, unknown-prefix, and partial-segment
+  boundary cases) and `tests/test_gateway.py` (`GatewayService`'s
+  resolve/authorize/forward behavior, including the public-route,
+  missing-token, invalid-token, and valid-token outcomes, and that
+  `forward()` actually strips client-supplied `Authorization`/`X-User-*`
+  headers before proxying). Also fixed a stale import path in
+  `tests/test_auth.py` (`app.auth` → `app.services.auth`). No architecture
+  or design decisions were made by the tool — the docs describe layering
+  and behavior that already existed in the code.
+- Prompt(s):
+  1. "Given this architecuture.md and flowchart.md update based on the
+     source code."
+  2. "Also generate pytest:  `test_routing.py` covering `resolve_upstream`,
+     unknown-prefix, and partial-segment cases and `test_gateway.py` 
+     covering `GatewayService` resolve, authorize, forward behavior, and 
+     fix `test_auth.py` below."
+- Author review: Reviewed `docs/architecture.md`/`flowchart.md` against the
+  actual resulting file layout for accuracy. Ran the generated suite and
+  confirmed every test passes; checked that no test asserts on behavior the
+  code doesn't actually implement.
