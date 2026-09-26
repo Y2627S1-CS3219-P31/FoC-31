@@ -70,3 +70,26 @@ Format for each entry:
   design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
+
+## 26/09/2026 — _TBD (fill in your name)_
+
+- Tool: GitHub Copilot (model: DeepSeek V4 Pro)
+- Scope: credit-service implementation per the team's D1 backlog (Credit
+  Service F1–F5, N1–N2) and the shared event contracts. Generated: ORM models
+  (account, reservation with unique order_id, transaction history), schemas,
+  repositories with SELECT ... FOR UPDATE, `CreditService` business logic
+  (provisioning with 100-credit initial allocation, reserve/amend/transfer/
+  release, idempotent event handling, CourierWithdrawn no-op), error hierarchy
+  + handlers, HTTP routes (`/credits` prefix — the route-prefix question is
+  still open with the team), RabbitMQ consumer (`foc.events` fanout +
+  `foc.order.events` topic) and best-effort reservation-event publisher
+  (`foc.credit.events`), lifespan wiring, tests, README, `.env.example`.
+  All requirements and design decisions come from the D1 document and the
+  team's existing PR patterns (supplier-service layering/error envelope,
+  user-service event publishing); the tool only implemented the chosen design.
+- Prompt(s):
+  1. "请你通读这个文档的credit service的FR和NFR部分 … 照着需求文档，以及已有的pr中值得参考的部分，完整写完credit service。严格按D1的要求实现，不要私自添加功能。"
+- Author review: _TBD — review the generated code against the D1 backlog,
+  run `make test-credit-service` and `ruff check`, and confirm the chosen
+  route prefix (`/credits`) and exchange names (`foc.events`,
+  `foc.credit.events`) with the team before merging.
