@@ -64,3 +64,55 @@ def test_update_allows_explicit_null_on_optional_fields():
     u = SupplierUpdate(floor=None, imageUrl=None)
     dumped = u.model_dump(exclude_unset=True, by_alias=True)
     assert dumped == {"floor": None, "imageUrl": None}
+
+
+@pytest.mark.parametrize("field", ["name", "building"])
+def test_create_rejects_empty_required_string(field):
+    body = {"name": "X", "category": "Food", "building": "COM2"}
+    body[field] = ""
+    with pytest.raises(ValidationError):
+        SupplierCreate(**body)
+
+
+@pytest.mark.parametrize("lat", [999, -91, 90.001])
+def test_create_rejects_out_of_range_latitude(lat):
+    with pytest.raises(ValidationError):
+        SupplierCreate(name="X", category="Food", building="COM2", latitude=lat)
+
+
+@pytest.mark.parametrize("lon", [999, -181, 180.001])
+def test_create_rejects_out_of_range_longitude(lon):
+    with pytest.raises(ValidationError):
+        SupplierCreate(name="X", category="Food", building="COM2", longitude=lon)
+
+
+@pytest.mark.parametrize("value", ["banana", "0900hrs", "24:00", "9:00", "23:60", "0900"])
+def test_create_rejects_bad_time_format(value):
+    with pytest.raises(ValidationError):
+        SupplierCreate(name="X", category="Food", building="COM2", startingTime=value)
+
+
+@pytest.mark.parametrize("value", ["00:00", "09:00", "23:59"])
+def test_create_accepts_hhmm_time(value):
+    s = SupplierCreate(
+        name="X", category="Food", building="COM2", startingTime=value, closingTime=value
+    )
+    assert s.starting_time == value
+    assert s.closing_time == value
+
+
+def test_create_accepts_boundary_coordinates():
+    s = SupplierCreate(name="X", category="Food", building="COM2", latitude=90, longitude=-180)
+    assert s.latitude == 90
+    assert s.longitude == -180
+
+
+@pytest.mark.parametrize("field", ["name", "building"])
+def test_update_rejects_empty_required_string(field):
+    with pytest.raises(ValidationError):
+        SupplierUpdate(**{field: ""})
+
+
+def test_update_rejects_bad_time_format():
+    with pytest.raises(ValidationError):
+        SupplierUpdate(startingTime="banana")

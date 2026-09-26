@@ -238,10 +238,10 @@ components:
         building: { type: string, examples: ["Central Library"] }
         floor: { type: [string, "null"], examples: ["1"] }
         locationDescription: { type: [string, "null"], examples: ["Next to NUS Co-op"] }
-        latitude: { type: [number, "null"], examples: [1.296444] }
-        longitude: { type: [number, "null"], examples: [103.773032] }
-        startingTime: { type: [string, "null"], examples: ["0900hrs"] }
-        closingTime: { type: [string, "null"], examples: ["1800hrs"] }
+        latitude: { type: [number, "null"], minimum: -90, maximum: 90, examples: [1.296444] }
+        longitude: { type: [number, "null"], minimum: -180, maximum: 180, examples: [103.773032] }
+        startingTime: { type: [string, "null"], pattern: '^([01]\d|2[0-3]):[0-5]\d$', examples: ["09:00"] }
+        closingTime: { type: [string, "null"], pattern: '^([01]\d|2[0-3]):[0-5]\d$', examples: ["18:00"] }
         imageUrl: { type: [string, "null"] }
         active:
           type: boolean
@@ -253,15 +253,15 @@ components:
       required: [name, category, building]
       description: Mandatory fields per F1.1.1; category validated per F1.1.2.
       properties:
-        name: { type: string }
+        name: { type: string, minLength: 1 }
         category: { $ref: '#/components/schemas/Category' }
-        building: { type: string }
+        building: { type: string, minLength: 1 }
         floor: { type: [string, "null"] }
         locationDescription: { type: [string, "null"] }
-        latitude: { type: [number, "null"] }
-        longitude: { type: [number, "null"] }
-        startingTime: { type: [string, "null"] }
-        closingTime: { type: [string, "null"] }
+        latitude: { type: [number, "null"], minimum: -90, maximum: 90 }
+        longitude: { type: [number, "null"], minimum: -180, maximum: 180 }
+        startingTime: { type: [string, "null"], pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        closingTime: { type: [string, "null"], pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
         imageUrl: { type: [string, "null"] }
       additionalProperties: false
 
@@ -269,15 +269,15 @@ components:
       type: object
       description: Any subset of editable fields (F1.2).
       properties:
-        name: { type: string }
+        name: { type: string, minLength: 1 }
         category: { $ref: '#/components/schemas/Category' }
-        building: { type: string }
+        building: { type: string, minLength: 1 }
         floor: { type: [string, "null"] }
         locationDescription: { type: [string, "null"] }
-        latitude: { type: [number, "null"] }
-        longitude: { type: [number, "null"] }
-        startingTime: { type: [string, "null"] }
-        closingTime: { type: [string, "null"] }
+        latitude: { type: [number, "null"], minimum: -90, maximum: 90 }
+        longitude: { type: [number, "null"], minimum: -180, maximum: 180 }
+        startingTime: { type: [string, "null"], pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
+        closingTime: { type: [string, "null"], pattern: '^([01]\d|2[0-3]):[0-5]\d$' }
         imageUrl: { type: [string, "null"] }
       additionalProperties: false
 

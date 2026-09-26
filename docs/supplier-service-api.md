@@ -111,10 +111,10 @@ own check (defence in depth; backlog N4).
 | `building`            | string            | Mandatory; campus building/location (F1.1.1). Maps from the seed `Building` column. |
 | `floor`               | string \| null    | From seed data.                                          |
 | `locationDescription` | string \| null    | Free-text hint (e.g. "Next to NUS Co-op").               |
-| `latitude`            | number \| null    | Decimal degrees.                                         |
-| `longitude`           | number \| null    | Decimal degrees.                                         |
-| `startingTime`        | string \| null    | Opening time (e.g. `0900hrs`).                           |
-| `closingTime`         | string \| null    | Closing time.                                            |
+| `latitude`            | number \| null    | Decimal degrees, `-90`–`90`.                             |
+| `longitude`           | number \| null    | Decimal degrees, `-180`–`180`.                           |
+| `startingTime`        | string \| null    | Opening time, 24-hour `HH:MM` (e.g. `09:00`).            |
+| `closingTime`         | string \| null    | Closing time, 24-hour `HH:MM` (e.g. `18:00`).            |
 | `imageUrl`            | string \| null    | Optional image reference.                                |
 | `active`              | boolean           | `true` = active, `false` = deactivated (F3.1.1).         |
 
@@ -202,15 +202,17 @@ Create a new supplier record.
     "locationDescription": "Opp LT16",
     "latitude": 1.2940156,
     "longitude": 103.7738478,
-    "startingTime": "0900hrs",
-    "closingTime": "2130hrs",
+    "startingTime": "09:00",
+    "closingTime": "21:30",
     "imageUrl": null
   }
   ```
 
 - **201 response:** the created `Supplier` (with `id`, `active: true`).
-- **422:** missing mandatory field (`name`, `category`, `building`) or
-  `category` outside the allowed set (F1.1.1, F1.1.2).
+- **422:** missing/empty mandatory field (`name`, `category`, `building`),
+  `category` outside the allowed set, `latitude`/`longitude` out of range
+  (`-90`–`90` / `-180`–`180`), or `startingTime`/`closingTime` not in `HH:MM`
+  format (F1.1.1, F1.1.2).
 
 ### 5.4 `PATCH /suppliers/{id}` — update
 

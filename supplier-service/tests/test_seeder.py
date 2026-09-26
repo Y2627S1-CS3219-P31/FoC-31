@@ -31,14 +31,16 @@ async def test_seed_is_idempotent(session):
 async def test_seed_maps_columns(session):
     await seeder.seed_suppliers(session=session, csv_path=CSV)
     row = (
-        await session.execute(select(Supplier).where(Supplier.name == "Anna's x Soup Union"))
+        await session.execute(
+            select(Supplier).where(Supplier.name == "Anna's x Soup Union")
+        )
     ).scalar_one()
     assert row.category == "Food"
     assert row.building == "Central Library"
     assert row.floor == "1"
     assert row.location_description == "Next to NUS Co-op"
     assert row.latitude == 1.296444
-    assert row.starting_time == "0900hrs"
+    assert row.starting_time == "09:00"
     assert row.active is True
 
 
@@ -48,3 +50,22 @@ async def test_seed_blank_imageurl_is_none(session):
         await session.execute(select(Supplier).where(Supplier.name == "A Hot Hideout"))
     ).scalar_one()
     assert row.image_url is None
+
+
+async def test_seed_normalizes_times_to_hhmm(session):
+    await seeder.seed_suppliers(session=session, csv_path=CSV)
+    rows = (await session.execute(select(Supplier))).scalars().all()
+    for row in rows:
+        for value in (row.starting_time, row.closing_time):
+            assert value is None or seeder._HHMM_RE.match(value) is None
+            if value is not None:
+                assert value[2] == ":"
+
+
+async def test_seed_zone_buildings_are_consistent(session):
+    await seeder.seed_suppliers(session=session, csv_path=CSV)
+    buildings = set((await session.execute(select(Supplier.building))).scalars().all())
+    assert "Com 2" not in buildings
+    assert "Com2" in buildings
+    pgp = [b for b in buildings if b.startswith("Prince George")]
+    assert pgp == ["Prince George's Park"]

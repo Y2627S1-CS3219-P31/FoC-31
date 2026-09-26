@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
+
+TIME_PATTERN = r"^([01]\d|2[0-3]):[0-5]\d$"
 
 
 class Category(str, Enum):
@@ -22,28 +24,28 @@ class _CamelModel(BaseModel):
 
 
 class SupplierCreate(_CamelModel):
-    name: str
+    name: str = Field(min_length=1)
     category: Category
-    building: str
+    building: str = Field(min_length=1)
     floor: str | None = None
     location_description: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    starting_time: str | None = None
-    closing_time: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    starting_time: str | None = Field(default=None, pattern=TIME_PATTERN)
+    closing_time: str | None = Field(default=None, pattern=TIME_PATTERN)
     image_url: str | None = None
 
 
 class SupplierUpdate(_CamelModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1)
     category: Category | None = None
-    building: str | None = None
+    building: str | None = Field(default=None, min_length=1)
     floor: str | None = None
     location_description: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
-    starting_time: str | None = None
-    closing_time: str | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    starting_time: str | None = Field(default=None, pattern=TIME_PATTERN)
+    closing_time: str | None = Field(default=None, pattern=TIME_PATTERN)
     image_url: str | None = None
 
     _REQUIRED_FIELDS = ("name", "category", "building")

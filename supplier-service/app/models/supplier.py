@@ -10,8 +10,8 @@ class Supplier(Base):
     __tablename__ = "suppliers"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
-    name: Mapped[str] = mapped_column(String, nullable=False)
-    category: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False, index=True)
+    category: Mapped[str] = mapped_column(String, nullable=False, index=True)
     building: Mapped[str] = mapped_column(String, nullable=False)
     floor: Mapped[str | None] = mapped_column(String, nullable=True)
     location_description: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -20,4 +20,4 @@ class Supplier(Base):
     starting_time: Mapped[str | None] = mapped_column(String, nullable=True)
     closing_time: Mapped[str | None] = mapped_column(String, nullable=True)
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
-    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)

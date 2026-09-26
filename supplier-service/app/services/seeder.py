@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import hashlib
+import re
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,20 @@ def _to_float(value: str | None) -> float | None:
         return None
 
 
+_HHMM_RE = re.compile(r"^(\d{2})(\d{2})hrs$", re.IGNORECASE)
+
+
+def _to_hhmm(value: str | None) -> str | None:
+    value = _clean(value)
+    if value is None:
+        return None
+    match = _HHMM_RE.match(value)
+    if match is None:
+        return value
+    hours, minutes = match.group(1), match.group(2)
+    return f"{hours}:{minutes}"
+
+
 def _stable_id(name: str, building: str) -> str:
     digest = hashlib.sha1(f"{name}|{building}".encode()).hexdigest()
     return f"sup_{digest[:12]}"
@@ -46,8 +61,8 @@ def _row_to_supplier(row: dict[str, str]) -> Supplier:
         location_description=_clean(row.get("Location Description")),
         latitude=_to_float(row.get("Latitude")),
         longitude=_to_float(row.get("Longitude")),
-        starting_time=_clean(row.get("StartingTime")),
-        closing_time=_clean(row.get("ClosingTime")),
+        starting_time=_to_hhmm(row.get("StartingTime")),
+        closing_time=_to_hhmm(row.get("ClosingTime")),
         image_url=_clean(row.get("ImageURL")),
         active=True,
     )
