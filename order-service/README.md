@@ -30,7 +30,7 @@ app/
 ├── main.py
 ├── config.py
 ├── db.py
-├── api/routes/        # health, orders (stubs)
+├── api/routes/        # health and order HTTP endpoints
 ├── services/          # lifecycle.py (state machine), events.py (publisher)
 ├── models/  schemas/  repositories/   # stubs
 ```
@@ -44,4 +44,7 @@ make test-order-service
 
 Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
-> Status: **scaffold**. Endpoints return `501 Not Implemented` until built.
+Implemented first-slice endpoints: create, available-order listing, requester
+detail lookup, and requester deletion. Remaining lifecycle actions (accept,
+pickup, delivery, completion, cancellation events, and expiry sweeper) are
+still pending.
