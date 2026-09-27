@@ -8,11 +8,9 @@ reference; the machine-readable companion is
 [`supplier-service-openapi.yaml`](./supplier-service-openapi.yaml). The two are
 kept in sync — endpoint set, field names, enums, and error codes are identical.
 
-> Status: the service is currently a **scaffold** — endpoints return
-> `501 Not Implemented` until built. Endpoints below are tagged **(stubbed)**
-> (route exists today) or **(planned)** (defined by the backlog, not yet
-> routed). The contract is forward-looking so consumers can integrate against
-> a stable shape (backlog N5.1).
+> Status: **implemented** — list, detail, create, update, and deactivate are
+> served by the supplier-service. The contract is stable so consumers can
+> integrate against a fixed shape (backlog N5.1).
 
 ---
 
@@ -20,7 +18,8 @@ kept in sync — endpoint set, field names, enums, and error codes are identical
 
 - **Public base URL** (through the gateway): `/api/suppliers`
 - **Internal base URL** (service-to-service, on the Docker network):
-  `http://supplier-service:8000/suppliers`
+  `http://supplier-service:8000/suppliers` — the service exposes routes
+  without the `/api` prefix; the gateway adds `/api` for public client traffic.
 - **Media type:** `application/json` (UTF-8)
 - **Live schema:** each FastAPI service also serves its auto-generated spec at
   `/openapi.json` and interactive docs at `/docs`. This file is the curated,
@@ -29,7 +28,7 @@ kept in sync — endpoint set, field names, enums, and error codes are identical
 The API Gateway is the **only** public entry point. It strips any
 client-supplied identity headers, authenticates the caller, and injects the
 trusted headers below before proxying `/api/suppliers/*` to the service
-(`ROUTE_TABLE` in `api-gateway/app/routing.py`). Backend services are never
+(`ROUTE_TABLE` in `api-gateway/app/services/routing.py`). Backend services are never
 exposed to clients directly.
 
 ---
@@ -110,14 +109,13 @@ own check (defence in depth; backlog N4).
 | `id`                  | string            | Server-assigned identifier.                              |
 | `name`                | string            | Mandatory (F1.1.1).                                      |
 | `category`            | `Category` (enum) | Mandatory; constrained to a predefined set (F1.1.2).     |
-| `campusLocation`      | string            | Mandatory; human-readable campus location/zone (F1.1.1). |
-| `building`            | string \| null    | From seed data.                                          |
+| `building`            | string            | Mandatory; campus building/location (F1.1.1). Maps from the seed `Building` column. |
 | `floor`               | string \| null    | From seed data.                                          |
 | `locationDescription` | string \| null    | Free-text hint (e.g. "Next to NUS Co-op").               |
-| `latitude`            | number \| null    | Decimal degrees.                                         |
-| `longitude`           | number \| null    | Decimal degrees.                                         |
-| `startingTime`        | string \| null    | Opening time (e.g. `0900hrs`).                           |
-| `closingTime`         | string \| null    | Closing time.                                            |
+| `latitude`            | number \| null    | Decimal degrees, `-90`–`90`.                             |
+| `longitude`           | number \| null    | Decimal degrees, `-180`–`180`.                           |
+| `startingTime`        | string \| null    | Opening time, 24-hour `HH:MM` (e.g. `09:00`).            |
+| `closingTime`         | string \| null    | Closing time, 24-hour `HH:MM` (e.g. `18:00`).            |
 | `imageUrl`            | string \| null    | Optional image reference.                                |
 | `active`              | boolean           | `true` = active, `false` = deactivated (F3.1.1).         |
 
@@ -130,16 +128,15 @@ authoritative set is owned by the team; current values:
 Food · Food/Coffee · Shopping · Printing
 ```
 
-> Note (inference): the seed CSV mixes `Food` and `Food/Coffee`. The team
-> should confirm the canonical enum (e.g. whether `Food/Coffee` is a distinct
-> category or normalizes to `Food`). Validation applies the same set on create
-> and update (F1.2.1).
+These four values are the canonical set (they match the seed dataset's `Type`
+column exactly). The same validation applies on create and update (F1.2.1);
+a `category` outside this set is rejected with `422 validation_error`.
 
 ---
 
 ## 5. Endpoints
 
-### 5.1 `GET /suppliers` — list / filter / search **(stubbed)**
+### 5.1 `GET /suppliers` — list / filter / search
 
 List **active** suppliers. Supports filtering, keyword search, and pagination.
 
@@ -163,7 +160,7 @@ List **active** suppliers. Supports filtering, keyword search, and pagination.
         "id": "sup_001",
         "name": "Anna's x Soup Union",
         "category": "Food",
-        "campusLocation": "Central Library",
+        "building": "Central Library",
         "active": true
       }
     ],
@@ -177,7 +174,7 @@ List **active** suppliers. Supports filtering, keyword search, and pagination.
   (F1.4). Returns an empty `items` array (not `404`) when nothing matches
   (F1.4.1, F2.2.3).
 
-### 5.2 `GET /suppliers/{id}` — detail **(stubbed)**
+### 5.2 `GET /suppliers/{id}` — detail
 
 Return the full details of a single supplier by id.
 
@@ -190,7 +187,7 @@ Return the full details of a single supplier by id.
   { "code": "not_found", "message": "Supplier 'sup_999' was not found." }
   ```
 
-### 5.3 `POST /suppliers` — create **(stubbed)**
+### 5.3 `POST /suppliers` — create
 
 Create a new supplier record.
 
@@ -201,25 +198,26 @@ Create a new supplier record.
   {
     "name": "Cool Spot",
     "category": "Food",
-    "campusLocation": "COM2",
     "building": "Com2",
     "floor": "1",
     "locationDescription": "Opp LT16",
     "latitude": 1.2940156,
     "longitude": 103.7738478,
-    "startingTime": "0900hrs",
-    "closingTime": "2130hrs",
+    "startingTime": "09:00",
+    "closingTime": "21:30",
     "imageUrl": null
   }
   ```
 
 - **201 response:** the created `Supplier` (with `id`, `active: true`).
-- **422:** missing mandatory field (`name`, `category`, `campusLocation`) or
-  `category` outside the allowed set (F1.1.1, F1.1.2).
+- **422:** missing/empty mandatory field (`name`, `category`, `building`),
+  `category` outside the allowed set, `latitude`/`longitude` out of range
+  (`-90`–`90` / `-180`–`180`), or `startingTime`/`closingTime` not in `HH:MM`
+  format (F1.1.1, F1.1.2).
 
-### 5.4 `PATCH /suppliers/{id}` — update **(planned)**
+### 5.4 `PATCH /suppliers/{id}` — update
 
-Update the `name`, `category`, or `campusLocation` (and other editable fields)
+Update the `name`, `category`, or `building` (and other editable fields)
 of an existing supplier (F1.2).
 
 - **Auth:** `admin` only.
@@ -228,7 +226,7 @@ of an existing supplier (F1.2).
 - **422:** `category` update fails the same validation as create (F1.2.1).
 - **404:** unknown id.
 
-### 5.5 `POST /suppliers/{id}/deactivate` — deactivate **(planned)**
+### 5.5 `POST /suppliers/{id}/deactivate` — deactivate
 
 Deactivate a supplier (soft delete). The record remains retrievable (F1.3.1),
 is excluded from active discovery (F1.4), but is preserved for historical
@@ -244,7 +242,7 @@ orders (system-wide N4).
 > today; the event mechanism is documented in
 > [`event-catalog.md`](./event-catalog.md) and owned by the Order Service.
 
-### 5.6 Service lookup — validate supplier by id **(planned)**
+### 5.6 Service lookup — validate supplier by id
 
 Exposes supplier data for other services to retrieve/validate a supplier by id,
 returning the current active/deactivated status (F5.1, F5.1.1). Consumed by the
@@ -252,12 +250,10 @@ returning the current active/deactivated status (F5.1, F5.1.1). Consumed by the
 deactivated supplier — Order F1.1.6).
 
 - **Auth:** trusted services (via the gateway/internal network).
-- Shape mirrors `GET /suppliers/{id}`. Supports pagination for list/search
-  (F5.1.2).
-
-> Note (inference): the team may either reuse `GET /suppliers/{id}` for
-> service-to-service validation or expose a dedicated internal endpoint. This
-> spec assumes reuse of the public read shape; confirm during implementation.
+- Reuses the public read shape: service-to-service callers hit
+  `GET /suppliers/{id}` on the Docker network (no separate internal
+  endpoint). `GET /suppliers` supports pagination for list/search (F5.1.2).
+  (Public clients reach these as `/api/suppliers*` via the gateway.)
 
 ---
 

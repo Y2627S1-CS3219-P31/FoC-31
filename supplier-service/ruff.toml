@@ -9,3 +9,7 @@ ignore = ["UP042"]
 
 [lint.isort]
 known-first-party = ["app", "foc_shared"]
+
+[lint.flake8-bugbear]
+# FastAPI dependency-injection markers are called in argument defaults by design.
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Header", "fastapi.Query"]

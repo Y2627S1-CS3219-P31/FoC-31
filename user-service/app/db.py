@@ -18,3 +18,10 @@ class Base(DeclarativeBase):
 async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
         yield session
+
+
+async def init_db() -> None:
+    import app.models  # noqa: F401  # ensure every model is registered
+
+    async with engine.begin() as connection:
+        await connection.run_sync(Base.metadata.create_all)

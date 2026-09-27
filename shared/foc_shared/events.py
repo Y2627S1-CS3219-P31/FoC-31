@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class OrderEventType(str, Enum):
@@ -25,15 +25,14 @@ class OrderEvent(BaseModel):
     reason: str | None = None
 
 
-# AI-influenced: credit-service events added with AI assistance; see ai/usage-log.md.
 class UserRegisteredEvent(BaseModel):
-    """Published by user-service after email verification so that credit-service
-    can provision the account's initial credit balance (Credit F1.1)."""
-
+    event_type: str = "UserRegistered"
     user_id: str
     email: str
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
+# AI-influenced: credit-service events added with AI assistance; see ai/usage-log.md.
 class CreditEventType(str, Enum):
     CREDIT_RESERVATION_ACCEPTED = "CreditReservationAccepted"
     CREDIT_RESERVATION_REJECTED = "CreditReservationRejected"
