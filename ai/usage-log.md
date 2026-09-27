@@ -266,6 +266,7 @@ Format for each entry:
   desktop and mobile viewports (browse grid, admin suppliers table + edit
   form, client accounts table, mobile burger nav). No console errors (only
   React Router v7 future-flag warnings).
+
 ## 26/09/2026 — Frank Yu / Zhou Shiyao
 
 - Tool: GitHub Copilot (model: DeepSeek V4 Pro)
@@ -275,13 +276,13 @@ Format for each entry:
   repositories with SELECT ... FOR UPDATE, `CreditService` business logic
   (provisioning with 100-credit initial allocation, reserve/amend/transfer/
   release, idempotent event handling, CourierWithdrawn no-op), error hierarchy
-  + handlers, HTTP routes (`/credits` prefix), RabbitMQ consumer
-  (`foc.user.events` fanout + `foc.order.events` topic) and best-effort
-  reservation-event publisher (`foc.credit.events`), lifespan wiring, tests,
-  README, `.env.example`.
-  All requirements and design decisions come from the D1 document and the
-  team's existing PR patterns (supplier-service layering/error envelope,
-  user-service event publishing); the tool only implemented the chosen design.
+  - handlers, HTTP routes (`/credits` prefix), RabbitMQ consumer
+    (`foc.user.events` fanout + `foc.order.events` topic) and best-effort
+    reservation-event publisher (`foc.credit.events`), lifespan wiring, tests,
+    README, `.env.example`.
+    All requirements and design decisions come from the D1 document and the
+    team's existing PR patterns (supplier-service layering/error envelope,
+    user-service event publishing); the tool only implemented the chosen design.
 - Prompt(s):
   1. "Read the Credit Service FR and NFR sections of this document; based on the D1 requirements document and the parts of the existing PRs worth following, produce the credit service implementation. Implement strictly per D1; do not add features on your own."
   2. "Review your implementation: reuse shared project components as much as possible, minimise coupling with other services, and keep the layers clean."
@@ -304,16 +305,16 @@ Format for each entry:
   (`postman/FoC-D2.postman_collection.json`) and matching local environment
   (`postman/FoC-local.postman_environment.json`) that exercise the User Service
   and Supplier Service end-to-end through the API Gateway (health, registration
-  + OTP verify/resend, authentication, RBAC evidence incl. gateway header-strip,
-  supplier discovery/CRUD, profile self-update, and user administration incl.
-  suspend/role-change), each request asserting the status code and key body
-  fields and chaining tokens/ids via environment variables; a curl + jq twin
-  (`scripts/demo.sh`, numbered 01–07 to match the folders, non-aborting, with
-  per-step pauses and dev-mode OTP auto-extraction); and `postman/README.md`
-  (import, prerequisites, and two newman run modes). Every endpoint, field name
-  (snake_case for user, camelCase for supplier), and expected status code was
-  derived from the service code, not invented. The tool surfaced one docs-vs-code
-  mismatch (see review) and left the test asserting the code's actual behavior.
+  - OTP verify/resend, authentication, RBAC evidence incl. gateway header-strip,
+    supplier discovery/CRUD, profile self-update, and user administration incl.
+    suspend/role-change), each request asserting the status code and key body
+    fields and chaining tokens/ids via environment variables; a curl + jq twin
+    (`scripts/demo.sh`, numbered 01–07 to match the folders, non-aborting, with
+    per-step pauses and dev-mode OTP auto-extraction); and `postman/README.md`
+    (import, prerequisites, and two newman run modes). Every endpoint, field name
+    (snake_case for user, camelCase for supplier), and expected status code was
+    derived from the service code, not invented. The tool surfaced one docs-vs-code
+    mismatch (see review) and left the test asserting the code's actual behavior.
 - Prompt(s):
   1. "Create a Postman collection and a matching shell script to demo Milestone
      D2 (User Service + Supplier Service) through the API gateway, without the
@@ -322,8 +323,8 @@ Format for each entry:
      exactly in the environment file, and follow the code (assert lowercase
      `role`) over the user-service `api-contract.md` which shows uppercase.
 - Author review: Validated both JSON files parse (`python -m json.tool`).
-  Brought the full stack up with `docker compose up --build -d` (OTP_DEV_MODE
-  and BOOTSTRAP_ADMIN_* set), waited for gateway `/health`, ran `scripts/demo.sh`
+  Brought the full stack up with `docker compose up --build -d` (OTP*DEV_MODE
+  and BOOTSTRAP_ADMIN*\* set), waited for gateway `/health`, ran `scripts/demo.sh`
   (all steps returned the expected codes), and ran `newman` in the CI-ish mode
   against a freshly verified client: **62/62 assertions passed, 0 failures**.
   Docs-vs-code mismatch found and reported (not fixed here): user-service
@@ -351,13 +352,13 @@ Format for each entry:
   (registration→initial-credits sequence, first-admin bootstrap flowchart, and a
   role-change guard flowchart). Doc fixes: replaced the README ASCII sketch with
   a one-paragraph summary linking `docs/architecture.md` and corrected "edge auth
-  + RBAC" wording (the gateway authenticates only; RBAC is enforced in services);
-  removed the reference to the non-existent `supplier-service-architecture.excalidraw.json`;
-  corrected `docs/supplier-service-api.md` §3 (gateway does not enforce RBAC); and
-  added the `UserRegistered` event on `foc.user.events` to `docs/event-catalog.md`.
-  The team-authored "Key decisions" / ADR sections were left untouched.
+  - RBAC" wording (the gateway authenticates only; RBAC is enforced in services);
+    removed the reference to the non-existent `supplier-service-architecture.excalidraw.json`;
+    corrected `docs/supplier-service-api.md` §3 (gateway does not enforce RBAC); and
+    added the `UserRegistered` event on `foc.user.events` to `docs/event-catalog.md`.
+    The team-authored "Key decisions" / ADR sections were left untouched.
 - Prompt(s):
-  1. "Add the architecture/design diagrams missing for Milestone D2, as Mermaid
+  1. "Add the architecture/design diagrams missing for the repo's current state, as Mermaid
      inside Markdown … match the existing diagram docs' style … derive every box,
      field, arrow and status code from the code." (+ detailed list of the eight
      diagrams and the small factual doc fixes.)
