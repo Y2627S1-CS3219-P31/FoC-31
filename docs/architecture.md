@@ -185,9 +185,3 @@ user-, order-, credit-, and notification-service. Related design views:
 `user-service/docs/architecture.md` (user_db data model), and
 `supplier-service/docs/data-model.md` (supplier_db data model).
 
-## Key decisions (fill in — team-authored, not AI)
-
-- Why microservices vs modular monolith.
-- Database-per-service rationale.
-- RabbitMQ as the async backbone; which flows are eventually consistent.
-- API gateway as the sole public entry point.
