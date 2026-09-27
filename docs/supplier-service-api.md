@@ -95,8 +95,11 @@ The service trusts only the gateway-injected headers
 | Create / Update / Deactivate   | `admin` only      | Management operations (F1). Client → `403`. |
 | Service lookup / validation    | trusted services  | Consumed by Order Service (F5).             |
 
-RBAC is also enforced at the edge by the gateway, but the service performs its
-own check (defence in depth; backlog N4).
+The gateway **authenticates** the caller (verifies the JWT and injects the
+trusted `X-User-Id` / `X-User-Role` headers, stripping any client-supplied
+copies); it does **not** perform the admin-vs-client check. This service
+performs its own role check (`app/api/deps.py::require_admin`) using the trusted
+role header (backlog N4). See [`rbac.md`](./rbac.md).
 
 ---
 

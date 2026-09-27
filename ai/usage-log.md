@@ -330,3 +330,52 @@ Format for each entry:
   `docs/api-contract.md` documents `role` as uppercase `CLIENT`/`ADMIN`, but the
   service serializes the enum value lowercase (`client`/`admin`); the collection
   asserts the code's actual lowercase output. No service code was modified.
+
+---
+
+## 27/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Opus)
+- Scope: D2 architecture/design documentation only — Mermaid-in-Markdown
+  diagrams and small factual doc corrections; **no code changes**. Every box,
+  column, arrow, and status code was derived from the source (compose.yaml,
+  .env.example, gateway/user/supplier/credit service code, the shared auth/event
+  contracts, and the unmerged order-service PR #5 clients), matching the
+  existing docs' `Title / Legend / Explained elements` house style. Added: a C4
+  Level-2 system container diagram in `docs/architecture.md` (above the existing
+  supplier component diagram); a user-db ER diagram (`users`, `email_otps`,
+  `event_outbox`) in `user-service/docs/architecture.md`; a supplier-db ER
+  diagram in the new `supplier-service/docs/data-model.md`; a role→capability
+  matrix plus an authenticated-supplier-write sequence diagram in the new
+  `docs/rbac.md`; and three additions to `user-service/docs/flowchart.md`
+  (registration→initial-credits sequence, first-admin bootstrap flowchart, and a
+  role-change guard flowchart). Doc fixes: replaced the README ASCII sketch with
+  a one-paragraph summary linking `docs/architecture.md` and corrected "edge auth
+  + RBAC" wording (the gateway authenticates only; RBAC is enforced in services);
+  removed the reference to the non-existent `supplier-service-architecture.excalidraw.json`;
+  corrected `docs/supplier-service-api.md` §3 (gateway does not enforce RBAC); and
+  added the `UserRegistered` event on `foc.user.events` to `docs/event-catalog.md`.
+  The team-authored "Key decisions" / ADR sections were left untouched.
+- Prompt(s):
+  1. "Add the architecture/design diagrams missing for Milestone D2, as Mermaid
+     inside Markdown … match the existing diagram docs' style … derive every box,
+     field, arrow and status code from the code." (+ detailed list of the eight
+     diagrams and the small factual doc fixes.)
+  2. "Use the diagrams mcp to draw the diagrams." (Used to draft; final diagrams
+     were hand-authored to the repo's exact Title/Legend/Explained-elements
+     house style and validated with mermaid-cli.)
+- Author review: Rendered **all 11** Mermaid blocks with
+  `npx @mermaid-js/mermaid-cli` (v12.0.0) — all pass (one initial hexagon-shape
+  syntax issue for the RabbitMQ node was fixed by switching to a stadium shape).
+  Cross-checked every column/enum/route/status against the source files.
+  Code-vs-doc mismatches found and reported (docs corrected where factual; code
+  left unchanged): (a) the `UserRegistered` outbox relay is **implemented**
+  (`outbox_worker`), not planned, so its publish path is drawn solid — this
+  corrects the task's "draw dashed if absent" assumption; (b) README + old
+  `docs/architecture.md` claimed the gateway does "edge auth + RBAC" whereas the
+  gateway authenticates only and services enforce RBAC; (c) `docs/architecture.md`
+  referenced a `.excalidraw.json` that does not exist; (d) `docs/supplier-service-api.md`
+  claimed the gateway also enforces RBAC; (e) the user-service `docs/api-contract.md`
+  documents `role` as uppercase while the code serializes lowercase (noted, not
+  changed here). order-service and its event/HTTP flows are drawn dashed and
+  labelled "PR #5" because they exist only on the unmerged branch.
