@@ -6,7 +6,7 @@ Subscribes to:
   CourierWithdrawn — handled per the D1 credit backlog. CourierWithdrawn is
   bound explicitly so the no-op behaviour (credits stay reserved, F4.1.2) is
   exercised rather than silently missing.
-- `foc.events` (fanout): UserRegistered → initial account provisioning (F1.1).
+- `foc.user.events` (fanout): UserRegistered → initial account provisioning (F1.1).
 
 Redelivered events are handled idempotently by CreditService.
 """

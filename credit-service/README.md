@@ -77,7 +77,7 @@ Consumes (idempotent redelivery handling):
 
 | Exchange | Type | Routing key / event | Effect |
 | -------- | ---- | ------------------- | ------ |
-| `foc.events` | fanout | `UserRegistered` | provision account with initial allocation (F1.1) |
+| `foc.user.events` | fanout | `UserRegistered` | provision account with initial allocation (F1.1) |
 | `foc.order.events` | topic | `OrderCompleted` | transfer to courier (F3.2), idempotent (F3.2.1) |
 | `foc.order.events` | topic | `OrderCancelled` | release (F4.1.1) |
 | `foc.order.events` | topic | `OrderExpired` | release (F4.2.1) |
