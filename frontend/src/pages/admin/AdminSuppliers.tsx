@@ -13,6 +13,7 @@ import {
   Modal,
   Pagination,
   Stack,
+  Switch,
   Table,
   Text,
   TextInput,
@@ -20,7 +21,12 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { notifications } from "@mantine/notifications";
-import { IconEdit, IconPlus, IconSearch } from "@tabler/icons-react";
+import {
+  IconEdit,
+  IconPlus,
+  IconRotate,
+  IconSearch,
+} from "@tabler/icons-react";
 import { useCallback, useEffect, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { ActiveBadge } from "../../components/StatusPill";
@@ -36,6 +42,7 @@ export default function AdminSuppliers() {
 
   const [q, setQ] = useState("");
   const [debouncedQ] = useDebouncedValue(q, 300);
+  const [showInactive, setShowInactive] = useState(false);
   const [page, setPage] = useState(1);
 
   const [items, setItems] = useState<Supplier[]>([]);
@@ -54,6 +61,7 @@ export default function AdminSuppliers() {
     try {
       const res = await suppliersApi.list({
         q: debouncedQ || undefined,
+        includeInactive: showInactive,
         page,
         pageSize: PAGE_SIZE,
       });
@@ -64,7 +72,7 @@ export default function AdminSuppliers() {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQ, page]);
+  }, [debouncedQ, showInactive, page]);
 
   useEffect(() => {
     void load();
@@ -72,7 +80,7 @@ export default function AdminSuppliers() {
 
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ]);
+  }, [debouncedQ, showInactive]);
 
   // Deep link from the detail page "Edit / Manage" button.
   useEffect(() => {
@@ -127,6 +135,22 @@ export default function AdminSuppliers() {
     }
   };
 
+  const handleReactivate = async (supplier: Supplier) => {
+    setSubmitting(true);
+    try {
+      await suppliersApi.reactivate(supplier.id);
+      notifyOk("Supplier reactivated");
+      if (editing?.id === supplier.id) {
+        setEditing({ ...supplier, active: true });
+      }
+      await load();
+    } catch (err) {
+      notifyErr(err instanceof ApiError ? err.message : "Reactivate failed");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const showForm = creating || editing !== null;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -143,13 +167,20 @@ export default function AdminSuppliers() {
         <Grid.Col span={{ base: 12, md: showForm ? 7 : 12 }}>
           <Stack gap="sm">
             <Group justify="space-between" wrap="wrap">
-              <TextInput
-                leftSection={<IconSearch size={16} />}
-                placeholder="Search suppliers..."
-                value={q}
-                onChange={(e) => setQ(e.currentTarget.value)}
-                w={260}
-              />
+              <Group gap="md" wrap="wrap">
+                <TextInput
+                  leftSection={<IconSearch size={16} />}
+                  placeholder="Search suppliers..."
+                  value={q}
+                  onChange={(e) => setQ(e.currentTarget.value)}
+                  w={260}
+                />
+                <Switch
+                  label="Show inactive"
+                  checked={showInactive}
+                  onChange={(e) => setShowInactive(e.currentTarget.checked)}
+                />
+              </Group>
               <Button
                 leftSection={<IconPlus size={16} />}
                 onClick={() => {
@@ -198,16 +229,29 @@ export default function AdminSuppliers() {
                             <ActiveBadge active={s.active} />
                           </Table.Td>
                           <Table.Td>
-                            <ActionIcon
-                              variant="subtle"
-                              aria-label={`Edit ${s.name}`}
-                              onClick={() => {
-                                setCreating(false);
-                                setEditing(s);
-                              }}
-                            >
-                              <IconEdit size={18} />
-                            </ActionIcon>
+                            <Group gap={4} wrap="nowrap">
+                              <ActionIcon
+                                variant="subtle"
+                                aria-label={`Edit ${s.name}`}
+                                onClick={() => {
+                                  setCreating(false);
+                                  setEditing(s);
+                                }}
+                              >
+                                <IconEdit size={18} />
+                              </ActionIcon>
+                              {!s.active && (
+                                <ActionIcon
+                                  variant="subtle"
+                                  color="green"
+                                  aria-label={`Reactivate ${s.name}`}
+                                  loading={submitting}
+                                  onClick={() => handleReactivate(s)}
+                                >
+                                  <IconRotate size={18} />
+                                </ActionIcon>
+                              )}
+                            </Group>
                           </Table.Td>
                         </Table.Tr>
                       ))}
@@ -237,6 +281,7 @@ export default function AdminSuppliers() {
                   setCreating(false);
                 }}
                 onDeactivate={confirm.open}
+                onReactivate={editing ? () => handleReactivate(editing) : undefined}
               />
             </Card>
           </Grid.Col>
@@ -251,8 +296,9 @@ export default function AdminSuppliers() {
       >
         <Stack>
           <Text>
-            This will hide <b>{editing?.name}</b> from active listings. You can
-            reactivate it later by editing the record.
+            This hides <b>{editing?.name}</b> from the active catalog (a soft
+            delete — the record is preserved). You can bring it back later with
+            the <b>Reactivate</b> action after enabling “Show inactive”.
           </Text>
           <Group justify="flex-end">
             <Button variant="default" onClick={confirm.close}>

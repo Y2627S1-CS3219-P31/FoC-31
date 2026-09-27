@@ -17,6 +17,7 @@ from app.schemas.user import (
     ProfileUpdateRequest,
     RegisterRequest,
     RegisterResponse,
+    RoleUpdateRequest,
 )
 from app.services import security
 from app.services.exceptions import (
@@ -212,6 +213,8 @@ async def list_all_users(
     session: SessionDep,
     limit: int = 50,
     offset: int = 0,
+    q: str | None = None,
+    status: str | None = None,
     x_user_id: UserIdHeaderDep = None,
     x_user_role: UserRoleHeaderDep = None,
 ) -> AdminUserListResponse:
@@ -220,8 +223,14 @@ async def list_all_users(
         raise HTTPException(status_code=422, detail="limit must be between 1 and 100")
     if offset < 0:
         raise HTTPException(status_code=422, detail="offset must not be negative")
+    if status is not None and status not in ("active", "suspended"):
+        raise HTTPException(
+            status_code=422, detail="status must be 'active' or 'suspended'"
+        )
 
-    users, total = await UserService(session).list_users(limit=limit, offset=offset)
+    users, total = await UserService(session).list_users(
+        limit=limit, offset=offset, q=q, status=status
+    )
     return AdminUserListResponse(
         items=[AdminUserResponse.model_validate(user) for user in users],
         total=total,
@@ -260,6 +269,26 @@ async def unsuspend_user(
     try:
         user = await UserService(session).set_suspended(
             user_id=user_id, suspended=False, actor_id=actor_id
+        )
+    except UserNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="user not found") from exc
+    except CannotModifyAdminError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return AdminUserResponse.model_validate(user)
+
+
+@router.patch("/admin/{user_id}/role", response_model=AdminUserResponse)
+async def update_user_role(
+    user_id: str,
+    payload: RoleUpdateRequest,
+    session: SessionDep,
+    x_user_id: UserIdHeaderDep = None,
+    x_user_role: UserRoleHeaderDep = None,
+) -> AdminUserResponse:
+    actor_id = _require_admin(user_id=x_user_id, role=x_user_role)
+    try:
+        user = await UserService(session).set_role(
+            user_id=user_id, new_role=payload.role.value, actor_id=actor_id
         )
     except UserNotFoundError as exc:
         raise HTTPException(status_code=404, detail="user not found") from exc

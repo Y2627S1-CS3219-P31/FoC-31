@@ -150,10 +150,18 @@ export const authApi = {
 
 // ---- Admin user management ----
 export const adminUsersApi = {
-  list(limit = 50, offset = 0) {
+  list(
+    params: {
+      limit?: number;
+      offset?: number;
+      q?: string;
+      status?: "active" | "suspended";
+    } = {},
+  ) {
+    const { limit = 50, offset = 0, q, status } = params;
     return request<AdminUserList>(
       "GET",
-      `/api/users/admin${buildQuery({ limit, offset })}`,
+      `/api/users/admin${buildQuery({ limit, offset, q, status })}`,
     );
   },
   createAdmin(body: {
@@ -170,6 +178,11 @@ export const adminUsersApi = {
   unsuspend(userId: string) {
     return request<AdminUser>("POST", `/api/users/admin/${userId}/unsuspend`);
   },
+  updateRole(userId: string, role: "admin" | "client") {
+    return request<AdminUser>("PATCH", `/api/users/admin/${userId}/role`, {
+      role,
+    });
+  },
 };
 
 // ---- Suppliers ----
@@ -182,7 +195,10 @@ export const suppliersApi = {
         zone: query.zone,
         q: query.q,
         page: query.page,
-        pageSize: query.pageSize,
+        page_size: query.pageSize,
+        sort: query.sort,
+        order: query.order,
+        include_inactive: query.includeInactive,
       })}`,
     );
   },
@@ -197,5 +213,8 @@ export const suppliersApi = {
   },
   deactivate(id: string) {
     return request<Supplier>("POST", `/api/suppliers/${id}/deactivate`);
+  },
+  reactivate(id: string) {
+    return request<Supplier>("POST", `/api/suppliers/${id}/reactivate`);
   },
 };

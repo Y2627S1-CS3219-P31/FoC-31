@@ -71,6 +71,7 @@ interface Props {
   onSubmit: (payload: SupplierCreate) => void;
   onCancel: () => void;
   onDeactivate?: () => void;
+  onReactivate?: () => void;
 }
 
 export function SupplierForm({
@@ -79,6 +80,7 @@ export function SupplierForm({
   onSubmit,
   onCancel,
   onDeactivate,
+  onReactivate,
 }: Props) {
   const form = useForm<SupplierFormValues>({
     initialValues: toFormValues(editing),
@@ -177,6 +179,11 @@ export function SupplierForm({
           {editing && editing.active && onDeactivate && (
             <Button variant="subtle" color="red" onClick={onDeactivate}>
               Deactivate
+            </Button>
+          )}
+          {editing && !editing.active && onReactivate && (
+            <Button variant="subtle" color="green" onClick={onReactivate}>
+              Reactivate
             </Button>
           )}
         </Group>

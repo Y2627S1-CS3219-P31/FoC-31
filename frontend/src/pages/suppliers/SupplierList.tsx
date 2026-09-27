@@ -18,16 +18,20 @@ import {
 } from "@mantine/core";
 import { useDebouncedValue } from "@mantine/hooks";
 import { IconPlus, IconSearch } from "@tabler/icons-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { SupplierCard } from "../../components/SupplierCard";
 import { ApiError, suppliersApi } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
-import { SUPPLIER_CATEGORIES, type Category, type Supplier } from "../../lib/types";
+import {
+  SUPPLIER_CATEGORIES,
+  type Category,
+  type SortOrder,
+  type Supplier,
+  type SupplierSort,
+} from "../../lib/types";
 
 const PAGE_SIZE = 12;
-
-type SortKey = "name" | "category" | "building";
 
 export default function SupplierList() {
   const { isAdmin } = useAuth();
@@ -38,7 +42,8 @@ export default function SupplierList() {
   const [category, setCategory] = useState<Category | null>(null);
   const [zone, setZone] = useState("");
   const [debouncedZone] = useDebouncedValue(zone, 300);
-  const [sort, setSort] = useState<SortKey>("name");
+  const [sort, setSort] = useState<SupplierSort>("name");
+  const [order, setOrder] = useState<SortOrder>("asc");
   const [page, setPage] = useState(1);
 
   const [items, setItems] = useState<Supplier[]>([]);
@@ -46,10 +51,10 @@ export default function SupplierList() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset to first page whenever filters change.
+  // Reset to first page whenever filters or sort change.
   useEffect(() => {
     setPage(1);
-  }, [debouncedQ, category, debouncedZone]);
+  }, [debouncedQ, category, debouncedZone, sort, order]);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,6 +65,8 @@ export default function SupplierList() {
         q: debouncedQ || undefined,
         category: category ? [category] : undefined,
         zone: debouncedZone || undefined,
+        sort,
+        order,
         page,
         pageSize: PAGE_SIZE,
       })
@@ -78,14 +85,7 @@ export default function SupplierList() {
     return () => {
       cancelled = true;
     };
-  }, [debouncedQ, category, debouncedZone, page]);
-
-  // Client-side sort (the API has no sort param).
-  const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) =>
-      String(a[sort] ?? "").localeCompare(String(b[sort] ?? "")),
-    );
-  }, [items, sort]);
+  }, [debouncedQ, category, debouncedZone, sort, order, page]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -140,11 +140,20 @@ export default function SupplierList() {
             <SegmentedControl
               size="xs"
               value={sort}
-              onChange={(v) => setSort(v as SortKey)}
+              onChange={(v) => setSort(v as SupplierSort)}
               data={[
                 { label: "Name", value: "name" },
                 { label: "Category", value: "category" },
                 { label: "Building", value: "building" },
+              ]}
+            />
+            <SegmentedControl
+              size="xs"
+              value={order}
+              onChange={(v) => setOrder(v as SortOrder)}
+              data={[
+                { label: "Asc", value: "asc" },
+                { label: "Desc", value: "desc" },
               ]}
             />
           </Group>
@@ -161,13 +170,13 @@ export default function SupplierList() {
         <Center h={200}>
           <Loader />
         </Center>
-      ) : sortedItems.length === 0 ? (
+      ) : items.length === 0 ? (
         <Center h={160}>
           <Text c="dimmed">No suppliers match your filters.</Text>
         </Center>
       ) : (
         <SimpleGrid cols={{ base: 1, sm: 2, md: 3 }} spacing="md">
-          {sortedItems.map((s) => (
+          {items.map((s) => (
             <SupplierCard key={s.id} supplier={s} />
           ))}
         </SimpleGrid>

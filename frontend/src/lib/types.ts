@@ -50,13 +50,21 @@ export interface SupplierCreate {
 
 export type SupplierUpdate = Partial<SupplierCreate>;
 
+export type SupplierSort = "name" | "category" | "building";
+export type SortOrder = "asc" | "desc";
+
 export interface SupplierQuery {
   category?: Category[];
   zone?: string;
   q?: string;
   page?: number;
   pageSize?: number;
+  sort?: SupplierSort;
+  order?: SortOrder;
+  includeInactive?: boolean;
 }
+
+export type AccountStatus = "active" | "suspended";
 
 // ---- User service ----
 export interface LoginResponse {

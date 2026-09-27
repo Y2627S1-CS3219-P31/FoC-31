@@ -41,6 +41,13 @@ class SupplierRepository:
         row = await self._session.get(SupplierRow, supplier_id)
         return Supplier.model_validate(row) if row is not None else None
 
+    # Columns that may be used to sort list results (whitelist).
+    _SORT_COLUMNS = {
+        "name": SupplierRow.name,
+        "category": SupplierRow.category,
+        "building": SupplierRow.building,
+    }
+
     async def list(
         self,
         *,
@@ -49,8 +56,13 @@ class SupplierRepository:
         categories: list[str] | None = None,
         zone: str | None = None,
         q: str | None = None,
+        sort: str = "name",
+        order: str = "asc",
+        include_inactive: bool = False,
     ) -> SupplierList:
-        conditions = [SupplierRow.active.is_(True)]
+        conditions = []
+        if not include_inactive:
+            conditions.append(SupplierRow.active.is_(True))
         if categories:
             conditions.append(SupplierRow.category.in_(categories))
         if zone:
@@ -65,6 +77,9 @@ class SupplierRepository:
                 )
             )
 
+        sort_column = self._SORT_COLUMNS.get(sort, SupplierRow.name)
+        order_by = sort_column.desc() if order == "desc" else sort_column.asc()
+
         total = await self._session.scalar(
             select(func.count()).select_from(SupplierRow).where(*conditions)
         )
@@ -73,7 +88,7 @@ class SupplierRepository:
                 await self._session.execute(
                     select(SupplierRow)
                     .where(*conditions)
-                    .order_by(SupplierRow.name)
+                    .order_by(order_by)
                     .limit(page_size)
                     .offset((page - 1) * page_size)
                 )
@@ -107,6 +122,15 @@ class SupplierRepository:
         if row is None:
             return None
         row.active = False
+        await self._session.commit()
+        await self._session.refresh(row)
+        return Supplier.model_validate(row)
+
+    async def reactivate(self, supplier_id: str) -> Supplier | None:
+        row = await self._session.get(SupplierRow, supplier_id)
+        if row is None:
+            return None
+        row.active = True
         await self._session.commit()
         await self._session.refresh(row)
         return Supplier.model_validate(row)

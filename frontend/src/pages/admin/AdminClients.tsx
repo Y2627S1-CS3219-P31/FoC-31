@@ -19,11 +19,11 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
-import { useDisclosure } from "@mantine/hooks";
+import { useDebouncedValue, useDisclosure } from "@mantine/hooks";
 import { useForm } from "@mantine/form";
 import { IconSearch, IconShieldPlus } from "@tabler/icons-react";
 import { notifications } from "@mantine/notifications";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AccountStatusBadge } from "../../components/StatusPill";
 import { ApiError, adminUsersApi } from "../../lib/api";
 import { useAuth } from "../../lib/auth";
@@ -36,6 +36,7 @@ export default function AdminClients() {
   const { user: current } = useAuth();
 
   const [q, setQ] = useState("");
+  const [debouncedQ] = useDebouncedValue(q, 300);
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [page, setPage] = useState(1);
 
@@ -52,7 +53,12 @@ export default function AdminClients() {
     setLoading(true);
     setError(null);
     try {
-      const res = await adminUsersApi.list(PAGE_SIZE, (page - 1) * PAGE_SIZE);
+      const res = await adminUsersApi.list({
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+        q: debouncedQ || undefined,
+        status: statusFilter === "all" ? undefined : statusFilter,
+      });
       setUsers(res.items);
       setTotal(res.total);
     } catch (err) {
@@ -60,25 +66,16 @@ export default function AdminClients() {
     } finally {
       setLoading(false);
     }
-  }, [page]);
+  }, [page, debouncedQ, statusFilter]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  // Client-side search + status filter over the current page.
-  const filtered = useMemo(() => {
-    const term = q.trim().toLowerCase();
-    return users.filter((u) => {
-      if (statusFilter === "active" && u.is_suspended) return false;
-      if (statusFilter === "suspended" && !u.is_suspended) return false;
-      if (!term) return true;
-      return (
-        u.display_name.toLowerCase().includes(term) ||
-        u.email.toLowerCase().includes(term)
-      );
-    });
-  }, [users, q, statusFilter]);
+  // Reset to first page when the server-side search/filter changes.
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, statusFilter]);
 
   const toggleSuspend = async (u: AdminUser) => {
     setBusyId(u.id);
@@ -94,6 +91,29 @@ export default function AdminClients() {
       notifications.show({
         color: "red",
         message: err instanceof ApiError ? err.message : "Action failed",
+      });
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const changeRole = async (u: AdminUser) => {
+    const nextRole = u.role === "admin" ? "client" : "admin";
+    setBusyId(u.id);
+    try {
+      await adminUsersApi.updateRole(u.id, nextRole);
+      notifications.show({
+        color: "green",
+        message:
+          nextRole === "admin"
+            ? `${u.display_name} promoted to admin`
+            : `${u.display_name} demoted to client`,
+      });
+      await load();
+    } catch (err) {
+      notifications.show({
+        color: "red",
+        message: err instanceof ApiError ? err.message : "Role change failed",
       });
     } finally {
       setBusyId(null);
@@ -153,11 +173,11 @@ export default function AdminClients() {
         <div>
           <Title order={2}>Admin · Client Accounts</Title>
           <Text c="dimmed" size="sm">
-            View status, suspend or reinstate accounts, and promote admins
+            View status, suspend or reinstate accounts, and promote/demote roles
           </Text>
         </div>
         <Button leftSection={<IconShieldPlus size={16} />} onClick={createModal.open}>
-          New administrator
+          Create admin account
         </Button>
       </Group>
 
@@ -192,12 +212,12 @@ export default function AdminClients() {
           <Center h={160}>
             <Loader />
           </Center>
-        ) : filtered.length === 0 ? (
+        ) : users.length === 0 ? (
           <Center h={140}>
             <Text c="dimmed">No accounts match your filters.</Text>
           </Center>
         ) : (
-          <Table.ScrollContainer minWidth={560}>
+          <Table.ScrollContainer minWidth={640}>
             <Table highlightOnHover verticalSpacing="sm">
               <Table.Thead>
                 <Table.Tr>
@@ -205,11 +225,11 @@ export default function AdminClients() {
                   <Table.Th>Email</Table.Th>
                   <Table.Th>Role</Table.Th>
                   <Table.Th>Status</Table.Th>
-                  <Table.Th>Action</Table.Th>
+                  <Table.Th>Actions</Table.Th>
                 </Table.Tr>
               </Table.Thead>
               <Table.Tbody>
-                {filtered.map((u) => {
+                {users.map((u) => {
                   const isSelf = current?.id === u.id;
                   const isAdmin = u.role === "admin";
                   return (
@@ -221,20 +241,33 @@ export default function AdminClients() {
                         <AccountStatusBadge suspended={u.is_suspended} />
                       </Table.Td>
                       <Table.Td>
-                        {isAdmin || isSelf ? (
+                        {isSelf ? (
                           <Text size="sm" c="dimmed">
-                            —
+                            You
                           </Text>
                         ) : (
-                          <Button
-                            size="xs"
-                            variant="subtle"
-                            color={u.is_suspended ? "green" : "red"}
-                            loading={busyId === u.id}
-                            onClick={() => toggleSuspend(u)}
-                          >
-                            {u.is_suspended ? "Reinstate" : "Suspend"}
-                          </Button>
+                          <Group gap="xs" wrap="nowrap">
+                            {!isAdmin && (
+                              <Button
+                                size="xs"
+                                variant="subtle"
+                                color={u.is_suspended ? "green" : "red"}
+                                loading={busyId === u.id}
+                                onClick={() => toggleSuspend(u)}
+                              >
+                                {u.is_suspended ? "Reinstate" : "Suspend"}
+                              </Button>
+                            )}
+                            <Button
+                              size="xs"
+                              variant="light"
+                              color={isAdmin ? "gray" : "brand"}
+                              loading={busyId === u.id}
+                              onClick={() => changeRole(u)}
+                            >
+                              {isAdmin ? "Demote to client" : "Make admin"}
+                            </Button>
+                          </Group>
                         )}
                       </Table.Td>
                     </Table.Tr>
@@ -255,14 +288,15 @@ export default function AdminClients() {
       <Modal
         opened={createOpen}
         onClose={createModal.close}
-        title="Create administrator"
+        title="Create admin account"
         centered
       >
         <form onSubmit={handleCreateAdmin}>
           <Stack gap="sm">
             <Text size="sm" c="dimmed">
-              Promotes a new account directly to the administrator role. The
-              account is created verified and ready to log in.
+              Creates a brand-new account with the administrator role
+              (pre-verified, ready to log in). To change an existing user's
+              role instead, use “Make admin” / “Demote to client” in the table.
             </Text>
             <TextInput
               label="NUS Email"
