@@ -256,6 +256,4 @@ Format for each entry:
   `pytest` (55 tests passing) and `ruff check`/`ruff format` (clean).
   Incorporated PR #7 review feedback (dead-lettering invalid events,
   idempotent reserve retries, fixed lock ordering, history amounts summing
-  to balances, releasing the row lock before publishing). Followed the
-  team's event-naming decision: consume `UserRegistered` from
-  `foc.user.events` (not the generic `foc.events`).
+  to balances, releasing the row lock before publishing).
