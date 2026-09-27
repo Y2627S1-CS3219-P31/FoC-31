@@ -253,10 +253,19 @@ Possible errors: `401` missing identity, `403` non-admin identity, `409` email a
 ### List users
 
 ```http
-GET /users/admin?limit=50&offset=0
+GET /users/admin?limit=50&offset=0&q=&status=
 ```
 
 Gateway path: `GET /api/users/admin?limit=50&offset=0`
+
+Query parameters:
+
+| Param    | Type                     | Default | Description                                                              |
+| -------- | ------------------------ | ------- | ------------------------------------------------------------------------ |
+| `limit`  | integer 1–100            | `50`    | Page size.                                                               |
+| `offset` | integer ≥ 0              | `0`     | Number of records to skip.                                               |
+| `q`      | string                   | —       | Case-insensitive search over email + display name (whole dataset).       |
+| `status` | `active` \| `suspended`  | —       | Filter by account status. `total` reflects the filtered set.             |
 
 Success response — `200 OK`:
 
@@ -269,7 +278,8 @@ Success response — `200 OK`:
 }
 ```
 
-`limit` must be between 1 and 100; `offset` must not be negative.
+`limit` must be between 1 and 100; `offset` must not be negative; `status`, if
+present, must be `active` or `suspended`.
 
 Possible errors: `401` missing identity, `403` non-admin identity, `422` invalid query parameters.
 
@@ -300,6 +310,36 @@ Request body: none.
 Success response: the updated `AdminUserResponse` payload with `is_suspended: false`.
 
 Possible errors: `400` administrator target, `401` missing identity, `403` non-admin identity, `404` user not found.
+
+### Update user role (promote / demote)
+
+```http
+PATCH /users/admin/{user_id}/role
+```
+
+Gateway path: `PATCH /api/users/admin/{user_id}/role`
+
+Request body:
+
+```json
+{ "role": "admin" }
+```
+
+`role` must be one of `admin` or `client`. Promotes or demotes an existing
+user's role. Two safety guards apply:
+
+- **Self-demotion is blocked** — an administrator cannot demote themselves
+  (`400`).
+- **Last-admin protection** — demoting the last remaining non-suspended
+  administrator is refused (`400`), so the system can never be left with zero
+  active administrators.
+
+A no-op (setting the same role) returns the user unchanged.
+
+Success response: the updated `AdminUserResponse` payload with the new `role`.
+
+Possible errors: `400` self-demotion or last-admin demotion, `401` missing
+identity, `403` non-admin identity, `404` user not found, `422` invalid role.
 
 ## Health endpoint
 

@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     smtp_password: str | None = None
     smtp_from: str = "no-reply@foc.local"
     smtp_starttls: bool = True
+    otp_dev_mode: bool = False
     otp_max_attempts: int = 5
     otp_resend_cooldown_seconds: int = 60
     bootstrap_admin_email: str | None = None

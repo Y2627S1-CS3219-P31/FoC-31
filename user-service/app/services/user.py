@@ -216,8 +216,40 @@ class UserService:
             raise RuntimeError("concurrent bootstrap admin creation failed") from exc
         return admin
 
-    async def list_users(self, *, limit: int = 50, offset: int = 0) -> tuple[list[User], int]:
-        return await self._users.list_all(limit=limit, offset=offset), await self._users.count_all()
+    async def list_users(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        q: str | None = None,
+        status: str | None = None,
+    ) -> tuple[list[User], int]:
+        users = await self._users.list_all(limit=limit, offset=offset, q=q, status=status)
+        total = await self._users.count_all(q=q, status=status)
+        return users, total
+
+    async def set_role(self, *, user_id: str, new_role: str, actor_id: str) -> User:
+        # Guard 1: an administrator cannot demote themselves.
+        if user_id == actor_id and new_role != Role.ADMIN.value:
+            raise CannotModifyAdminError("an administrator cannot demote themselves")
+
+        user = await self._users.get_by_id(user_id)
+        if user is None:
+            raise UserNotFoundError(user_id)
+
+        # No-op if the role is unchanged.
+        if user.role == new_role:
+            return user
+
+        # Guard 2: never demote the last (non-suspended) administrator.
+        if user.role == Role.ADMIN.value and new_role != Role.ADMIN.value:
+            remaining_admins = await self._users.count_admins(exclude_suspended=True)
+            if remaining_admins <= 1:
+                raise CannotModifyAdminError("cannot demote the last administrator")
+
+        user.role = new_role
+        await self._session.commit()
+        return user
 
     async def set_suspended(self, *, user_id: str, suspended: bool, actor_id: str) -> User:
         if user_id == actor_id:

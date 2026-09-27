@@ -162,3 +162,64 @@ def test_deactivate_flow(client):
 def test_deactivate_missing_404(client):
     resp = client.post("/suppliers/sup_missing/deactivate", headers=ADMIN)
     assert resp.status_code == 404
+
+
+def test_reactivate_flow(client):
+    created = _create(client)
+    client.post(f"/suppliers/{created['id']}/deactivate", headers=ADMIN)
+
+    ok = client.post(f"/suppliers/{created['id']}/reactivate", headers=ADMIN)
+    assert ok.status_code == 200
+    assert ok.json()["active"] is True
+
+    # reactivating an already-active supplier conflicts
+    conflict = client.post(f"/suppliers/{created['id']}/reactivate", headers=ADMIN)
+    assert conflict.status_code == 409
+    assert conflict.json()["code"] == "conflict"
+
+    # visible again in the active catalog
+    listing = client.get("/suppliers", headers=CLIENT).json()
+    assert listing["total"] == 1
+
+
+def test_reactivate_requires_admin(client):
+    created = _create(client)
+    client.post(f"/suppliers/{created['id']}/deactivate", headers=ADMIN)
+    forbidden = client.post(f"/suppliers/{created['id']}/reactivate", headers=CLIENT)
+    assert forbidden.status_code == 403
+
+
+def test_reactivate_missing_404(client):
+    resp = client.post("/suppliers/sup_missing/reactivate", headers=ADMIN)
+    assert resp.status_code == 404
+
+
+def test_include_inactive_admin_only(client):
+    created = _create(client)
+    client.post(f"/suppliers/{created['id']}/deactivate", headers=ADMIN)
+
+    # admin can opt in to see inactive suppliers
+    admin_view = client.get("/suppliers?include_inactive=true", headers=ADMIN).json()
+    assert admin_view["total"] == 1
+    assert admin_view["items"][0]["active"] is False
+
+    # clients never see inactive suppliers, even if they pass the flag
+    client_view = client.get("/suppliers?include_inactive=true", headers=CLIENT).json()
+    assert client_view["total"] == 0
+
+
+def test_list_sort_order(client):
+    _create(client, name="Bravo")
+    _create(client, name="Alpha")
+    _create(client, name="Charlie")
+
+    asc = client.get("/suppliers?sort=name&order=asc", headers=CLIENT).json()
+    assert [i["name"] for i in asc["items"]] == ["Alpha", "Bravo", "Charlie"]
+
+    desc = client.get("/suppliers?sort=name&order=desc", headers=CLIENT).json()
+    assert [i["name"] for i in desc["items"]] == ["Charlie", "Bravo", "Alpha"]
+
+
+def test_list_sort_invalid_rejected(client):
+    resp = client.get("/suppliers?sort=bogus", headers=CLIENT)
+    assert resp.status_code == 422

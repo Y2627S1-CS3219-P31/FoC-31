@@ -143,13 +143,16 @@ List **active** suppliers. Supports filtering, keyword search, and pagination.
 - **Auth:** `admin`, `client`
 - **Query parameters:**
 
-  | Param       | Type                | Default | Description                                                  |
-  | ----------- | ------------------- | ------- | ------------------------------------------------------------ |
-  | `category`  | string (repeatable) | —       | Filter by one or more categories (F2.1.1).                   |
-  | `zone`      | string              | —       | Filter by campus zone/location (F2.1.2).                     |
-  | `q`         | string              | —       | Case-insensitive keyword search over name + location (F2.2). |
-  | `page`      | integer ≥ 1         | `1`     | Page number (F5.1.2).                                        |
-  | `page_size` | integer 1–100       | `20`    | Items per page (F5.1.2).                                     |
+  | Param             | Type                    | Default | Description                                                                                  |
+  | ----------------- | ----------------------- | ------- | -------------------------------------------------------------------------------------------- |
+  | `category`        | string (repeatable)     | —       | Filter by one or more categories (F2.1.1).                                                   |
+  | `zone`            | string                  | —       | Filter by campus zone/location (F2.1.2).                                                      |
+  | `q`               | string                  | —       | Case-insensitive keyword search over name + location (F2.2).                                 |
+  | `page`            | integer ≥ 1             | `1`     | Page number (F5.1.2).                                                                         |
+  | `page_size`       | integer 1–100           | `20`    | Items per page (F5.1.2).                                                                      |
+  | `sort`            | `name`\|`category`\|`building` | `name` | Field to sort by. Invalid values → `422`.                                             |
+  | `order`           | `asc`\|`desc`           | `asc`   | Sort direction.                                                                              |
+  | `include_inactive`| boolean                 | `false` | **Admin only.** Include deactivated suppliers in results. Ignored (forced `false`) for clients. |
 
 - **200 response:**
 
@@ -242,7 +245,17 @@ orders (system-wide N4).
 > today; the event mechanism is documented in
 > [`event-catalog.md`](./event-catalog.md) and owned by the Order Service.
 
-### 5.6 Service lookup — validate supplier by id
+### 5.6 `POST /suppliers/{id}/reactivate` — reactivate
+
+Reactivate a previously deactivated supplier (undo of §5.5). The supplier
+returns to the active discovery catalog.
+
+- **Auth:** `admin` only (F1.3).
+- **200 response:** the `Supplier` with `active: true`.
+- **409:** already active.
+- **404:** unknown id.
+
+### 5.7 Service lookup — validate supplier by id
 
 Exposes supplier data for other services to retrieve/validate a supplier by id,
 returning the current active/deactivated status (F5.1, F5.1.1). Consumed by the
@@ -262,6 +275,12 @@ deactivated supplier — Order F1.1.6).
 - **Pagination:** `page` (1-based) + `page_size` on list/search responses; the
   envelope returns `page`, `pageSize`, and `total` (F5.1.2).
 - **Filtering:** `category` (repeatable) and `zone` combine (AND) with `q`.
+- **Sorting:** `sort` (`name`|`category`|`building`, default `name`) + `order`
+  (`asc`|`desc`, default `asc`). Applied server-side over the whole result set,
+  not just the current page.
+- **Inactive suppliers:** `include_inactive=true` (admin only) returns
+  deactivated suppliers alongside active ones; clients always receive the
+  active-only catalog.
 - **Empty results:** an empty `items` array with `total: 0` — never a `404`
   (F1.4.1, F2.2.3).
 
