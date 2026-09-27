@@ -1,24 +1,34 @@
 # frontend
 
-Responsive **React + TypeScript + Vite** single-page app for FoC. It supports
-the requester and courier workflows across desktop and mobile screen sizes
-(project M1) and talks only to the **API Gateway**.
+Responsive **React + TypeScript + Vite** single-page app for FoC, built with
+the **Mantine** UI library. It talks only to the **API Gateway**
+(`VITE_API_BASE_URL`) and is responsive across desktop and mobile viewports
+(project M1).
 
-## Pages (route stubs)
+For D2 the SPA implements the authentication flow and the supplier-management
+experience (browse + admin CRUD) plus an admin portal.
 
-| Route | Purpose |
-| ----- | ------- |
-| `/browse` | Courier: browse open errands (Order F2) |
-| `/my-requests` | Requester: my posted errands + statuses (Order F1.2) |
-| `/new-request` | Create an errand (Order F1.1) |
-| `/deliveries` | Courier: accepted orders, pickup/deliver (Order F3) |
-| `/profile` | Profile, role toggle, credit balance (User F3) |
-| `/admin` | N2H: admin dashboard (project N1) |
+## Pages
+
+| Route | Access | Purpose |
+| ----- | ------ | ------- |
+| `/login` | public | Email + password login (JWT) |
+| `/register` | public | Create a `@u.nus.edu` account |
+| `/verify-otp` | public | Verify email with the OTP code |
+| `/suppliers` | authenticated | Browse suppliers: search, category/zone filter, sort, pagination |
+| `/suppliers/:id` | authenticated | Supplier detail; admins get edit/manage |
+| `/profile` | authenticated | View role/email (read-only) + edit name/contact |
+| `/admin/suppliers` | admin | Supplier CRUD: table + create/edit form + deactivate |
+| `/admin/clients` | admin | Client accounts: search/filter, suspend/reinstate, create admin |
+
+Client-side role checks are **UX only**; the gateway + services enforce
+authorization (RBAC is the server's responsibility).
 
 ## Config
 
-`VITE_API_BASE_URL` (see root `.env.example`) points the app at the gateway.
-The tiny client lives in `src/lib/api.ts`.
+`VITE_API_BASE_URL` (see root `.env.example`) points the app at the gateway
+(default `http://localhost:8080`). The typed client lives in `src/lib/api.ts`;
+auth state in `src/lib/auth.tsx`.
 
 ## Run
 
@@ -30,4 +40,17 @@ make up            # served at http://localhost:5173
 cd frontend && npm install && npm run dev
 ```
 
-> Status: **scaffold**. Pages are placeholders; no real API calls yet.
+### Demo accounts / OTP
+
+- The first admin is created on user-service startup from the
+  `BOOTSTRAP_ADMIN_*` env vars.
+- Registration requires email OTP verification. With no SMTP configured, set
+  `OTP_DEV_MODE=true` (see root `.env.example`) — the verification code is then
+  written to the **user-service logs** (`docker compose logs user-service`)
+  instead of emailed. Never enable this in a real deployment.
+
+## Build
+
+```bash
+cd frontend && npm run build   # tsc typecheck + vite production build
+```
