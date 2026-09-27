@@ -266,3 +266,30 @@ Format for each entry:
   desktop and mobile viewports (browse grid, admin suppliers table + edit
   form, client accounts table, mobile burger nav). No console errors (only
   React Router v7 future-flag warnings).
+## 26/09/2026 — Frank Yu / Zhou Shiyao
+
+- Tool: GitHub Copilot (model: DeepSeek V4 Pro)
+- Scope: credit-service implementation per the team's D1 backlog (Credit
+  Service F1–F5, N1–N2) and the shared event contracts. Generated: ORM models
+  (account, reservation with unique order_id, transaction history), schemas,
+  repositories with SELECT ... FOR UPDATE, `CreditService` business logic
+  (provisioning with 100-credit initial allocation, reserve/amend/transfer/
+  release, idempotent event handling, CourierWithdrawn no-op), error hierarchy
+  + handlers, HTTP routes (`/credits` prefix), RabbitMQ consumer
+  (`foc.user.events` fanout + `foc.order.events` topic) and best-effort
+  reservation-event publisher (`foc.credit.events`), lifespan wiring, tests,
+  README, `.env.example`.
+  All requirements and design decisions come from the D1 document and the
+  team's existing PR patterns (supplier-service layering/error envelope,
+  user-service event publishing); the tool only implemented the chosen design.
+- Prompt(s):
+  1. "Read the Credit Service FR and NFR sections of this document; based on the D1 requirements document and the parts of the existing PRs worth following, produce the credit service implementation. Implement strictly per D1; do not add features on your own."
+  2. "Review your implementation: reuse shared project components as much as possible, minimise coupling with other services, and keep the layers clean."
+  3. "Audit all security checks and defensive code; remove defensive code that guards impossible situations, and make the code as simple as possible."
+  4. "Fix: dead-letter invalid events, idempotent reserve retries, fixed account lock ordering, no double-counting in transaction history, and releasing the row lock before publishing events."
+- Author review: Both authors reviewed the generated code against the D1 backlog
+  (Credit F1–F5, N1–N2) and the shared event contracts. Verified with
+  `pytest` (55 tests passing) and `ruff check`/`ruff format` (clean).
+  Incorporated PR #7 review feedback (dead-lettering invalid events,
+  idempotent reserve retries, fixed lock ordering, history amounts summing
+  to balances, releasing the row lock before publishing).
