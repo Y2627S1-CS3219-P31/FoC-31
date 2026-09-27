@@ -68,7 +68,7 @@ Format for each entry:
   introducing any new design decisions.
 - Prompt(s):
   1. "Draw out architecture.md and flowchart.md" — with the `api/` and
-     `services` layers, and the `EmailOtp` and `User` models, described 
+     `services` layers, and the `EmailOtp` and `User` models, described
      to the tool in a table.
   2. "Update architecture.md and flowchart.md based on the source code."
   3. "Update this usage-log.md."
@@ -96,7 +96,7 @@ Format for each entry:
 - Author review: Ran the generated suite against the current implementation
   and confirmed every test passes; checked that no test asserts on behavior
   the code doesn't actually implement.
-  
+
 ---
 
 ## 25/09/2026 — John Gao Jiahao
@@ -119,7 +119,6 @@ Format for each entry:
   design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
-
 
 ## 25/09/2026 — John Gao Jiahao
 
@@ -170,19 +169,19 @@ Format for each entry:
   404 on missing supplier. Confirmed the idempotent seeder re-run produces
   0 new rows on a second pass (21 → 0). Confirmed docs/OpenAPI match the
   team-decided contract from Prompt 2.
-  
+
 ---
 
 ## 26/09/2026 — Javier Enrique Wong
 
 - Tool: Claude (claude.ai, model: Claude Sonnet 5)
-- Scope: Helped understanding the transactional outbox pattern 
-  for reliable RabbitMQ event delivery; implementing secure, idempotent 
-  first-admin bootstrap on application startup; OTP rate limiting, 
-  failed-attempt tracking, and temporary lockout behavior; 
-  updating `user-service/docs/api-contract.md` with endpoint paths, 
-  request bodies, headers, response payloads, validation rules, 
-  and status codes; and updating user-service and API gateway tests 
+- Scope: Helped understanding the transactional outbox pattern
+  for reliable RabbitMQ event delivery; implementing secure, idempotent
+  first-admin bootstrap on application startup; OTP rate limiting,
+  failed-attempt tracking, and temporary lockout behavior;
+  updating `user-service/docs/api-contract.md` with endpoint paths,
+  request bodies, headers, response payloads, validation rules,
+  and status codes; and updating user-service and API gateway tests
   to match the `/users` internal prefix
 - Prompt(s):
   1. "Explain the outbox pattern and how to implement"
@@ -210,20 +209,60 @@ Format for each entry:
 - Prompt(s):
   1. "Given this architecuture.md and flowchart.md update based on the
      source code."
-  2. "Also generate pytest:  `test_routing.py` covering `resolve_upstream`,
-     unknown-prefix, and partial-segment cases and `test_gateway.py` 
-     covering `GatewayService` resolve, authorize, forward behavior, and 
+  2. "Also generate pytest: `test_routing.py` covering `resolve_upstream`,
+     unknown-prefix, and partial-segment cases and `test_gateway.py`
+     covering `GatewayService` resolve, authorize, forward behavior, and
      fix `test_auth.py` below."
 - Author review: Reviewed `docs/architecture.md`/`flowchart.md` against the
   actual resulting file layout for accuracy. Ran the generated suite and
   confirmed every test passes; checked that no test asserts on behavior the
   code doesn't actually implement.
-  
 - Tool: Claude (claude.ai, model: Claude Sonnet 5)
-- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway 
-  routes, routing table, authentication behavior, path rewriting, CORS settings, 
+- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway
+  routes, routing table, authentication behavior, path rewriting, CORS settings,
   and error responses
 - Prompt(s): "generate api-contract.md for api-gateway based on below"
 - Author review: Compared the contract against `proxy.py`, `routing.py`, `auth.py`,
-  `gateway.py`, and gateway configuration, then corrected the documentation to 
+  `gateway.py`, and gateway configuration, then corrected the documentation to
   distinguish gateway `/api/...` routes from backend routes.
+
+---
+
+## 27/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Opus)
+- Scope: D2 frontend implementation, plus one small backend dev-mode toggle.
+  Implemented the React + TypeScript + Vite SPA against the team's existing,
+  already-agreed user-service and supplier-service API contracts and the
+  team's Penpot wireframe (which defined the visual design, layout, and
+  screens). Added the Mantine UI library. Frontend files created/rewritten:
+  `lib/api.ts` (typed gateway client with JWT bearer + error parsing),
+  `lib/types.ts`, `lib/auth.tsx` (JWT auth context), `lib/theme.ts`;
+  `components/` (AppLayout responsive shell, RouteGuards, StatusPill,
+  SupplierCard); auth pages (Login, Register, VerifyOtp, AuthLayout);
+  supplier pages (SupplierList with live search/category+zone filter/
+  client-side sort/pagination, SupplierDetail); admin pages (AdminSuppliers
+  table + SupplierForm create/edit/deactivate, AdminClients with
+  suspend/reinstate + create-admin); Profile; `App.tsx` routing; `main.tsx`;
+  `index.css`; `package.json`. Removed dormant errand placeholder pages.
+  Backend: added an `OTP_DEV_MODE` config flag to user-service so that, when
+  SMTP is unset, the verification code is logged instead of emailed, enabling
+  the register → verify → login flow to be demoed without a mail provider
+  (`config.py`, `services/notification.py`, `.env.example`). No product
+  requirements or architecture/design decisions were made by the tool — the
+  API contract, RBAC model, and UI design were decided by the team; the tool
+  implemented the frontend against them.
+- Prompt(s):
+  1. "Currently i need to link up the frontend to the user service and supplier service …
+     I am pretty sure we need an admin portal and also the main page itself" Here is the penpot design that the team has already created.
+  2. Selected full scope (suppliers + auth + admin portal), Mantine UI, full
+     register/OTP UI with a dev-mode verification path, and to implement on a
+     new branch off main.
+- Author review: Verified `npm run build` (tsc) passes cleanly;
+  brought the stack up with `docker compose up` and tested end-to-end via the
+  gateway: admin login, supplier list/create (201) as admin vs create denied
+  (403) as client, client list allowed (200), register → OTP (dev-mode log) →
+  verify → login, and profile `/me`. Manually exercised the running UI at
+  desktop and mobile viewports (browse grid, admin suppliers table + edit
+  form, client accounts table, mobile burger nav). No console errors (only
+  React Router v7 future-flag warnings).
