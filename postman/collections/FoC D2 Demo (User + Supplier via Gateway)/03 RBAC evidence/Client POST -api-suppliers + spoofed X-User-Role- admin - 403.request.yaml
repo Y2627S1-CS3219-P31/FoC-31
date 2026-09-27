@@ -1,0 +1,29 @@
+$kind: http-request
+name: "Client POST /api/suppliers + spoofed X-User-Role: admin -> 403"
+description: "D2 RBAC: the gateway strips any client-supplied X-User-Id/X-User-Role and re-injects the real role from the JWT, so a spoofed admin header is ignored and the client is still forbidden (403)."
+url: "{{baseUrl}}/api/suppliers"
+method: POST
+headers:
+  Content-Type: application/json
+  X-User-Role: admin
+  X-User-Id: spoofed-admin
+body:
+  type: text
+  content: |-
+    {
+      "name": "Spoofed Admin Attempt",
+      "category": "Food",
+      "building": "COM1"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 RBAC: spoofed X-User-Role stripped by gateway (403)', function () {
+          pm.response.to.have.status(403);
+      });
+    language: text/javascript
+order: 2000

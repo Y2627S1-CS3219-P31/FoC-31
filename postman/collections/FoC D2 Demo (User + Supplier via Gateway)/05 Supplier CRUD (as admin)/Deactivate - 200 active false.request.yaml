@@ -1,0 +1,20 @@
+$kind: http-request
+name: Deactivate -> 200 active false
+description: "D2 Supplier pt1: soft-delete via deactivate; the record is preserved with active == false."
+url: "{{baseUrl}}/api/suppliers/{{supplierId}}/deactivate"
+method: POST
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt1: deactivate (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('active == false', function () {
+          pm.expect(pm.response.json().active).to.eql(false);
+      });
+    language: text/javascript
+order: 7000

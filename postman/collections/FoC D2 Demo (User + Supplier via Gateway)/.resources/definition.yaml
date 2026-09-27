@@ -1,0 +1,26 @@
+$kind: collection
+description: |-
+  AI-influenced: authored with OpenCode (Claude Opus); see ai/usage-log.md.
+
+  Milestone D2 demo of the User Service and Supplier Service exercised end-to-end through the API Gateway (http://localhost:8080), no UI. Folders 00-07 are ordered as the demo runs; run them top to bottom. Every request has a test asserting the expected status code (and key body fields) and chains tokens/ids through environment variables. Auth is set per-request (Bearer {{adminToken}} or {{clientToken}}) so the acting role is explicit.
+
+  Manual OTP: with OTP_DEV_MODE=true the user-service logs the code (line 'OTP_DEV_MODE active: verification code for ...'). Read it from `docker compose logs user-service`, set the `otpCode` environment variable, then continue folder 01. See postman/README.md for the two newman run modes.
+scripts:
+  - type: http:beforeRequest
+    code: |-
+      // Collection-level pre-request: resolve the acting admin's own user id once
+      // (needed by the self-suspend / self-demotion negative tests) using the saved
+      // adminToken. Runs before every request but only performs the lookup if needed.
+      var adminToken = pm.environment.get('adminToken');
+      if (adminToken && !pm.environment.get('adminUserId')) {
+          pm.sendRequest({
+              url: pm.environment.get('baseUrl') + '/api/users/me',
+              method: 'GET',
+              header: { Authorization: 'Bearer ' + adminToken }
+          }, function (err, res) {
+              if (!err && res && res.code === 200) {
+                  pm.environment.set('adminUserId', res.json().id);
+              }
+          });
+      }
+    language: text/javascript

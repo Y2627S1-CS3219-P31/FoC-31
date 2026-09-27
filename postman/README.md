@@ -12,6 +12,37 @@ through environment variables so the folders run in order.
 - The curl + jq twin of this flow is [`../scripts/demo.sh`](../scripts/demo.sh)
   (numbered blocks 01–07 match the folders one-to-one).
 
+## Per-service reference collections
+
+Alongside the end-to-end D2 demo, `collections/` holds standalone per-service
+API collections (Postman git-sync format: one `.request.yaml` per endpoint):
+
+| Collection | Covers |
+| ---------- | ------ |
+| `FoC User Service API` | Auth (login → token), registration + OTP, profile (`/me`), admin user-management. |
+| `FoC Supplier Service API` | Supplier discovery + admin CRUD (create/update/deactivate/reactivate). |
+| `FoC Credit Service API` | Balance, transaction history, reservation lifecycle (reserve/amend/transfer/release). |
+
+> `order-service` and `notification-service` are not covered yet — their routes
+> are `501 Not Implemented` stubs.
+
+All three go through the gateway (`{​{baseUrl}}/api/...`) and use the same
+**FoC local (D2 demo)** environment.
+
+### Getting a bearer token (do this first)
+
+Every protected request authenticates with a JWT bearer token. Each collection
+starts with a **Login admin** request (`POST /api/users/login`) that asserts
+`token_type: "bearer"` and saves the returned `access_token` into the
+`adminToken` environment variable; subsequent admin requests send
+`Authorization: Bearer {​{adminToken}}`. The User Service collection also has a
+**Login client** request that populates `clientToken` for client-scoped calls
+(requires a registered+verified client — run its registration/OTP folder first).
+
+Because auth is enforced at the gateway (which strips client-supplied
+`X-User-*` headers and re-injects the real role from the JWT), these collections
+use bearer tokens rather than raw `X-User-Role` headers.
+
 ## Collection structure (run top to bottom)
 
 | Folder | Demonstrates |
@@ -67,6 +98,23 @@ docker compose logs user-service | grep "verification code for"
 
 Copy the 6-digit code into the `otpCode` environment variable, then send
 **Verify OTP**.
+
+### View OTP emails locally (Mailpit)
+
+Alternatively, the stack ships a **Mailpit** container (a fake SMTP server that
+captures outgoing mail). With the `.env` configured for it
+(`SMTP_HOST=mailpit`, `SMTP_PORT=1025`, `SMTP_STARTTLS=false`,
+`OTP_DEV_MODE=false`), the user-service *emails* the code instead of logging it:
+
+```
+docker compose up -d mailpit user-service
+# register a user, then open the Mailpit web UI:
+open http://localhost:8025          # the OTP email appears here
+```
+
+Read the 6-digit code from the captured email, set `otpCode`, then send
+**Verify OTP**. No real email leaves your machine and no mail credentials are
+needed.
 
 ## Running with newman
 

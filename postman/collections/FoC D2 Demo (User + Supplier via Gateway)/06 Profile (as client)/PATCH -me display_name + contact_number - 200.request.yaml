@@ -1,0 +1,31 @@
+$kind: http-request
+name: PATCH /me display_name + contact_number -> 200
+description: "D2 User pt3: a client updates its own display_name and contact_number."
+url: "{{baseUrl}}/api/users/me"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "display_name": "Demo Client Updated",
+      "contact_number": "81234567"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt3: update own profile (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('fields updated', function () {
+          pm.expect(b.display_name).to.eql('Demo Client Updated');
+          pm.expect(b.contact_number).to.eql('81234567');
+      });
+    language: text/javascript
+order: 1000

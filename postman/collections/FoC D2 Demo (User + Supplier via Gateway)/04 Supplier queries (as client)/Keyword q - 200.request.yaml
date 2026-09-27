@@ -1,0 +1,19 @@
+$kind: http-request
+name: Keyword q -> 200
+description: "D2 Supplier pt2: case-insensitive keyword search over name + building + location description."
+url: "{{baseUrl}}/api/suppliers?q=coffee"
+method: GET
+queryParams:
+  q: coffee
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: keyword search (200)', function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 5000

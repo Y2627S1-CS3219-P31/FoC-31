@@ -1,0 +1,19 @@
+$kind: collection
+description: |-
+  Credit balances, transaction history, and reservation lifecycle (reserve →
+  amend → transfer / release) for the Friend on Campus (FoC) platform. The API
+  Gateway is the only public entry point and proxies `/api/credits/*` to this
+  service, injecting the trusted `X-User-Id` and `X-User-Role` headers.
+
+  Getting a bearer token: run "01 Auth / Login admin" first — it calls
+  `POST /api/users/login`, asserts `token_type: bearer`, and stores the returned
+  `access_token` in the `adminToken` environment variable. Balance/history are
+  self-or-admin (a caller may only read their own data unless they are admin).
+
+  Prerequisites: a user with a provisioned credit account. Credit accounts are
+  provisioned asynchronously when the user-service publishes `UserRegistered`
+  (after OTP verification), so use a userId that has completed registration
+  (e.g. clientUserId from the User Service collection's Get /me). Bodies are
+  snake_case (`user_id`, `order_id`, `amount`, `courier_id`).
+
+  Use the "FoC local (D2 demo)" environment. See docs/event-catalog.md.

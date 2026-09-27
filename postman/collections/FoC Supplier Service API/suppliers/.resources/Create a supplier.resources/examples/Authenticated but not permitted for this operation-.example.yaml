@@ -1,0 +1,68 @@
+$kind: http-example
+name: Authenticated but not permitted for this operation.
+request:
+  url: "{{baseUrl}}/suppliers"
+  method: POST
+  headers:
+    - key: Content-Type
+      value: application/json
+    - key: Accept
+      value: application/json
+    - key: X-User-Role
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  body:
+    type: json
+    content: |-
+      {
+        "name": "string",
+        "category": "Printing",
+        "building": "string",
+        "floor": "string",
+        "locationDescription": null,
+        "latitude": null,
+        "longitude": -41.72493428359462,
+        "startingTime": "20:46",
+        "closingTime": "20:52",
+        "imageUrl": "string"
+      }
+response:
+  statusCode: 403
+  statusText: Forbidden
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "code": "forbidden",
+        "message": "Admin role required."
+      }
+    $type: |-
+      {
+        "description": "Shared error shape (foc_shared.errors.ErrorEnvelope).",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "validation_error",
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "conflict"
+            ],
+            "description": "Stable machine-readable code."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+order: 3000

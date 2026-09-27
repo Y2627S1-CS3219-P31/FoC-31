@@ -1,0 +1,24 @@
+$kind: http-request
+name: Resend OTP -> 200
+description: "D2 User pt1: resend endpoint always returns the same generic 200 (already-verified/unknown/unverified) to prevent email enumeration. Shown here after verification."
+url: "{{baseUrl}}/api/users/otp/resend"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{{clientEmail}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt1: resend OTP is a generic 200', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('returns a message', function () {
+          pm.expect(pm.response.json()).to.have.property('message');
+      });
+    language: text/javascript
+order: 3000

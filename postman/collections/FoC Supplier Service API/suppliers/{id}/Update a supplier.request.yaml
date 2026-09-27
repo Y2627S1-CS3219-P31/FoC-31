@@ -1,0 +1,119 @@
+$kind: http-request
+description: Admin-only update of name, category, or campus location and other editable fields (F1.2). Category updates use the same validation as creation (F1.2.1).
+url: "{{baseUrl}}/api/suppliers/:id"
+method: PATCH
+headers:
+  Content-Type: application/json
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Supplier identifier.
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: json
+  content: |-
+    {
+      "name": "string",
+      "category": "Shopping",
+      "building": "string",
+      "floor": "string",
+      "locationDescription": null,
+      "latitude": null,
+      "longitude": null,
+      "startingTime": "23:45",
+      "closingTime": "03:27",
+      "imageUrl": null
+    }
+  $type: |-
+    {
+      "description": "Any subset of editable fields (F1.2).",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Food",
+            "Food/Coffee",
+            "Shopping",
+            "Printing"
+          ],
+          "description": "Predefined supplier category (F1.1.2). These four values are canonical and match the seed dataset's Type column exactly."
+        },
+        "building": {
+          "type": "string",
+          "minLength": 1
+        },
+        "floor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locationDescription": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "startingTime": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "closingTime": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "imageUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+settings: {}
+examples: ./.resources/Update a supplier.resources/examples
+order: 2000

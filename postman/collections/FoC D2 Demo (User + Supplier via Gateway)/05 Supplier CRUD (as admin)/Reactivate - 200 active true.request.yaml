@@ -1,0 +1,20 @@
+$kind: http-request
+name: Reactivate -> 200 active true
+description: "D2 Supplier pt1 (discovered endpoint): reactivate undoes deactivation and returns the supplier to the active catalog (active == true)."
+url: "{{baseUrl}}/api/suppliers/{{supplierId}}/reactivate"
+method: POST
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt1: reactivate (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('active == true', function () {
+          pm.expect(pm.response.json().active).to.eql(true);
+      });
+    language: text/javascript
+order: 11000

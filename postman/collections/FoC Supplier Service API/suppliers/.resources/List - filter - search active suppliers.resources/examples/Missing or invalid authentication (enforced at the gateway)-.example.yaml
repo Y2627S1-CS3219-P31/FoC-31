@@ -1,0 +1,83 @@
+$kind: http-example
+name: Missing or invalid authentication (enforced at the gateway).
+request:
+  url: "{{baseUrl}}/suppliers?category=Food&zone=string&q=string&page=1&page_size=20&sort=name&order=asc&include_inactive=false"
+  method: GET
+  headers:
+    Accept: application/json
+  queryParams:
+    - key: category
+      value: Food
+      disabled: false
+      description: Filter by one or more categories (F2.1.1).
+    - key: zone
+      value: string
+      disabled: false
+      description: Filter by campus zone/location (F2.1.2).
+    - key: q
+      value: string
+      disabled: false
+      description: Case-insensitive keyword search over name + location (F2.2).
+    - key: page
+      value: "1"
+      disabled: false
+      description: ""
+    - key: page_size
+      value: "20"
+      disabled: false
+      description: ""
+    - key: sort
+      value: name
+      disabled: false
+      description: Field to sort by (server-side, over the whole result set).
+    - key: order
+      value: asc
+      disabled: false
+      description: Sort direction.
+    - key: include_inactive
+      value: "false"
+      disabled: false
+      description: Admin only. When true, deactivated suppliers are included in the results. Ignored (treated as false) for client callers.
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 401
+  statusText: Unauthorized
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "code": "unauthorized",
+        "message": "Authentication required."
+      }
+    $type: |-
+      {
+        "description": "Shared error shape (foc_shared.errors.ErrorEnvelope).",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "validation_error",
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "conflict"
+            ],
+            "description": "Stable machine-readable code."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+order: 3000

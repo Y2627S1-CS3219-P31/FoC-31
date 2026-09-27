@@ -1,0 +1,33 @@
+$kind: http-request
+description: Admin-only soft delete (F1.3). The record remains retrievable (F1.3.1) and is excluded from active discovery (F1.4), but is preserved for historical orders (N4). Intended to trigger the order-cancellation cascade in a later sprint (see event-catalog.md).
+url: "{{baseUrl}}/api/suppliers/:id/deactivate"
+method: POST
+headers:
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Supplier identifier.
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: text
+  content: ""
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+settings: {}
+examples: ./.resources/Deactivate a supplier.resources/examples
+order: 1000

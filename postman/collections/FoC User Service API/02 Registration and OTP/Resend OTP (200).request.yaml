@@ -1,0 +1,21 @@
+$kind: http-request
+name: Resend OTP -> 200
+description: "Reissue the email-verification OTP for clientEmail. Always returns a generic 200 (even for unknown/verified emails) so it does not leak account existence. Subject to a resend cooldown (429)."
+url: "{​{baseUrl}}/api/users/otp/resend"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{​{clientEmail}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('resend OTP is a generic 200', function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 1200

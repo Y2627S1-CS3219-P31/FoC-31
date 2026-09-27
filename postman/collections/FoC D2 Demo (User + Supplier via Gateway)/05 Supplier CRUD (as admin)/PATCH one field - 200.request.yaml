@@ -1,0 +1,31 @@
+$kind: http-request
+name: PATCH one field -> 200
+description: "D2 Supplier pt1: partial update changes only the supplied field (floor); name/category are untouched."
+url: "{{baseUrl}}/api/suppliers/{{supplierId}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "floor": "5"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt1: patch one field (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('only floor changed', function () {
+          pm.expect(b.floor).to.eql('5');
+          pm.expect(b.name).to.eql(pm.environment.get('createdSupplierName'));
+          pm.expect(b.category).to.eql('Printing');
+      });
+    language: text/javascript
+order: 5000

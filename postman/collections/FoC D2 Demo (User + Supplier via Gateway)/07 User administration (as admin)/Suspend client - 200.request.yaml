@@ -1,0 +1,20 @@
+$kind: http-request
+name: Suspend client -> 200
+description: "D2 User pt4: admin suspends the demo client (using clientUserId saved earlier)."
+url: "{{baseUrl}}/api/users/admin/{{clientUserId}}/suspend"
+method: POST
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt4: suspend client (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('is_suspended == true', function () {
+          pm.expect(pm.response.json().is_suspended).to.eql(true);
+      });
+    language: text/javascript
+order: 2000
