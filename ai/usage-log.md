@@ -293,3 +293,40 @@ Format for each entry:
   Incorporated PR #7 review feedback (dead-lettering invalid events,
   idempotent reserve retries, fixed lock ordering, history amounts summing
   to balances, releasing the row lock before publishing).
+
+---
+
+## 27/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Opus)
+- Scope: D2 demo tooling only — no product/business logic and no service-code
+  changes. Generated a Postman v2.1 collection
+  (`postman/FoC-D2.postman_collection.json`) and matching local environment
+  (`postman/FoC-local.postman_environment.json`) that exercise the User Service
+  and Supplier Service end-to-end through the API Gateway (health, registration
+  + OTP verify/resend, authentication, RBAC evidence incl. gateway header-strip,
+  supplier discovery/CRUD, profile self-update, and user administration incl.
+  suspend/role-change), each request asserting the status code and key body
+  fields and chaining tokens/ids via environment variables; a curl + jq twin
+  (`scripts/demo.sh`, numbered 01–07 to match the folders, non-aborting, with
+  per-step pauses and dev-mode OTP auto-extraction); and `postman/README.md`
+  (import, prerequisites, and two newman run modes). Every endpoint, field name
+  (snake_case for user, camelCase for supplier), and expected status code was
+  derived from the service code, not invented. The tool surfaced one docs-vs-code
+  mismatch (see review) and left the test asserting the code's actual behavior.
+- Prompt(s):
+  1. "Create a Postman collection and a matching shell script to demo Milestone
+     D2 (User Service + Supplier Service) through the API gateway, without the
+     UI." (+ detailed folder/step spec and 'derive every request from the code'.)
+  2. Answered clarifying questions: match the current `.env` bootstrap admin
+     exactly in the environment file, and follow the code (assert lowercase
+     `role`) over the user-service `api-contract.md` which shows uppercase.
+- Author review: Validated both JSON files parse (`python -m json.tool`).
+  Brought the full stack up with `docker compose up --build -d` (OTP_DEV_MODE
+  and BOOTSTRAP_ADMIN_* set), waited for gateway `/health`, ran `scripts/demo.sh`
+  (all steps returned the expected codes), and ran `newman` in the CI-ish mode
+  against a freshly verified client: **62/62 assertions passed, 0 failures**.
+  Docs-vs-code mismatch found and reported (not fixed here): user-service
+  `docs/api-contract.md` documents `role` as uppercase `CLIENT`/`ADMIN`, but the
+  service serializes the enum value lowercase (`client`/`admin`); the collection
+  asserts the code's actual lowercase output. No service code was modified.
