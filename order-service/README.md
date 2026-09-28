@@ -1,3 +1,5 @@
+<!-- AI-influenced: updated with Codex; see ai/usage-log.md. -->
+
 # order-service
 
 Manages the complete **lifecycle of an errand request** — creation, listing,
@@ -30,7 +32,7 @@ app/
 ├── main.py
 ├── config.py
 ├── db.py
-├── api/routes/        # health, orders (stubs)
+├── api/routes/        # health and order HTTP endpoints
 ├── services/          # lifecycle.py (state machine), events.py (publisher)
 ├── models/  schemas/  repositories/   # stubs
 ```
@@ -44,4 +46,12 @@ make test-order-service
 
 Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
-> Status: **scaffold**. Endpoints return `501 Not Implemented` until built.
+Implemented first-slice endpoints: create with Supplier Service validation and
+Credit Service reservation, requester-owned order listing, requester detail
+lookup, and deletion of requester-owned `OPEN` orders. The supplied Credit
+Service currently returns `501 Not Implemented`; while that dependency remains
+a scaffold, order creation fails safely with `503 Service Unavailable` and no
+order is committed.
+
+Remaining lifecycle actions (accept, pickup, delivery, completion,
+cancellation events, and expiry sweeper) are still pending.
