@@ -1,4 +1,4 @@
-# AI-influenced: implemented with Codex; see ai/usage-log.md.
+# AI-INFLUENCED: Sprint 1 order repository queries implemented with Codex.
 from __future__ import annotations
 
 from datetime import datetime
@@ -6,33 +6,40 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.orders import Order
+from app.models.orders import OrderTable
 from app.schemas.orders import OrderCreate
+from app.services.lifecycle import OrderStatus
 
 
-async def stage_order(
+async def create_order(
     session: AsyncSession,
-    order_data: OrderCreate,
+    new_order: OrderCreate,
     requester_id: str,
-    status: str,
-) -> Order:
-    database_order = Order(
-        **order_data.model_dump(),
+    order_id: str,
+    reservation_id: str,
+) -> OrderTable:
+    # Make the order object
+    order = OrderTable(
+        order_id=order_id,
+        name=new_order.name,
+        details=new_order.details,
+        reward=new_order.reward,
+        deadline=new_order.deadline,
+        supplier_id=new_order.supplier_id,
         requester_id=requester_id,
-        status=status,
+        reservation_id=reservation_id,
+        pickup_location=new_order.pickup_location,
+        delivery_location=new_order.delivery_location,
+        status=OrderStatus.OPEN,
     )
 
-    session.add(database_order)
+    # Session operations
+    session.add(order)
     await session.flush()
-    return database_order
+    await session.refresh(order)
 
-
-async def commit_order(session: AsyncSession) -> None:
-    await session.commit()
-
-
-async def get_order(session: AsyncSession, order_id: int) -> Order | None:
-    return await session.get(Order, order_id)
+    # Return the inserted row
+    return order
 
 
 async def list_available_orders(

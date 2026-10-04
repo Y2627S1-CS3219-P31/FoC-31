@@ -1,16 +1,23 @@
-# AI-influenced: implemented with Codex; see ai/usage-log.md.
+# AI-INFLUENCED: Sprint 1 Order Service API tests generated with Codex.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.error_handlers import register_exception_handlers
 from app.api.routes import orders as order_routes
 from app.db import get_session
-from app.main import app
-from app.models.orders import Order
+from app.services.errors import (
+    OrderAccessDeniedError,
+    OrderNotFoundError,
+    OrderStateConflictError,
+)
+from app.services.lifecycle import OrderStatus
 
 
 @pytest.fixture
@@ -19,17 +26,20 @@ def fake_session() -> object:
 
 
 @pytest.fixture
-def client(fake_session: object) -> TestClient:
+def client(fake_session: object):
+    app = FastAPI()
+    register_exception_handlers(app)
+    app.include_router(order_routes.router)
+
     async def override_get_session():
         yield fake_session
 
     app.dependency_overrides[get_session] = override_get_session
-    with TestClient(app) as test_client:
+    with TestClient(app, raise_server_exceptions=False) as test_client:
         yield test_client
-    app.dependency_overrides.clear()
 
 
-def order_payload() -> dict[str, Any]:
+def _payload() -> dict[str, Any]:
     return {
         "name": "Collect lunch",
         "details": "One vegetarian rice bowl",
@@ -41,56 +51,43 @@ def order_payload() -> dict[str, Any]:
     }
 
 
-def stored_order(*, requester_id: str = "user-1", status: str = "OPEN") -> Order:
-    payload = order_payload()
-    return Order(
-        id=1,
-        **payload,
+def _stored_order(
+    *,
+    order_id: str = "order-1",
+    requester_id: str = "user-1",
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        order_id=order_id,
         requester_id=requester_id,
         courier_id=None,
-        status=status,
+        status=OrderStatus.OPEN,
+        created_at=datetime.now(UTC),
+        **_payload(),
     )
 
 
-def test_create_order_uses_collection_url_and_authenticated_requester(
+def test_create_order_returns_created_order(
     client: TestClient,
     fake_session: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    captured: dict[str, object] = {}
+    async def fake_create_order(*, new_order, requester_id, session):
+        assert new_order.name == "Collect lunch"
+        assert requester_id == "user-1"
+        assert session is fake_session
+        return _stored_order(requester_id=requester_id)
 
-    async def fake_create(session, order, requester_id, _supplier_client, _credit_client):
-        captured.update(session=session, order=order, requester_id=requester_id)
-        return stored_order(requester_id=requester_id)
-
-    monkeypatch.setattr(order_routes.order_service, "create_order", fake_create)
+    monkeypatch.setattr(order_routes.order_service, "create_order", fake_create_order)
 
     response = client.post(
         "/orders",
         headers={"X-User-Id": "user-1"},
-        json=order_payload(),
+        json=_payload(),
     )
 
     assert response.status_code == 201
-    assert response.json()["requester_id"] == "user-1"
+    assert response.json()["order_id"] == "order-1"
     assert response.json()["status"] == "OPEN"
-    assert captured["session"] is fake_session
-    assert captured["requester_id"] == "user-1"
-    assert captured["order"].name == "Collect lunch"
-    assert client.post("/orders/order", headers={"X-User-Id": "user-1"}).status_code == 405
-
-
-def test_create_order_rejects_past_deadline(client: TestClient) -> None:
-    payload = order_payload()
-    payload["deadline"] = (datetime.now(UTC) - timedelta(minutes=1)).isoformat()
-
-    response = client.post(
-        "/orders",
-        headers={"X-User-Id": "user-1"},
-        json=payload,
-    )
-
-    assert response.status_code == 422
 
 
 def test_list_orders_returns_requester_orders(

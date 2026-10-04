@@ -1,35 +1,51 @@
-# AI-influenced: implemented with Codex; see ai/usage-log.md.
+# AI-INFLUENCED: Sprint 1 Order Service workflow tests generated with Codex.
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import AsyncMock
+from types import SimpleNamespace
+from unittest.mock import ANY, AsyncMock
 
 import pytest
+from sqlalchemy.exc import SQLAlchemyError
 
-from app.clients import credits as credit_client_module
-from app.clients.suppliers import SupplierRecord
-from app.models.orders import Order
 from app.services import orders as order_service
+from app.services.errors import (
+    OrderAccessDeniedError,
+    OrderDeletionError,
+    OrderNotFoundError,
+    OrderPersistenceError,
+    OrderRetrievalError,
+    OrderStateConflictError,
+)
+from app.services.lifecycle import OrderStatus
 
 
-def make_order(
+class _Transaction:
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, _exc_type, _exc, _traceback):
+        return False
+
+
+class _Session:
+    def begin(self) -> _Transaction:
+        return _Transaction()
+
+
+def _order(
     *,
     requester_id: str = "user-1",
     courier_id: str | None = None,
-    status: str = "OPEN",
-) -> Order:
-    return Order(
-        id=1,
-        name="Collect lunch",
-        details="One vegetarian rice bowl",
-        reward=5,
-        deadline=datetime.now(UTC) + timedelta(hours=2),
-        supplier_id="sup_001",
-        pickup_location="The Deck",
-        delivery_location="COM3",
+    status: OrderStatus = OrderStatus.OPEN,
+) -> SimpleNamespace:
+    return SimpleNamespace(
+        order_id="order-1",
         requester_id=requester_id,
         courier_id=courier_id,
+        reservation_id="reservation-1",
         status=status,
+        deadline=datetime.now(UTC) + timedelta(hours=2),
     )
 
 

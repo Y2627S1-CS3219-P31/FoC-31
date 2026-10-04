@@ -1,4 +1,4 @@
-# AI-influenced: implemented with Codex; see ai/usage-log.md.
+# AI-INFLUENCED: Sprint 1 order schemas and validation implemented with Codex.
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -6,7 +6,13 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
-NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+from app.services.lifecycle import OrderStatus
+
+
+NonEmptyString = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1),
+]
 
 
 class OrderCreate(BaseModel):
@@ -20,7 +26,7 @@ class OrderCreate(BaseModel):
 
     @field_validator("deadline")
     @classmethod
-    def deadline_must_be_future(cls, deadline: datetime) -> datetime:
+    def deadline_must_be_in_the_future(cls, deadline: datetime) -> datetime:
         if deadline.tzinfo is None or deadline.utcoffset() is None:
             raise ValueError("deadline must include a timezone")
         if deadline <= datetime.now(UTC):
@@ -31,14 +37,15 @@ class OrderCreate(BaseModel):
 class OrderResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    order_id: str
     name: str
     details: str
     reward: int
     deadline: datetime
     supplier_id: str
-    pickup_location: str
-    delivery_location: str
     requester_id: str
     courier_id: str | None
-    status: str
+    pickup_location: str
+    delivery_location: str
+    status: OrderStatus
+    created_at: datetime

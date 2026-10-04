@@ -1,95 +1,74 @@
-# AI-influenced: implemented with Codex; see ai/usage-log.md.
+# AI-INFLUENCED: Sprint 1 Order Service workflows implemented with Codex.
 from __future__ import annotations
 
+from uuid import uuid4
+
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients import credits as credit_client_module
-from app.clients import suppliers as supplier_client_module
-from app.clients.credits import CreditClient
-from app.clients.suppliers import SupplierClient
-from app.models.orders import Order
+from app.models.orders import OrderTable
 from app.repositories import orders as order_repository
 from app.schemas.orders import OrderCreate
+from app.services.clients.credit.error import CreditClientError
+from app.services.clients.credit.release_credits import release_credits
+from app.services.clients.credit.reserve_credits import reserve_credits
+from app.services.clients.errors import RemoteServiceError
+from app.services.clients.supplier.error import SupplierInactiveError
+from app.services.clients.supplier.get_supplier import get_supplier
+from app.services.errors import (
+    OrderAccessDeniedError,
+    OrderDeletionError,
+    OrderNotFoundError,
+    OrderPersistenceError,
+    OrderRetrievalError,
+    OrderStateConflictError,
+)
 from app.services.lifecycle import OrderStatus
 
 
-class OrderNotFoundError(Exception):
-    def __init__(self, order_id: int) -> None:
-        self.order_id = order_id
-        super().__init__(f"Order '{order_id}' was not found.")
-
-
-class OrderAccessDeniedError(Exception):
-    def __init__(self, order_id: int) -> None:
-        self.order_id = order_id
-        super().__init__(f"You do not have permission to access order '{order_id}'.")
-
-
-class OrderStateConflictError(Exception):
-    def __init__(self, order_id: int, message: str) -> None:
-        self.order_id = order_id
-        super().__init__(message)
-
-
-class SupplierNotFoundError(Exception):
-    pass
-
-
-class SupplierInactiveError(Exception):
-    pass
-
-
-class DependencyUnavailableError(Exception):
-    def __init__(self, dependency: str, message: str) -> None:
-        self.dependency = dependency
-        super().__init__(message)
-
-
-class CreditReservationError(Exception):
-    pass
-
-
 async def create_order(
-    session: AsyncSession,
-    order_data: OrderCreate,
+    new_order: OrderCreate,
     requester_id: str,
-    supplier_client: SupplierClient,
-    credit_client: CreditClient,
-) -> Order:
-    try:
-        supplier = await supplier_client.get_supplier(order_data.supplier_id)
-    except supplier_client_module.SupplierNotFoundError as error:
-        raise SupplierNotFoundError(str(error)) from error
-    except supplier_client_module.SupplierServiceUnavailableError as error:
-        raise DependencyUnavailableError("supplier", str(error)) from error
+    session: AsyncSession,
+) -> OrderTable:
+    # Get the supplier
+    supplier_id = new_order.supplier_id
+    supplier = await get_supplier(supplier_id)
 
+    # Handle inactive supplier
     if not supplier.active:
-        raise SupplierInactiveError(f"Supplier '{order_data.supplier_id}' is deactivated.")
+        raise SupplierInactiveError(supplier_id)
 
+    # Generate the order id
+    order_id = str(uuid4())
+
+    # Reserve credits
+    reward = new_order.reward
+    reservation = await reserve_credits(
+        reward,
+        requester_id,
+        order_id,
+    )
+
+    # Start and commit the session
     try:
-        database_order = await order_repository.stage_order(
-            session,
-            order_data,
-            requester_id,
-            OrderStatus.OPEN.value,
-        )
-        await credit_client.reserve(
-            order_id=database_order.id,
+        async with session.begin():
+            # Call the repository action
+            created_order = await order_repository.create_order(
+                session,
+                new_order,
+                requester_id,
+                order_id,
+                reservation.id,
+            )
+    except SQLAlchemyError as exc:
+        await release_credits(
+            reservation_id=reservation.id,
             requester_id=requester_id,
-            amount=order_data.reward,
         )
-        await order_repository.commit_order(session)
-    except credit_client_module.CreditReservationRejectedError as error:
-        await session.rollback()
-        raise CreditReservationError(str(error)) from error
-    except credit_client_module.CreditServiceUnavailableError as error:
-        await session.rollback()
-        raise DependencyUnavailableError("credit", str(error)) from error
-    except Exception:
-        await session.rollback()
-        raise
+        raise OrderPersistenceError(order_id) from exc
 
-    return database_order
+    return created_order
 
 
 async def list_requester_orders(session: AsyncSession, requester_id: str) -> list[Order]:

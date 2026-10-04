@@ -1,27 +1,17 @@
-# AI-influenced: implemented with Codex; see ai/usage-log.md.
+# AI-INFLUENCED: Sprint 1 Order Service routes implemented with Codex.
 from __future__ import annotations
 
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Response, status
-from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.dependencies import get_credit_client, get_supplier_client
-from app.clients.credits import CreditClient
-from app.clients.suppliers import SupplierClient
 from app.db import get_session
 from app.schemas.orders import OrderCreate, OrderResponse
 from app.services import orders as order_service
 from foc_shared.auth import HEADER_USER_ID
-from foc_shared.errors import ErrorEnvelope
 
 router = APIRouter(prefix="/orders", tags=["orders"])
-
-
-def error_response(status_code: int, code: str, message: str) -> JSONResponse:
-    error = ErrorEnvelope(code=code, message=message)
-    return JSONResponse(status_code=status_code, content=error.model_dump())
 
 
 @router.post(
@@ -30,36 +20,15 @@ def error_response(status_code: int, code: str, message: str) -> JSONResponse:
     status_code=status.HTTP_201_CREATED,
 )
 async def create_order(
-    order: OrderCreate,
+    new_order: OrderCreate,
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
-    supplier_client: Annotated[SupplierClient, Depends(get_supplier_client)],
-    credit_client: Annotated[CreditClient, Depends(get_credit_client)],
-) -> OrderResponse | JSONResponse:
-    try:
-        return await order_service.create_order(
-            session,
-            order,
-            requester_id,
-            supplier_client,
-            credit_client,
-        )
-    except order_service.SupplierNotFoundError as error:
-        return error_response(
-            status.HTTP_422_UNPROCESSABLE_CONTENT,
-            "supplier_not_found",
-            str(error),
-        )
-    except order_service.SupplierInactiveError as error:
-        return error_response(status.HTTP_409_CONFLICT, "supplier_inactive", str(error))
-    except order_service.CreditReservationError as error:
-        return error_response(status.HTTP_409_CONFLICT, "credit_reservation_failed", str(error))
-    except order_service.DependencyUnavailableError as error:
-        return error_response(
-            status.HTTP_503_SERVICE_UNAVAILABLE,
-            f"{error.dependency}_service_unavailable",
-            str(error),
-        )
+) -> OrderResponse:
+    return await order_service.create_order(
+        new_order=new_order,
+        requester_id=requester_id,
+        session=session,
+    )
 
 
 @router.get("", response_model=list[OrderResponse])
