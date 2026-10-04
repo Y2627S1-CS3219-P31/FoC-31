@@ -1,18 +1,20 @@
 # AI-INFLUENCED: Sprint 1 order persistence fields implemented with Codex.
 from datetime import datetime
 
-from app.db import Base
-from app.services.lifecycle import OrderStatus
-
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
-    Enum as SqlEnum,
     Integer,
     String,
     func,
 )
+from sqlalchemy import (
+    Enum as SqlEnum,
+)
 from sqlalchemy.orm import Mapped, mapped_column
+
+from app.db import Base
+from app.services.lifecycle import OrderStatus
 
 
 class OrderTable(Base):

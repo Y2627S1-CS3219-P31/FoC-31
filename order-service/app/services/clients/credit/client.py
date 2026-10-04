@@ -1,13 +1,15 @@
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 from app.services.clients.client import JsonServiceClient
-from app.services.clients.transport import JsonHttpTransport
-from app.services.clients.credit.schemas import ReservationDetails
 from app.services.clients.credit.error import (
     CreditAccountNotFoundError,
     InsufficientCreditsError,
     ReservationConflictError,
     ReservationForbiddenError,
-    ReservationNotFoundError
+    ReservationNotFoundError,
 )
+from app.services.clients.credit.schemas import ReservationDetails
+from app.services.clients.transport import JsonHttpTransport
+
 
 class CreditClient(JsonServiceClient):
     def __init__(

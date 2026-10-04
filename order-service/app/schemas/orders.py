@@ -8,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from app.services.lifecycle import OrderStatus
 
-
 NonEmptyString = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1),

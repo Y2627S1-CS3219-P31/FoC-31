@@ -1,5 +1,7 @@
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
+
 
 class SupplierDetails(BaseModel):
     model_config = ConfigDict(

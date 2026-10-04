@@ -1,12 +1,14 @@
-import httpx
-
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 from dataclasses import dataclass
 from typing import Any
 
+import httpx
+
 from app.services.clients.errors import (
-     RemoteServiceUnavailableError,
-     RemoteServiceContractError,
+    RemoteServiceContractError,
+    RemoteServiceUnavailableError,
 )
+
 
 @dataclass(frozen=True)
 class JsonResponse:

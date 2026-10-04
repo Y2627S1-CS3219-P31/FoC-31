@@ -13,8 +13,8 @@ from app.services.clients.credit.error import (
     CreditAccountNotFoundError,
     CreditServiceUnavailableError,
     InsufficientCreditsError,
-    ReservationForbiddenError,
     ReservationConflictError,
+    ReservationForbiddenError,
     ReservationNotFoundError,
 )
 from app.services.clients.errors import (

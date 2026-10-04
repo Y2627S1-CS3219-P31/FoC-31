@@ -1,13 +1,12 @@
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 from collections.abc import Mapping
-from pydantic import BaseModel, ValidationError
 from typing import Any, TypeVar
 
-from foc_shared.errors import ErrorEnvelope
-from app.services.clients.errors import (
-    RemoteServiceContractError,
-    UnexpectedRemoteResponseError
-)
+from pydantic import BaseModel, ValidationError
+
+from app.services.clients.errors import RemoteServiceContractError, UnexpectedRemoteResponseError
 from app.services.clients.transport import JsonHttpTransport
+from foc_shared.errors import ErrorEnvelope
 
 # TypeVar is used for more specific typing of _request_model 
 # return type
@@ -16,7 +15,7 @@ ResponseModel = TypeVar("ResponseModel", bound=BaseModel)
 # Type alias for an error mapping
 ErrorMap = Mapping[tuple[int, str], type[Exception]]
 
-class JsonServiceClient():
+class JsonServiceClient:
     """Reusable contract validation with specific error mappings """
 
     def __init__(
@@ -69,7 +68,7 @@ class JsonServiceClient():
             raise RemoteServiceContractError(
                 f"{self._service_name} returned an invalid "
                 f"error envelope."
-            )
+            ) from exc
 
         # Get the correct exception type based on the status code and error code
         exception_type = (endpoint_errors or {}).get(

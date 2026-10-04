@@ -1,8 +1,9 @@
-
-from app.services.clients.transport import JsonHttpTransport
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 from app.services.clients.client import JsonServiceClient
-from app.services.clients.supplier.schemas import SupplierDetails
 from app.services.clients.supplier.error import SupplierNotFoundError
+from app.services.clients.supplier.schemas import SupplierDetails
+from app.services.clients.transport import JsonHttpTransport
+
 
 class SupplierClient(JsonServiceClient):
     def __init__(

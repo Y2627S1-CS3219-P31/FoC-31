@@ -1,4 +1,6 @@
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 from app.services.client_manager import get_credit_client
+
 
 async def release_credits(
     reservation_id: str,

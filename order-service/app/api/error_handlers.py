@@ -8,15 +8,14 @@ from http import HTTPStatus
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError, ResponseValidationError
 from fastapi.responses import JSONResponse
-from foc_shared.errors import ErrorEnvelope
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.services.clients.credit.error import (
     CreditAccountNotFoundError,
     CreditServiceUnavailableError,
     InsufficientCreditsError,
-    ReservationForbiddenError,
     ReservationConflictError,
+    ReservationForbiddenError,
     ReservationNotFoundError,
 )
 from app.services.clients.errors import (
@@ -39,6 +38,7 @@ from app.services.errors import (
     OrderRetrievalError,
     OrderStateConflictError,
 )
+from foc_shared.errors import ErrorEnvelope
 
 logger = logging.getLogger(__name__)
 

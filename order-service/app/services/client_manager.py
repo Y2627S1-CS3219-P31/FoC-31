@@ -1,12 +1,13 @@
+# AI-INFLUENCED: CI lint fixes applied with Codex; see ai/usage-log.md.
 import httpx
-import os
 
-from app.services.clients.supplier.client import SupplierClient
+from app.config import settings
 from app.services.clients.credit.client import CreditClient
+from app.services.clients.supplier.client import SupplierClient
 from app.services.clients.transport import JsonHttpTransport
 
-supplier_base_url = os.environ["SUPPLIER_SERVICE_URL"]
-credit_base_url = os.environ["CREDIT_SERVICE_URL"]
+supplier_base_url = settings.supplier_service_url
+credit_base_url = settings.credit_service_url
 
 _http_client: httpx.AsyncClient | None = None
 _supplier_client: SupplierClient | None = None
