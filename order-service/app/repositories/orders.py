@@ -57,13 +57,11 @@ async def list_available_orders(
     return list(result.all())
 
 
-async def list_orders_for_requester(
+async def get_order(
     session: AsyncSession,
-    requester_id: str,
-) -> list[Order]:
-    statement = select(Order).where(Order.requester_id == requester_id).order_by(Order.id.asc())
-    result = await session.scalars(statement)
-    return list(result.all())
+    order_id: str,
+) -> OrderTable | None:
+    return await session.get(OrderTable, order_id)
 
 
 async def delete_order(session: AsyncSession, order: Order) -> None:

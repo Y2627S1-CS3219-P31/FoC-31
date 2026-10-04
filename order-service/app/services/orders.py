@@ -83,10 +83,14 @@ async def list_available_orders(
 
 async def get_order_for_requester(
     session: AsyncSession,
-    order_id: int,
+    order_id: str,
     requester_id: str,
-) -> Order:
-    order = await order_repository.get_order(session, order_id)
+) -> OrderTable:
+    try:
+        order = await order_repository.get_order(session, order_id)
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError(order_id) from exc
+
     if order is None:
         raise OrderNotFoundError(order_id)
     if order.requester_id != requester_id:

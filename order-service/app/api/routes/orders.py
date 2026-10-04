@@ -41,16 +41,15 @@ async def list_orders(
 
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
-    order_id: int,
+    order_id: str,
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
-) -> OrderResponse | JSONResponse:
-    try:
-        return await order_service.get_order_for_requester(session, order_id, requester_id)
-    except order_service.OrderNotFoundError as error:
-        return error_response(status.HTTP_404_NOT_FOUND, "not_found", str(error))
-    except order_service.OrderAccessDeniedError as error:
-        return error_response(status.HTTP_403_FORBIDDEN, "forbidden", str(error))
+) -> OrderResponse:
+    return await order_service.get_order_for_requester(
+        session,
+        order_id,
+        requester_id,
+    )
 
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
