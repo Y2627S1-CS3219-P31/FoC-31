@@ -85,3 +85,16 @@ Format for each entry:
   documentation against the FastAPI routes, Pydantic schemas, service and
   repository workflows, dependency clients, centralized error mappings, and
   API Gateway route table. No commit was created.
+
+## 04/10/2026 — Project contributor
+
+- Tool: Codex (model: GPT-5)
+- Scope: Reset the Order Service's Alembic revision history while preserving
+  the Alembic configuration, migration environment, template, and dependency.
+  The migration strategy decision and requested clean revision state were
+  supplied by the contributor.
+- Prompt(s): "keep alembic but remove migrations and currently stored
+  versioning. I want it to be clean."
+- Author review: Pending contributor review. Codex restored the Alembic
+  scaffold and dependency, removed only the two tracked revision files, kept
+  the versions directory, and did not modify a live database.
