@@ -54,16 +54,13 @@ async def get_order(
 
 @router.delete("/{order_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_order(
-    order_id: int,
+    order_id: str,
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> Response:
-    try:
-        await order_service.delete_order_for_requester(session, order_id, requester_id)
-    except order_service.OrderNotFoundError as error:
-        return error_response(status.HTTP_404_NOT_FOUND, "not_found", str(error))
-    except order_service.OrderAccessDeniedError as error:
-        return error_response(status.HTTP_403_FORBIDDEN, "forbidden", str(error))
-    except order_service.OrderStateConflictError as error:
-        return error_response(status.HTTP_409_CONFLICT, "invalid_order_state", str(error))
+    await order_service.delete_order_for_requester(
+        session,
+        order_id,
+        requester_id,
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

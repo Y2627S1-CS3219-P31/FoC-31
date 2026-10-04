@@ -64,10 +64,21 @@ async def get_order(
     return await session.get(OrderTable, order_id)
 
 
-async def delete_order(session: AsyncSession, order: Order) -> None:
+async def get_order_for_update(
+    session: AsyncSession,
+    order_id: str,
+) -> OrderTable | None:
+    statement = (
+        select(OrderTable)
+        .where(OrderTable.order_id == order_id)
+        .with_for_update()
+    )
+    return await session.scalar(statement)
+
+
+async def delete_order(
+    session: AsyncSession,
+    order: OrderTable,
+) -> None:
     await session.delete(order)
-    try:
-        await session.commit()
-    except Exception:
-        await session.rollback()
-        raise
+    await session.flush()

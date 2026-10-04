@@ -100,18 +100,36 @@ async def get_order_for_requester(
 
 async def delete_order_for_requester(
     session: AsyncSession,
-    order_id: int,
+    order_id: str,
     requester_id: str,
 ) -> None:
-    order = await get_order_for_requester(session, order_id, requester_id)
-    if order.status != OrderStatus.OPEN.value:
-        raise OrderStateConflictError(
-            order_id,
-            f"Order '{order_id}' can only be deleted while its status is 'OPEN'.",
-        )
-    if order.courier_id is not None:
-        raise OrderStateConflictError(
-            order_id,
-            "An order with an assigned courier cannot be deleted.",
-        )
-    await order_repository.delete_order(session, order)
+    try:
+        async with session.begin():
+            order = await order_repository.get_order_for_update(session, order_id)
+            if order is None:
+                raise OrderNotFoundError(order_id)
+            if order.requester_id != requester_id:
+                raise OrderAccessDeniedError(order_id)
+
+            status = OrderStatus(order.status)
+            if status != OrderStatus.OPEN or order.courier_id is not None:
+                raise OrderStateConflictError(
+                    order_id,
+                    "Only an open order without an assigned courier can be deleted.",
+                )
+
+            await release_credits(
+                reservation_id=order.reservation_id,
+                requester_id=requester_id,
+            )
+            await order_repository.delete_order(session, order)
+    except (
+        CreditClientError,
+        OrderAccessDeniedError,
+        OrderNotFoundError,
+        OrderStateConflictError,
+        RemoteServiceError,
+    ):
+        raise
+    except SQLAlchemyError as exc:
+        raise OrderDeletionError(order_id) from exc
