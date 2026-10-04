@@ -36,7 +36,7 @@ async def list_orders(
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> list[OrderResponse]:
-    return await order_service.list_requester_orders(session, requester_id)
+    return await order_service.list_available_orders(session, requester_id)
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

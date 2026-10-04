@@ -1,8 +1,6 @@
 # AI-INFLUENCED: Sprint 1 order repository queries implemented with Codex.
 from __future__ import annotations
 
-from datetime import datetime
-
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -44,20 +42,16 @@ async def create_order(
 
 async def list_available_orders(
     session: AsyncSession,
-    *,
     requester_id: str,
-    status: str,
-    now: datetime,
-) -> list[Order]:
+) -> list[OrderTable]:
     statement = (
-        select(Order)
+        select(OrderTable)
         .where(
-            Order.status == status,
-            Order.courier_id.is_(None),
-            Order.deadline > now,
-            Order.requester_id != requester_id,
+            OrderTable.status == OrderStatus.OPEN,
+            OrderTable.courier_id.is_(None),
+            OrderTable.requester_id != requester_id,
         )
-        .order_by(Order.deadline.asc(), Order.id.asc())
+        .order_by(OrderTable.deadline.asc(), OrderTable.order_id.asc())
     )
     result = await session.scalars(statement)
     return list(result.all())

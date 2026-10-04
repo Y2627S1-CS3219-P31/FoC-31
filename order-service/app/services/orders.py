@@ -71,8 +71,14 @@ async def create_order(
     return created_order
 
 
-async def list_requester_orders(session: AsyncSession, requester_id: str) -> list[Order]:
-    return await order_repository.list_orders_for_requester(session, requester_id)
+async def list_available_orders(
+    session: AsyncSession,
+    requester_id: str,
+) -> list[OrderTable]:
+    try:
+        return await order_repository.list_available_orders(session, requester_id)
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError() from exc
 
 
 async def get_order_for_requester(
