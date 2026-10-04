@@ -90,116 +90,102 @@ def test_create_order_returns_created_order(
     assert response.json()["status"] == "OPEN"
 
 
-def test_list_orders_returns_requester_orders(
+def test_list_orders_returns_available_orders(
     client: TestClient,
+    fake_session: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_list(_session, requester_id):
-        assert requester_id == "user-1"
-        return [stored_order(requester_id=requester_id)]
+    async def fake_list_orders(session, requester_id):
+        assert session is fake_session
+        assert requester_id == "courier-1"
+        return [_stored_order(requester_id="user-1")]
 
-    monkeypatch.setattr(order_routes.order_service, "list_requester_orders", fake_list)
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "list_available_orders",
+        fake_list_orders,
+    )
 
-    response = client.get("/orders", headers={"X-User-Id": "user-1"})
+    response = client.get("/orders", headers={"X-User-Id": "courier-1"})
 
     assert response.status_code == 200
-    assert [item["id"] for item in response.json()] == [1]
-    assert all(item["requester_id"] == "user-1" for item in response.json())
+    assert [order["order_id"] for order in response.json()] == ["order-1"]
 
 
 @pytest.mark.parametrize(
-    ("service_error", "expected_status", "expected_code"),
+    ("error", "status_code", "code"),
     [
-        (
-            order_routes.order_service.SupplierNotFoundError("Supplier 'missing' was not found."),
-            422,
-            "supplier_not_found",
-        ),
-        (
-            order_routes.order_service.SupplierInactiveError("Supplier 'sup_001' is deactivated."),
-            409,
-            "supplier_inactive",
-        ),
-        (
-            order_routes.order_service.CreditReservationError("Insufficient credits."),
-            409,
-            "credit_reservation_failed",
-        ),
+        (OrderNotFoundError("order-1"), 404, "order_not_found"),
+        (OrderAccessDeniedError("order-1"), 403, "order_access_denied"),
     ],
 )
-def test_create_order_maps_business_errors(
+def test_get_order_uses_centralized_error_handler(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
-    service_error: Exception,
-    expected_status: int,
-    expected_code: str,
+    error: Exception,
+    status_code: int,
+    code: str,
 ) -> None:
-    async def fake_create(*_args):
-        raise service_error
+    async def fake_get_order(_session, _order_id, _requester_id):
+        raise error
 
-    monkeypatch.setattr(order_routes.order_service, "create_order", fake_create)
-
-    response = client.post(
-        "/orders",
-        headers={"X-User-Id": "user-1"},
-        json=order_payload(),
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "get_order_for_requester",
+        fake_get_order,
     )
 
-    assert response.status_code == expected_status
-    assert response.json()["code"] == expected_code
+    response = client.get("/orders/order-1", headers={"X-User-Id": "user-1"})
 
-
-def test_create_order_maps_dependency_failure_to_service_unavailable(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_create(*_args):
-        raise order_routes.order_service.DependencyUnavailableError(
-            "credit",
-            "Credit Service could not be reached.",
-        )
-
-    monkeypatch.setattr(order_routes.order_service, "create_order", fake_create)
-
-    response = client.post(
-        "/orders",
-        headers={"X-User-Id": "user-1"},
-        json=order_payload(),
-    )
-
-    assert response.status_code == 503
-    assert response.json()["code"] == "credit_service_unavailable"
-
-
-def test_get_order_maps_access_denial_to_error_envelope(
-    client: TestClient,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    async def fake_get(_session, order_id, _requester_id):
-        raise order_routes.order_service.OrderAccessDeniedError(order_id)
-
-    monkeypatch.setattr(order_routes.order_service, "get_order_for_requester", fake_get)
-
-    response = client.get("/orders/1", headers={"X-User-Id": "user-2"})
-
-    assert response.status_code == 403
-    assert response.json() == {
-        "code": "forbidden",
-        "message": "You do not have permission to access order '1'.",
-    }
+    assert response.status_code == status_code
+    assert response.json()["code"] == code
 
 
 def test_delete_order_returns_no_content(
     client: TestClient,
+    fake_session: object,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    async def fake_delete(_session, order_id, requester_id):
-        assert order_id == 1
+    async def fake_delete_order(session, order_id, requester_id):
+        assert session is fake_session
+        assert order_id == "order-1"
         assert requester_id == "user-1"
 
-    monkeypatch.setattr(order_routes.order_service, "delete_order_for_requester", fake_delete)
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "delete_order_for_requester",
+        fake_delete_order,
+    )
 
-    response = client.delete("/orders/1", headers={"X-User-Id": "user-1"})
+    response = client.delete(
+        "/orders/order-1",
+        headers={"X-User-Id": "user-1"},
+    )
 
     assert response.status_code == 204
     assert response.content == b""
+
+
+def test_delete_order_uses_state_conflict_handler(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def fake_delete_order(_session, order_id, _requester_id):
+        raise OrderStateConflictError(order_id, "Order cannot be deleted.")
+
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "delete_order_for_requester",
+        fake_delete_order,
+    )
+
+    response = client.delete(
+        "/orders/order-1",
+        headers={"X-User-Id": "user-1"},
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "invalid_order_state",
+        "message": "Order cannot be deleted.",
+    }
