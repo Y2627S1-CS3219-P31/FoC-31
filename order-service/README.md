@@ -1,4 +1,4 @@
-<!-- AI-influenced: updated with Codex; see ai/usage-log.md. -->
+<!-- AI-INFLUENCED: Sprint 1 implementation status documented with Codex. -->
 
 # order-service
 
@@ -32,9 +32,9 @@ app/
 ├── main.py
 ├── config.py
 ├── db.py
-├── api/routes/        # health and order HTTP endpoints
+├── api/routes/        # health and order endpoints
 ├── services/          # lifecycle.py (state machine), events.py (publisher)
-├── models/  schemas/  repositories/   # stubs
+├── models/  schemas/  repositories/
 ```
 
 ## Run
@@ -46,12 +46,17 @@ make test-order-service
 
 Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
-Implemented first-slice endpoints: create with Supplier Service validation and
-Credit Service reservation, requester-owned order listing, requester detail
-lookup, and deletion of requester-owned `OPEN` orders. The supplied Credit
-Service currently returns `501 Not Implemented`; while that dependency remains
-a scaffold, order creation fails safely with `503 Service Unavailable` and no
-order is committed.
+## API
 
-Remaining lifecycle actions (accept, pickup, delivery, completion,
-cancellation events, and expiry sweeper) are still pending.
+The order-service contract is documented in `docs/`:
+
+- [`order-service-api.md`](../docs/order-service-api.md) — human-readable
+  reference covering endpoints, authentication, data models, dependency
+  workflows, errors, filtering, and versioning.
+
+At runtime, FastAPI also serves the live specification at `/openapi.json` and
+interactive documentation at `/docs`.
+
+> Status: `POST /orders`, `GET /orders`, `GET /orders/{order_id}`, and
+> `DELETE /orders/{order_id}` are implemented. Order acceptance and the
+> remaining lifecycle operations belong to later sprints.

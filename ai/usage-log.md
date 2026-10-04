@@ -70,3 +70,18 @@ Format for each entry:
   design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
+
+## 04/10/2026 — Project contributor
+
+- Tool: Codex (model: GPT-5)
+- Scope: Updated the human-readable Order Service API reference and service
+  README to match the Supplier Service documentation style and the implemented
+  Sprint 1 behavior. No endpoint or architecture decisions were introduced.
+- Prompt(s): "Check that the endpoints in the order service are documented
+  properly. Make sure it follows the style of the docs/supplier service's
+  endpoint documentation in the repo root. Then, stage the change for the
+  documentation and show me what the file looks like. Don't commit yet."
+- Author review: Pending contributor review. Codex cross-checked the staged
+  documentation against the FastAPI routes, Pydantic schemas, service and
+  repository workflows, dependency clients, centralized error mappings, and
+  API Gateway route table. No commit was created.
