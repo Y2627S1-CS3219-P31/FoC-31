@@ -1,0 +1,27 @@
+$kind: http-request
+name: PATCH with role in body -> 422
+description: "D2 User pt3: privilege fields (role, is_suspended) are rejected on self-update; extra=forbid returns 422 so a client cannot escalate itself."
+url: "{{baseUrl}}/api/users/me"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "display_name": "Sneaky",
+      "role": "admin",
+      "is_suspended": false
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt3: extra fields forbidden (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 2000

@@ -1,0 +1,38 @@
+name: FoC local (D2 demo)
+values:
+  - key: baseUrl
+    value: 'http://localhost:8080'
+  - key: adminEmail
+    value: e0000000@u.nus.edu
+  - key: adminPassword
+    value: admin1234
+  - key: clientEmail
+    value: ''
+  - key: clientPassword
+    value: Passw0rd1
+  - key: otpCode
+    value: ''
+  - key: clientToken
+    value: ''
+  - key: adminToken
+    value: ''
+  - key: clientUserId
+    value: ''
+  - key: adminUserId
+    value: ''
+  - key: supplierId
+    value: ''
+  - key: firstSupplierId
+    value: ''
+  - key: createdSupplierName
+    value: ''
+  - key: newAdminEmail
+    value: ''
+  - key: newAdminUserId
+    value: ''
+  - key: orderId
+    value: ''
+  - key: reservationId
+    value: ''
+  - key: courierId
+    value: ''

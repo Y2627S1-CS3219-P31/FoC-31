@@ -1,0 +1,17 @@
+$kind: http-request
+name: Protected route garbage token -> 401 (gateway)
+description: "D2 Gateway: a malformed/garbage bearer token fails JWT verification at the gateway (401)."
+url: "{{baseUrl}}/api/users/me"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: not.a.jwt
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Gateway: invalid token (401)', function () {
+          pm.response.to.have.status(401);
+      });
+    language: text/javascript
+order: 6000

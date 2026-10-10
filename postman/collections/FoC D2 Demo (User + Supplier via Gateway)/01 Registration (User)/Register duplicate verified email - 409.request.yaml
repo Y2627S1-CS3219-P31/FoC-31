@@ -1,0 +1,23 @@
+$kind: http-request
+name: Register duplicate verified email -> 409
+description: "D2 User pt1: re-registering an already-verified email is rejected with 409 (re-registering an unverified email would instead refresh + reissue an OTP)."
+url: "{{baseUrl}}/api/users/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{{clientEmail}}",
+      "password": "{{clientPassword}}",
+      "display_name": "Demo Client Again"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt1: duplicate verified email conflicts (409)', function () {
+          pm.response.to.have.status(409);
+      });
+    language: text/javascript
+order: 5000

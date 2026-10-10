@@ -1,0 +1,22 @@
+$kind: http-request
+name: List q=<created name> -> total 0 (excluded)
+description: "D2 Supplier pt2: the deactivated supplier no longer appears in client discovery (total 0), even though it is still retrievable by id."
+url: "{{baseUrl}}/api/suppliers?q={{createdSupplierName}}"
+method: GET
+queryParams:
+  q: "{{createdSupplierName}}"
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: deactivated excluded from discovery (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('total == 0', function () {
+          pm.expect(pm.response.json().total).to.eql(0);
+      });
+    language: text/javascript
+order: 9000

@@ -1,0 +1,37 @@
+$kind: http-request
+name: Reserve credits -> 201 (save reservationId)
+description: "Reserve credits for a user against an order (Credit F2). A client may only reserve for themselves; an admin may reserve for anyone. Body is snake_case. Generates a fresh order_id each run and saves reservationId."
+url: "{​{baseUrl}}/api/credits/reservations"
+method: POST
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "user_id": "{​{clientUserId}}",
+      "order_id": "{​{orderId}}",
+      "amount": 10
+    }
+scripts:
+  - type: beforeRequest
+    code: pm.environment.set('orderId', 'order-' + Date.now());
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('reservation created (201)', function () {
+          pm.response.to.have.status(201);
+      });
+      var b = pm.response.json();
+      pm.test('reservation fields', function () {
+          pm.expect(b).to.have.property('id');
+          pm.expect(b.amount).to.eql(10);
+          pm.expect(b).to.have.property('status');
+      });
+      pm.environment.set('reservationId', b.id);
+    language: text/javascript
+order: 1000

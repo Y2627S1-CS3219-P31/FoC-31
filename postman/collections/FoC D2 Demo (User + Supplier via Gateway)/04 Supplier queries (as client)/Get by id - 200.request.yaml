@@ -1,0 +1,20 @@
+$kind: http-request
+name: Get by id -> 200
+description: "D2 Supplier pt3: fetch a single supplier by an id taken from the list response."
+url: "{{baseUrl}}/api/suppliers/{{firstSupplierId}}"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt3: get-by-id (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('id echoes requested id', function () {
+          pm.expect(pm.response.json().id).to.eql(pm.environment.get('firstSupplierId'));
+      });
+    language: text/javascript
+order: 8000

@@ -1,0 +1,16 @@
+$kind: collection
+description: |-
+  User account, authentication, email verification (OTP), profile, and admin
+  user-management for the Friend on Campus (FoC) platform. The API Gateway is the
+  only public entry point and proxies `/api/users/*` to this service, injecting
+  the trusted `X-User-Id` and `X-User-Role` headers derived from the caller's JWT.
+
+  Getting a bearer token: run "01 Auth / Login admin" (or "Login client") first —
+  it calls `POST /api/users/login`, asserts `token_type: bearer`, and stores the
+  returned `access_token` in the `adminToken` / `clientToken` environment
+  variable. Every protected request then authenticates with `Bearer {​{adminToken}}`
+  or `Bearer {​{clientToken}}`.
+
+  Use the "FoC local (D2 demo)" environment. Bodies/responses are snake_case
+  (`display_name`, `contact_number`, `is_suspended`). Roles serialize lowercase
+  (`client` / `admin`). See docs/user-service-api.md and postman/README.md.

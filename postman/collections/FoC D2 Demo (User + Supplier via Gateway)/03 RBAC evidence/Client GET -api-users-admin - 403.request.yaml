@@ -1,0 +1,17 @@
+$kind: http-request
+name: Client GET /api/users/admin -> 403
+description: "D2 RBAC: the admin user-listing endpoint is admin-only; an authenticated client is forbidden (403), enforced by user-service _require_admin."
+url: "{{baseUrl}}/api/users/admin"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 RBAC: client cannot list users (403)', function () {
+          pm.response.to.have.status(403);
+      });
+    language: text/javascript
+order: 3000

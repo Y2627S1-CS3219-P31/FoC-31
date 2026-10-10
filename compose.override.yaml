@@ -1,0 +1,14 @@
+services:
+  user-service:
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./user-service/app:/app/app
+      - ./shared/foc_shared:/shared/foc_shared
+
+  supplier-service:
+    command:
+      ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    volumes:
+      - ./supplier-service/app:/app/app
+      - ./shared/foc_shared:/shared/foc_shared

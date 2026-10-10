@@ -1,0 +1,197 @@
+$kind: http-example
+name: A paginated list of active suppliers.
+request:
+  url: "{{baseUrl}}/suppliers?category=Food&zone=string&q=string&page=1&page_size=20&sort=name&order=asc&include_inactive=false"
+  method: GET
+  headers:
+    Accept: application/json
+  queryParams:
+    - key: category
+      value: Food
+      disabled: false
+      description: Filter by one or more categories (F2.1.1).
+    - key: zone
+      value: string
+      disabled: false
+      description: Filter by campus zone/location (F2.1.2).
+    - key: q
+      value: string
+      disabled: false
+      description: Case-insensitive keyword search over name + location (F2.2).
+    - key: page
+      value: "1"
+      disabled: false
+      description: ""
+    - key: page_size
+      value: "20"
+      disabled: false
+      description: ""
+    - key: sort
+      value: name
+      disabled: false
+      description: Field to sort by (server-side, over the whole result set).
+    - key: order
+      value: asc
+      disabled: false
+      description: Sort direction.
+    - key: include_inactive
+      value: "false"
+      disabled: false
+      description: Admin only. When true, deactivated suppliers are included in the results. Ignored (treated as false) for client callers.
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 200
+  statusText: OK
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "items": [
+          {
+            "id": "string",
+            "name": "string",
+            "category": "Printing",
+            "building": "string",
+            "active": false,
+            "floor": "string",
+            "locationDescription": null,
+            "latitude": null,
+            "longitude": null,
+            "startingTime": "23:07",
+            "closingTime": "19:47",
+            "imageUrl": "string"
+          },
+          {
+            "id": "string",
+            "name": "string",
+            "category": "Food/Coffee",
+            "building": "string",
+            "active": false,
+            "floor": "string",
+            "locationDescription": null,
+            "latitude": -67.34477679532301,
+            "longitude": null,
+            "startingTime": "04:43",
+            "closingTime": "22:20",
+            "imageUrl": null
+          }
+        ],
+        "page": 4755,
+        "pageSize": 4721,
+        "total": 5977
+      }
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "category": {
+                  "type": "string",
+                  "enum": [
+                    "Food",
+                    "Food/Coffee",
+                    "Shopping",
+                    "Printing"
+                  ],
+                  "description": "Predefined supplier category (F1.1.2). These four values are canonical and match the seed dataset's Type column exactly."
+                },
+                "building": {
+                  "type": "string"
+                },
+                "floor": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "locationDescription": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "latitude": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": -90,
+                  "maximum": 90
+                },
+                "longitude": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "minimum": -180,
+                  "maximum": 180
+                },
+                "startingTime": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "closingTime": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+                },
+                "imageUrl": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "active": {
+                  "type": "boolean",
+                  "description": "true = active, false = deactivated (F3.1.1)."
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "category",
+                "building",
+                "active"
+              ]
+            }
+          },
+          "page": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "items",
+          "page",
+          "pageSize",
+          "total"
+        ]
+      }
+order: 1000

@@ -1,0 +1,28 @@
+$kind: http-request
+name: Create bad time format -> 422
+description: "D2 Supplier pt1: times must match HH:MM (24h); '9am' is 422."
+url: "{{baseUrl}}/api/suppliers"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": "Bad Time",
+      "category": "Food",
+      "building": "Demo Hall",
+      "startingTime": "9am"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt1: bad time format (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 4000

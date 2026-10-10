@@ -1,0 +1,36 @@
+$kind: http-request
+name: Create admin -> 201 (save newAdminUserId)
+description: "Admin-only creation of a brand-new account with the administrator role (pre-verified). Generates a fresh @u.nus.edu email each run. Requires an admin bearer token."
+url: "{​{baseUrl}}/api/users/admin"
+method: POST
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "email": "{​{newAdminEmail}}",
+      "password": "Passw0rd1",
+      "display_name": "Second Admin",
+      "contact_number": "80000000"
+    }
+scripts:
+  - type: beforeRequest
+    code: pm.environment.set('newAdminEmail', 'admin' + Date.now() + '@u.nus.edu');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('create admin (201)', function () {
+          pm.response.to.have.status(201);
+      });
+      var b = pm.response.json();
+      pm.test('role is admin', function () {
+          pm.expect(b.role).to.eql('admin');
+      });
+      pm.environment.set('newAdminUserId', b.id);
+    language: text/javascript
+order: 1100

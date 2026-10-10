@@ -1,0 +1,107 @@
+$kind: http-request
+description: Admin-only creation of a supplier record (F1.1).
+url: "{{baseUrl}}/api/suppliers"
+method: POST
+headers:
+  Content-Type: application/json
+  Accept: application/json
+body:
+  type: json
+  content: |-
+    {
+      "name": "string",
+      "category": "Printing",
+      "building": "string",
+      "floor": "string",
+      "locationDescription": null,
+      "latitude": null,
+      "longitude": -41.72493428359462,
+      "startingTime": "20:46",
+      "closingTime": "20:52",
+      "imageUrl": "string"
+    }
+  $type: |-
+    {
+      "description": "Mandatory fields per F1.1.1; category validated per F1.1.2.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "Food",
+            "Food/Coffee",
+            "Shopping",
+            "Printing"
+          ],
+          "description": "Predefined supplier category (F1.1.2). These four values are canonical and match the seed dataset's Type column exactly."
+        },
+        "building": {
+          "type": "string",
+          "minLength": 1
+        },
+        "floor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "locationDescription": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -90,
+          "maximum": 90
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": -180,
+          "maximum": 180
+        },
+        "startingTime": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "closingTime": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^([01]\\d|2[0-3]):[0-5]\\d$"
+        },
+        "imageUrl": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "category",
+        "building"
+      ]
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+settings: {}
+examples: ./.resources/Create a supplier.resources/examples
+order: 2000

@@ -1,0 +1,14 @@
+workspace:
+  id: f0bce48b-46f9-4c7f-8eba-737aadcb8761
+
+localResources:
+  specs:
+    - ../docs/supplier-service-openapi.yaml
+    - ../postman/specs/FoC Supplier Service API/supplier-service-openapi.yaml
+resourceNameMappings:
+  specs:
+    - ../postman/specs/FoC Supplier Service API/supplier-service-openapi.yaml: FoC Supplier Service API
+
+cloudResources:
+  collections:
+    ../postman/collections/FoC D2 Demo (User + Supplier via Gateway): 9cf24c9c-dbca-457b-933a-69b625c25572

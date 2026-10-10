@@ -1,0 +1,23 @@
+$kind: http-request
+name: Register non-NUS email -> 422
+description: "D2 User pt1: only @u.nus.edu addresses may register; any other domain fails validation (422)."
+url: "{{baseUrl}}/api/users/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "someone@gmail.com",
+      "password": "{{clientPassword}}",
+      "display_name": "Not NUS"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt1: non-NUS email rejected (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 4000

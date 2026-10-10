@@ -1,0 +1,13 @@
+$kind: http-request
+name: Protected route no token -> 401 (gateway)
+description: "D2 Gateway: protected route with no Authorization header is rejected at the gateway (401) before it ever reaches user-service."
+url: "{{baseUrl}}/api/users/me"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Gateway: no bearer token (401)', function () {
+          pm.response.to.have.status(401);
+      });
+    language: text/javascript
+order: 5000

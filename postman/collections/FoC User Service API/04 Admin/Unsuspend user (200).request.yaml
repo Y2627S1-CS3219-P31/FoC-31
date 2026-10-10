@@ -1,0 +1,22 @@
+$kind: http-request
+name: Unsuspend user -> 200
+description: "Admin-only reactivation of a previously suspended client. Requires an admin bearer token."
+url: "{​{baseUrl}}/api/users/admin/{​{clientUserId}}/unsuspend"
+method: POST
+headers:
+  Accept: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('unsuspend client (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('is_suspended false', function () {
+          pm.expect(pm.response.json().is_suspended).to.eql(false);
+      });
+    language: text/javascript
+order: 1300

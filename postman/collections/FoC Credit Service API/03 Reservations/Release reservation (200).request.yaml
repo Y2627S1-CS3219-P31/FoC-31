@@ -1,0 +1,19 @@
+$kind: http-request
+name: Release reservation -> 200
+description: "Release a reservation, returning the held credits to the owner's available balance (Credit F2 cancel path). No request body. Uses reservationId. Note: a reservation cannot be both transferred and released; run this against a fresh reservation instead of after Transfer."
+url: "{​{baseUrl}}/api/credits/reservations/{​{reservationId}}/release"
+method: POST
+headers:
+  Accept: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('reservation released (200)', function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 1300
