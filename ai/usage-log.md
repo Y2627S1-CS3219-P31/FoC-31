@@ -380,3 +380,31 @@ Format for each entry:
   documents `role` as uppercase while the code serializes lowercase (noted, not
   changed here). order-service and its event/HTTP flows are drawn dashed and
   labelled "PR #5" because they exist only on the unmerged branch.
+
+## 04/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-5)
+- Scope: Updated the human-readable Order Service API reference and service
+  README to match the Supplier Service documentation style and the implemented
+  Sprint 1 behavior. No endpoint or architecture decisions were introduced.
+- Prompt(s): "Check that the endpoints in the order service are documented
+  properly. Make sure it follows the style of the docs/supplier service's
+  endpoint documentation in the repo root. Then, stage the change for the
+  documentation and show me what the file looks like. Don't commit yet."
+- Author review: Pending contributor review. Codex cross-checked the staged
+  documentation against the FastAPI routes, Pydantic schemas, service and
+  repository workflows, dependency clients, centralized error mappings, and
+  API Gateway route table. No commit was created.
+
+## 04/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-5)
+- Scope: Reset the Order Service's Alembic revision history while preserving
+  the Alembic configuration, migration environment, template, and dependency.
+  The migration strategy decision and requested clean revision state were
+  supplied by the contributor.
+- Prompt(s): "keep alembic but remove migrations and currently stored
+  versioning. I want it to be clean."
+- Author review: Pending contributor review. Codex restored the Alembic
+  scaffold and dependency, removed only the two tracked revision files, kept
+  the versions directory, and did not modify a live database.
