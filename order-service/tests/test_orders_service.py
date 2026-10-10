@@ -96,19 +96,34 @@ async def test_get_order_reports_missing_order(
         )
 
 
-async def test_delete_open_order_releases_credits_before_deleting(
+async def test_delete_open_order_releases_credits_after_committing_deletion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    events: list[str] = []
+
+    class RecordingTransaction:
+        async def __aenter__(self):
+            events.append("transaction_started")
+            return self
+
+        async def __aexit__(self, _exc_type, _exc, _traceback):
+            events.append("deletion_committed")
+            return False
+
+    class RecordingSession:
+        def begin(self) -> RecordingTransaction:
+            return RecordingTransaction()
+
     order = _order()
     get_order = AsyncMock(return_value=order)
-    release = AsyncMock()
-    delete = AsyncMock()
+    release = AsyncMock(side_effect=lambda **_kwargs: events.append("credits_released"))
+    delete = AsyncMock(side_effect=lambda *_args: events.append("order_deleted"))
     monkeypatch.setattr(order_service.order_repository, "get_order_for_update", get_order)
     monkeypatch.setattr(order_service, "release_credits", release)
     monkeypatch.setattr(order_service.order_repository, "delete_order", delete)
 
     await order_service.delete_order_for_requester(
-        _Session(),
+        RecordingSession(),
         "order-1",
         "user-1",
     )
@@ -118,6 +133,12 @@ async def test_delete_open_order_releases_credits_before_deleting(
         requester_id="user-1",
     )
     delete.assert_awaited_once_with(ANY, order)
+    assert events == [
+        "transaction_started",
+        "order_deleted",
+        "deletion_committed",
+        "credits_released",
+    ]
 
 
 @pytest.mark.parametrize(
@@ -160,6 +181,8 @@ async def test_delete_translates_database_failure(
         "get_order_for_update",
         AsyncMock(side_effect=SQLAlchemyError("database unavailable")),
     )
+    release = AsyncMock()
+    monkeypatch.setattr(order_service, "release_credits", release)
 
     with pytest.raises(OrderDeletionError):
         await order_service.delete_order_for_requester(
@@ -167,6 +190,44 @@ async def test_delete_translates_database_failure(
             "order-1",
             "user-1",
         )
+
+    release.assert_not_awaited()
+
+
+async def test_delete_does_not_release_credits_when_commit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class CommitFailingTransaction:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, exc_type, _exc, _traceback):
+            if exc_type is None:
+                raise SQLAlchemyError("commit failed")
+            return False
+
+    class CommitFailingSession:
+        def begin(self) -> CommitFailingTransaction:
+            return CommitFailingTransaction()
+
+    order = _order()
+    monkeypatch.setattr(
+        order_service.order_repository,
+        "get_order_for_update",
+        AsyncMock(return_value=order),
+    )
+    monkeypatch.setattr(order_service.order_repository, "delete_order", AsyncMock())
+    release = AsyncMock()
+    monkeypatch.setattr(order_service, "release_credits", release)
+
+    with pytest.raises(OrderDeletionError):
+        await order_service.delete_order_for_requester(
+            CommitFailingSession(),
+            "order-1",
+            "user-1",
+        )
+
+    release.assert_not_awaited()
 
 
 async def test_create_releases_reservation_when_database_insert_fails(

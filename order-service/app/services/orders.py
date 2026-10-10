@@ -118,11 +118,13 @@ async def delete_order_for_requester(
                     "Only an open order without an assigned courier can be deleted.",
                 )
 
-            await release_credits(
-                reservation_id=order.reservation_id,
-                requester_id=requester_id,
-            )
+            reservation_id = order.reservation_id
             await order_repository.delete_order(session, order)
+
+        await release_credits(
+            reservation_id=reservation_id,
+            requester_id=requester_id,
+        )
     except (
         CreditClientError,
         OrderAccessDeniedError,
