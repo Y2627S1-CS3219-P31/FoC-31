@@ -48,3 +48,13 @@ class OrderResponse(BaseModel):
     delivery_location: str
     status: OrderStatus
     created_at: datetime
+
+# The fields here are restricted to the fields that the client is authorized to edit
+class OrderUpdate(BaseModel):
+    name: NonEmptyString 
+    details: NonEmptyString 
+    reward: int = Field(gt=0)
+    deadline: datetime 
+    supplier_id: NonEmptyString 
+    pickup_location: NonEmptyString 
+    delivery_location: NonEmptyString 

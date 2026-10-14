@@ -5,7 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.orders import OrderTable
-from app.schemas.orders import OrderCreate
+from app.schemas.orders import OrderCreate, OrderUpdate
 from app.services.lifecycle import OrderStatus
 
 
@@ -82,3 +82,16 @@ async def delete_order(
 ) -> None:
     await session.delete(order)
     await session.flush()
+
+async def update_order(
+    order: OrderTable,
+    updated_order: OrderUpdate,
+    session: AsyncSession
+) -> OrderTable:
+    changes = updated_order.model_dump(exclude_unset=True)
+
+    for (key, value) in changes.items():
+        setattr(order, key, value)
+
+    await session.flush()
+    return order

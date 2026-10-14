@@ -12,6 +12,7 @@ from app.services import orders as order_service
 from app.services.errors import (
     OrderAccessDeniedError,
     OrderDeletionError,
+    OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
     OrderRetrievalError,
@@ -47,6 +48,11 @@ def _order(
         status=status,
         deadline=datetime.now(UTC) + timedelta(hours=2),
     )
+
+
+def _mock_credit_client(monkeypatch: pytest.MonkeyPatch, **methods: AsyncMock) -> None:
+    client = SimpleNamespace(**methods)
+    monkeypatch.setattr(order_service, "get_credit_client", lambda: client)
 
 
 async def test_list_available_orders_translates_database_failure(
@@ -96,6 +102,39 @@ async def test_get_order_reports_missing_order(
         )
 
 
+@pytest.mark.parametrize(
+    ("status", "courier_id"),
+    [
+        (OrderStatus.ACCEPTED, None),
+        (OrderStatus.OPEN, "courier-1"),
+    ],
+)
+async def test_update_rejects_non_editable_order(
+    monkeypatch: pytest.MonkeyPatch,
+    status: OrderStatus,
+    courier_id: str | None,
+) -> None:
+    order = _order(status=status, courier_id=courier_id)
+    order.reward = 5
+    update = AsyncMock()
+    monkeypatch.setattr(
+        order_service.order_repository,
+        "get_order",
+        AsyncMock(return_value=order),
+    )
+    monkeypatch.setattr(order_service.order_repository, "update_order", update)
+
+    with pytest.raises(OrderNotEditableError):
+        await order_service.update_order(
+            "order-1",
+            SimpleNamespace(reward=5),
+            "user-1",
+            _Session(),
+        )
+
+    update.assert_not_awaited()
+
+
 async def test_delete_open_order_releases_credits_after_committing_deletion(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -119,7 +158,7 @@ async def test_delete_open_order_releases_credits_after_committing_deletion(
     release = AsyncMock(side_effect=lambda **_kwargs: events.append("credits_released"))
     delete = AsyncMock(side_effect=lambda *_args: events.append("order_deleted"))
     monkeypatch.setattr(order_service.order_repository, "get_order_for_update", get_order)
-    monkeypatch.setattr(order_service, "release_credits", release)
+    _mock_credit_client(monkeypatch, release_credits=release)
     monkeypatch.setattr(order_service.order_repository, "delete_order", delete)
 
     await order_service.delete_order_for_requester(
@@ -159,7 +198,7 @@ async def test_delete_rejects_assigned_or_non_open_order(
     )
     release = AsyncMock()
     delete = AsyncMock()
-    monkeypatch.setattr(order_service, "release_credits", release)
+    _mock_credit_client(monkeypatch, release_credits=release)
     monkeypatch.setattr(order_service.order_repository, "delete_order", delete)
 
     with pytest.raises(OrderStateConflictError):
@@ -182,7 +221,7 @@ async def test_delete_translates_database_failure(
         AsyncMock(side_effect=SQLAlchemyError("database unavailable")),
     )
     release = AsyncMock()
-    monkeypatch.setattr(order_service, "release_credits", release)
+    _mock_credit_client(monkeypatch, release_credits=release)
 
     with pytest.raises(OrderDeletionError):
         await order_service.delete_order_for_requester(
@@ -218,7 +257,7 @@ async def test_delete_does_not_release_credits_when_commit_fails(
     )
     monkeypatch.setattr(order_service.order_repository, "delete_order", AsyncMock())
     release = AsyncMock()
-    monkeypatch.setattr(order_service, "release_credits", release)
+    _mock_credit_client(monkeypatch, release_credits=release)
 
     with pytest.raises(OrderDeletionError):
         await order_service.delete_order_for_requester(
@@ -239,18 +278,14 @@ async def test_create_releases_reservation_when_database_insert_fails(
         "get_supplier",
         AsyncMock(return_value=SimpleNamespace(active=True)),
     )
-    monkeypatch.setattr(
-        order_service,
-        "reserve_credits",
-        AsyncMock(return_value=SimpleNamespace(id="reservation-1")),
-    )
+    reserve = AsyncMock(return_value=SimpleNamespace(id="reservation-1"))
     monkeypatch.setattr(
         order_service.order_repository,
         "create_order",
         AsyncMock(side_effect=SQLAlchemyError("insert failed")),
     )
     release = AsyncMock()
-    monkeypatch.setattr(order_service, "release_credits", release)
+    _mock_credit_client(monkeypatch, reserve_credits=reserve, release_credits=release)
 
     with pytest.raises(OrderPersistenceError):
         await order_service.create_order(new_order, "user-1", _Session())
@@ -259,3 +294,4 @@ async def test_create_releases_reservation_when_database_insert_fails(
         reservation_id="reservation-1",
         requester_id="user-1",
     )
+    reserve.assert_awaited_once_with(5, "user-1", ANY)

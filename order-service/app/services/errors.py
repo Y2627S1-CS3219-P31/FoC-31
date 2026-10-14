@@ -23,6 +23,14 @@ class OrderStateConflictError(OrderServiceError):
         self.order_id = order_id
 
 
+class OrderNotEditableError(OrderServiceError):
+    """Raised when an order is no longer eligible for requester updates."""
+
+    def __init__(self, order_id: str) -> None:
+        super().__init__("Only an open order without an assigned courier can be updated.")
+        self.order_id = order_id
+
+
 class OrderPersistenceError(OrderServiceError):
     """Raised when a new order cannot be persisted to the database."""
 

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.schemas.orders import OrderCreate, OrderResponse
+from app.schemas.orders import OrderCreate, OrderResponse, OrderUpdate
 from app.services import orders as order_service
 from foc_shared.auth import HEADER_USER_ID
 
@@ -64,3 +64,20 @@ async def delete_order(
         requester_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.patch("/{order_id}", status_code=status.HTTP_200_OK)
+async def update_order(
+    order_id: str,
+    updated_order: OrderUpdate,
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
+    session: Annotated[AsyncSession, Depends(get_session)]
+):
+    await order_service.update_order(
+        order_id=order_id,
+        updated_order=updated_order,
+        requester_id=requester_id,
+        session=session
+    )
+
+    return Response(status_code=status.HTTP_200_OK)

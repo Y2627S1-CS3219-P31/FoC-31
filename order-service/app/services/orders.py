@@ -8,16 +8,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.orders import OrderTable
 from app.repositories import orders as order_repository
-from app.schemas.orders import OrderCreate
+from app.schemas.orders import OrderCreate, OrderUpdate
+from app.services.client_manager import get_credit_client
 from app.services.clients.credit.error import CreditClientError
-from app.services.clients.credit.release_credits import release_credits
-from app.services.clients.credit.reserve_credits import reserve_credits
 from app.services.clients.errors import RemoteServiceError
 from app.services.clients.supplier.error import SupplierInactiveError
 from app.services.clients.supplier.get_supplier import get_supplier
 from app.services.errors import (
     OrderAccessDeniedError,
     OrderDeletionError,
+    OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
     OrderRetrievalError,
@@ -44,7 +44,7 @@ async def create_order(
 
     # Reserve credits
     reward = new_order.reward
-    reservation = await reserve_credits(
+    reservation = await get_credit_client().reserve_credits(
         reward,
         requester_id,
         order_id,
@@ -62,7 +62,7 @@ async def create_order(
                 reservation.id,
             )
     except SQLAlchemyError as exc:
-        await release_credits(
+        await get_credit_client().release_credits(
             reservation_id=reservation.id,
             requester_id=requester_id,
         )
@@ -118,11 +118,10 @@ async def delete_order_for_requester(
                     "Only an open order without an assigned courier can be deleted.",
                 )
 
-            reservation_id = order.reservation_id
             await order_repository.delete_order(session, order)
 
-        await release_credits(
-            reservation_id=reservation_id,
+        await get_credit_client().release_credits(
+            reservation_id=order.reservation_id,
             requester_id=requester_id,
         )
     except (
@@ -135,3 +134,46 @@ async def delete_order_for_requester(
         raise
     except SQLAlchemyError as exc:
         raise OrderDeletionError(order_id) from exc
+
+
+async def update_order(
+    order_id: str,
+    updated_order: OrderUpdate,
+    requester_id: str,
+    session: AsyncSession
+) -> OrderTable:
+    should_amend_credit = False
+
+    async with session.begin():
+        # Get the order's details first for validation checks
+        # No try-except because the get_order_for_requester already raises them
+        order = await get_order_for_requester(
+            session=session,
+            order_id=order_id,
+            requester_id=requester_id
+        )
+
+        if order.reward != updated_order.reward:
+            should_amend_credit = True
+
+        # Reject update requests for orders that have been accepted by a courier
+        if (order.courier_id is not None or order.status is not OrderStatus.OPEN):
+            raise OrderNotEditableError(order_id)
+
+        # Call the order repository service with the new order information
+        await order_repository.update_order(
+            order=order,
+            updated_order=updated_order,
+            session=session
+        )
+
+    # Call the credit service to amend the existing reservation
+    # No try-except because the amend_credits function already raises them
+    if (should_amend_credit):
+        await get_credit_client().amend_credits(
+            reservation_id=order.reservation_id,
+            requester_id=requester_id,
+            amount=updated_order.reward
+        )
+
+    return order

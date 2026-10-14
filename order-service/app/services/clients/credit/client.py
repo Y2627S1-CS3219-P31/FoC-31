@@ -70,3 +70,28 @@ class CreditClient(JsonServiceClient):
                 "X-User-Id": requester_id
             }
         )   
+
+    async def amend_credits(
+        self,
+        reservation_id: str,
+        requester_id: str,
+        amount: int
+    ) -> ReservationDetails:
+        return await self._request_model(
+            method="POST",
+            path=f"/credits/reservations/{reservation_id}/amend",
+            expected_status=200,
+            response_model=ReservationDetails,
+            endpoint_errors={
+                (403, "forbidden"): ReservationForbiddenError,
+                (404, "not_found"): ReservationNotFoundError,
+                (409, "insufficient_credits"): InsufficientCreditsError,
+                (409, "conflict"): ReservationConflictError
+            },
+            headers={
+                "X-User-Id": requester_id
+            },
+            json={
+                "amount": amount
+            }
+        )

@@ -33,6 +33,7 @@ from app.services.clients.supplier.error import (
 from app.services.errors import (
     OrderAccessDeniedError,
     OrderDeletionError,
+    OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
     OrderRetrievalError,
@@ -69,6 +70,11 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         "invalid_order_state",
         "The requested action is not valid for the order's current state.",
         expose_exception_message=True,
+    ),
+    OrderNotEditableError: ErrorMapping(
+        HTTPStatus.CONFLICT,
+        "order_not_editable",
+        "Only an open order without an assigned courier can be updated.",
     ),
     SupplierNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,

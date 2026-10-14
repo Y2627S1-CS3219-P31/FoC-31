@@ -408,3 +408,17 @@ Format for each entry:
 - Author review: Pending contributor review. Codex restored the Alembic
   scaffold and dependency, removed only the two tracked revision files, kept
   the versions directory, and did not modify a live database.
+
+## 14/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added a dedicated Order Service error for update attempts on orders
+  that are no longer open or have an assigned courier, with a 409 API mapping
+  and focused service/handler tests.
+- Prompt(s): "This would falsely say the error message. The frontend should be
+  able to receive it and interpret it as trying to update an order that is
+  already has a courier and not OPEN anymore. So create a new error for this.
+  I give perms to change the code."
+- Author review: Pending contributor review. Codex ran focused tests and
+  checked the new error mapping and update guard. Existing create/delete test
+  failures and unrelated lint errors from the in-progress client refactor remain.

@@ -32,6 +32,7 @@ from app.services.clients.supplier.error import (
 from app.services.errors import (
     OrderAccessDeniedError,
     OrderDeletionError,
+    OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
     OrderRetrievalError,
@@ -141,6 +142,19 @@ def test_known_exception_mapping(
     assert response.status_code == status_code
     assert response.json()["code"] == code
     assert isinstance(response.json()["message"], str)
+
+
+def test_order_not_editable_explains_update_rejection() -> None:
+    app = _app_raising(lambda: OrderNotEditableError("order-1"))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/raise")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "order_not_editable",
+        "message": "Only an open order without an assigned courier can be updated.",
+    }
 
 
 def test_request_validation_uses_error_envelope() -> None:
