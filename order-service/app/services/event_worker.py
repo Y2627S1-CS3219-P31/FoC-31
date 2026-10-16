@@ -6,11 +6,18 @@ import logging
 
 from app.db import SessionLocal
 from app.repositories import order_event_outbox as event_repository
+from app.schemas.order_action_events import OrderCancellationFailedEvent
 from app.services.events import publish_order_event
 from foc_shared.events import OrderEvent
 
 logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5
+
+
+def _parse_event(payload: dict) -> OrderEvent | OrderCancellationFailedEvent:
+    if payload.get("event_type") == "OrderCancellationFailed":
+        return OrderCancellationFailedEvent.model_validate(payload)
+    return OrderEvent.model_validate(payload)
 
 
 async def publish_pending_events() -> None:
@@ -25,9 +32,7 @@ async def publish_pending_events() -> None:
                 continue
             try:
                 async with asyncio.timeout(10):
-                    await publish_order_event(
-                        OrderEvent.model_validate(task.payload), event_id=event_id
-                    )
+                    await publish_order_event(_parse_event(task.payload), event_id=event_id)
             except Exception as exc:
                 logger.warning(
                     "Could not publish order event", extra={"event_id": event_id}, exc_info=True

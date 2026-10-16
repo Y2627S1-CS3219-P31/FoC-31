@@ -23,7 +23,11 @@ from app.repositories import order_event_outbox as event_outbox_repository
 from app.repositories import order_release_outbox as release_tasks
 from app.repositories import orders as order_repository
 from app.schemas.credit_events import CreditReleaseResult
-from app.schemas.order_action_events import OrderActionEvent, OrderActionEventType
+from app.schemas.order_action_events import (
+    OrderActionEvent,
+    OrderActionEventType,
+    OrderCancellationFailedEvent,
+)
 from app.services.lifecycle import OrderStatus, assert_transition
 from foc_shared.events import OrderEvent, OrderEventType
 
@@ -31,8 +35,8 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5
 ORDER_ACTION_EVENT_TYPES: dict[ReleaseAction, OrderActionEventType] = {
     ReleaseAction.DELETE: "OrderDelete",
-    ReleaseAction.CANCEL: "OrderCancel",
-    ReleaseAction.EXPIRE: "OrderExpire",
+    ReleaseAction.CANCEL: "OrderCancellationRequested",
+    ReleaseAction.EXPIRE: "OrderExpired",
 }
 
 
@@ -116,6 +120,23 @@ def _complete_task(task: OrderReleaseOutbox) -> None:
     task.last_error = None
 
 
+async def _record_cancellation_failed(
+    session: AsyncSession, task: OrderReleaseOutbox, error: str
+) -> None:
+    _fail_task(task, error)
+    await event_outbox_repository.create_event(
+        session,
+        OrderCancellationFailedEvent(
+            task_id=task.task_id,
+            order_id=task.order_id,
+            reservation_id=task.reservation_id,
+            requester_id=task.requester_id,
+            timestamp=datetime.now(UTC),
+            reason=task.last_error,
+        ),
+    )
+
+
 async def _get_locked_order(session: AsyncSession, task: OrderReleaseOutbox) -> OrderTable | None:
     order = await order_repository.get_order_for_update(session, task.order_id)
     if order is None:
@@ -142,12 +163,13 @@ async def handle_delete(session: AsyncSession, task: OrderReleaseOutbox) -> None
 async def handle_cancel(session: AsyncSession, task: OrderReleaseOutbox) -> None:
     order = await _get_locked_order(session, task)
     if order is None:
+        await _record_cancellation_failed(session, task, task.last_error or "Order not found.")
         return
 
     try:
         assert_transition(OrderStatus(order.status), OrderStatus.CANCELLED)
     except ValueError as exc:
-        _fail_task(task, str(exc))
+        await _record_cancellation_failed(session, task, str(exc))
         return
 
     completed_at = datetime.now(UTC)
@@ -171,8 +193,7 @@ async def handle_expire(session: AsyncSession, task: OrderReleaseOutbox) -> None
     if order is None:
         return
 
-    completed_at = datetime.now(UTC)
-    if _utc_datetime(order.deadline) > completed_at:
+    if _utc_datetime(order.deadline) > datetime.now(UTC):
         _fail_task(task, "The order deadline has not passed.")
         return
     try:
@@ -182,22 +203,17 @@ async def handle_expire(session: AsyncSession, task: OrderReleaseOutbox) -> None
         return
 
     await order_repository.set_status(session, order, OrderStatus.EXPIRED)
-    await event_outbox_repository.create_event(
-        session,
-        OrderEvent(
-            event_type=OrderEventType.ORDER_EXPIRED,
-            order_id=order.order_id,
-            requester_id=order.requester_id,
-            courier_id=order.courier_id,
-            timestamp=completed_at,
-            reason=task.reason,
-        ),
-    )
     _complete_task(task)
 
 
-def handle_credit_release_failed(task: OrderReleaseOutbox, event: CreditReleaseResult) -> None:
-    _fail_task(task, event.reason or "Credit Service rejected the release.")
+async def handle_credit_release_failed(
+    session: AsyncSession, task: OrderReleaseOutbox, event: CreditReleaseResult
+) -> None:
+    error = event.reason or "Credit Service rejected the release."
+    if task.action == ReleaseAction.CANCEL.value:
+        await _record_cancellation_failed(session, task, error)
+        return
+    _fail_task(task, error)
 
 
 ActionHandler = Callable[[AsyncSession, OrderReleaseOutbox], Awaitable[None]]
@@ -218,7 +234,7 @@ async def process_release_result(session: AsyncSession, event: CreditReleaseResu
             return False
 
         if event.event_type == "CreditReleaseFailed":
-            handle_credit_release_failed(task, event)
+            await handle_credit_release_failed(session, task, event)
             return True
 
         try:

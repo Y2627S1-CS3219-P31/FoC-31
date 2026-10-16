@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.order_event_outbox import OrderEventOutbox
 from app.repositories import order_event_outbox
+from app.schemas.order_action_events import OrderCancellationFailedEvent
 from app.services import event_worker, events
 from foc_shared.events import OrderEvent, OrderEventType
 
@@ -106,3 +107,28 @@ async def test_publisher_uses_shared_schema_and_confirmed_persistent_delivery(mo
         "mandatory": True,
         "timeout": 5,
     }
+
+
+async def test_publisher_supports_order_cancellation_failed(monkeypatch):
+    exchange = MagicMock()
+    exchange.publish = AsyncMock()
+    channel = MagicMock()
+    channel.declare_exchange = AsyncMock(return_value=exchange)
+    connection = AsyncMock()
+    connection.__aenter__.return_value = connection
+    connection.channel.return_value = channel
+    monkeypatch.setattr(events.aio_pika, "connect_robust", AsyncMock(return_value=connection))
+    event = OrderCancellationFailedEvent(
+        task_id="task-1",
+        order_id="order-1",
+        reservation_id="reservation-1",
+        requester_id="requester-1",
+        timestamp=datetime.now(UTC),
+        reason="release_rejected",
+    )
+
+    await events.publish_order_event(event, event_id="event-1")
+
+    message = exchange.publish.await_args.args[0]
+    assert OrderCancellationFailedEvent.model_validate_json(message.body) == event
+    assert exchange.publish.await_args.kwargs["routing_key"] == "OrderCancellationFailed"

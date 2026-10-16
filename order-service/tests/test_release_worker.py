@@ -94,7 +94,7 @@ async def test_credit_released_deletes_order_and_completes_task(maker) -> None:
         assert (await session.get(OrderReleaseOutbox, task_id)).status == COMPLETED
 
 
-async def test_credit_released_cancels_order_and_records_event(maker) -> None:
+async def test_credit_released_cancels_order_and_records_final_event(maker) -> None:
     task_id = await _seed_task(maker, ReleaseAction.CANCEL, status=OrderStatus.ACCEPTED)
     async with maker() as session:
         assert await release_worker.process_release_result(session, _result()) is True
@@ -108,7 +108,7 @@ async def test_credit_released_cancels_order_and_records_event(maker) -> None:
         assert event_task.payload["reason"] == "requester_cancelled"
 
 
-async def test_credit_released_expires_order_and_records_event(maker) -> None:
+async def test_credit_released_expires_order_and_completes_task(maker) -> None:
     task_id = await _seed_task(
         maker,
         ReleaseAction.EXPIRE,
@@ -121,8 +121,6 @@ async def test_credit_released_expires_order_and_records_event(maker) -> None:
         order = await session.get(OrderTable, "order-1")
         assert order.status == OrderStatus.EXPIRED
         assert (await session.get(OrderReleaseOutbox, task_id)).status == COMPLETED
-        event_task = (await session.scalars(select(OrderEventOutbox))).one()
-        assert event_task.payload["event_type"] == "OrderExpired"
 
 
 async def test_expiry_is_rejected_before_deadline(maker) -> None:
@@ -162,6 +160,33 @@ async def test_failed_release_marks_only_the_matching_task_failed(maker) -> None
         assert task.last_error == "release_rejected"
 
 
+async def test_failed_cancel_records_failure_without_changing_order(maker) -> None:
+    task_id = await _seed_task(maker, ReleaseAction.CANCEL, status=OrderStatus.ACCEPTED)
+
+    async with maker() as session:
+        assert (
+            await release_worker.process_release_result(session, _result("CreditReleaseFailed"))
+            is True
+        )
+
+    async with maker() as session:
+        order = await session.get(OrderTable, "order-1")
+        assert order.status == OrderStatus.ACCEPTED
+        task = await session.get(OrderReleaseOutbox, task_id)
+        assert task.status == FAILED
+        assert task.last_error == "release_rejected"
+        event_task = (await session.scalars(select(OrderEventOutbox))).one()
+        assert event_task.payload == {
+            "event_type": "OrderCancellationFailed",
+            "task_id": task_id,
+            "order_id": "order-1",
+            "reservation_id": "reservation-1",
+            "requester_id": "requester-1",
+            "timestamp": event_task.payload["timestamp"],
+            "reason": "release_rejected",
+        }
+
+
 async def test_failed_commit_leaves_release_result_retryable(maker) -> None:
     task_id = await _seed_task(maker, ReleaseAction.DELETE)
     async with maker() as session:
@@ -181,6 +206,27 @@ async def test_failed_commit_leaves_release_result_retryable(maker) -> None:
         await release_worker.process_release_result(session, _result())
 
 
+@pytest.mark.parametrize("event_type", ["CreditReleased", "CreditReleaseFailed"])
+async def test_cancel_result_commit_failure_rolls_back_task_order_and_event(
+    maker, event_type: str
+) -> None:
+    task_id = await _seed_task(maker, ReleaseAction.CANCEL, status=OrderStatus.ACCEPTED)
+    async with maker() as session:
+
+        def fail_commit(_session):
+            raise SQLAlchemyError("commit failed")
+
+        event.listen(session.sync_session, "before_commit", fail_commit)
+        with pytest.raises(SQLAlchemyError, match="commit failed"):
+            await release_worker.process_release_result(session, _result(event_type))
+        event.remove(session.sync_session, "before_commit", fail_commit)
+
+    async with maker() as session:
+        assert (await session.get(OrderTable, "order-1")).status == OrderStatus.ACCEPTED
+        assert (await session.get(OrderReleaseOutbox, task_id)).status == PENDING
+        assert list(await session.scalars(select(OrderEventOutbox))) == []
+
+
 async def test_dispatcher_calls_handler_mapped_to_local_action(maker, monkeypatch) -> None:
     await _seed_task(maker, ReleaseAction.CANCEL, status=OrderStatus.ACCEPTED)
     handler = AsyncMock()
@@ -197,8 +243,8 @@ async def test_dispatcher_calls_handler_mapped_to_local_action(maker, monkeypatc
     ("action", "event_type"),
     [
         (ReleaseAction.DELETE, "OrderDelete"),
-        (ReleaseAction.CANCEL, "OrderCancel"),
-        (ReleaseAction.EXPIRE, "OrderExpire"),
+        (ReleaseAction.CANCEL, "OrderCancellationRequested"),
+        (ReleaseAction.EXPIRE, "OrderExpired"),
     ],
 )
 async def test_pending_action_publishes_only_its_order_domain_event(

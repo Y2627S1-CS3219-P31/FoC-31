@@ -60,14 +60,15 @@ and then deletes, cancels, or expires the order according to that task.
 
 Codex generalized the deletion outbox into an Order Service release-task
 outbox with local `delete`, `cancel`, and `expire` actions. The publisher sends
-the corresponding `OrderDelete`, `OrderCancel`, or `OrderExpire` domain event
-and does not request an operation from another service. One
+the corresponding `OrderDelete`, `OrderCancellationRequested`, or
+`OrderExpired` domain event and does not request an operation from another
+service. One
 consumer validates the concrete `CreditReleased` and `CreditReleaseFailed`
 events through the internal `CreditReleaseResult` model, locks the pending task
 by reservation ID, and applies the local action transactionally. Cancellation
-and expiry record their lifecycle event in the existing event outbox. Unknown
-and duplicate results are acknowledged without changing an order, while a
-failed database transaction leaves the RabbitMQ delivery retryable.
+outcome events are recorded only after that credit result. Unknown and duplicate
+results are acknowledged without changing an order, while a failed database
+transaction leaves the RabbitMQ delivery retryable.
 
 The implementation includes a migration from the legacy deletion table,
 startup integration, repository queries, documentation, and tests for all
@@ -86,13 +87,29 @@ the publishing service.
 Codex added `POST /orders/{order_id}/cancel` with trusted requester identity,
 ownership and lifecycle validation, pending-update and conflicting-action
 guards, idempotent reuse of an existing pending cancellation, and durable
-creation of a `cancel` release task. The Order action publisher continues to
-emit only `OrderDelete`, `OrderCancel`, or `OrderExpire` facts.
+creation of a `cancel` release task. The Order action publisher emits
+`OrderDelete`, `OrderCancellationRequested`, or `OrderExpired` facts.
 
 The Credit outcome dispatcher now selects explicit delete, cancel, and expire
 handlers from a handler map. Each handler locks and revalidates its order,
-performs its local change, and completes or fails the task. Cancellation and
-expiry persist their final lifecycle event atomically with the status change.
+performs its local change, and completes or fails the task without publishing
+a duplicate cancellation or expiry event.
 Database failures roll back and cause RabbitMQ redelivery; unmatched and
 duplicate outcomes remain safe no-ops. Validation: Ruff passed; 131 tests
 passed and 12 optional PostgreSQL tests were skipped without a PostgreSQL URL.
+
+## 2026-10-16 — Publish explicit cancellation request and outcome facts
+
+User request: implement the approved cancellation workflow using
+`OrderCancellationRequested` before Credit Service acts, followed by
+`OrderCancelled` or `OrderCancellationFailed` after the credit outcome.
+
+Codex changed the pending cancellation event to
+`OrderCancellationRequested`. A matching `CreditReleased` now changes the
+order to `CANCELLED`, completes the task, and records `OrderCancelled` in the
+durable lifecycle outbox in one transaction. `CreditReleaseFailed` leaves the
+order unchanged, marks the task failed with the reason, and records the local
+`OrderCancellationFailed` outcome atomically. The lifecycle publisher now
+validates and publishes both shared lifecycle events and the Order-owned
+cancellation-failure contract. Duplicate results remain no-ops, while database
+failures roll back the task, order, and outcome event before redelivery.

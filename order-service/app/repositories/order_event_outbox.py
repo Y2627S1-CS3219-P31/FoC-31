@@ -7,10 +7,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order_event_outbox import OrderEventOutbox
+from app.schemas.order_action_events import OrderCancellationFailedEvent
 from foc_shared.events import OrderEvent
 
+OrderOutboxEvent = OrderEvent | OrderCancellationFailedEvent
 
-async def create_event(session: AsyncSession, event: OrderEvent) -> OrderEventOutbox:
+
+async def create_event(session: AsyncSession, event: OrderOutboxEvent) -> OrderEventOutbox:
     task = OrderEventOutbox(payload=event.model_dump(mode="json"))
     session.add(task)
     await session.flush()

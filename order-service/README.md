@@ -55,8 +55,9 @@ order. Repeating the same pending action returns its existing task; failed or
 conflicting terminal actions require review. Expiry flows use the same release
 task with their own local action. The task also serves as a durable outbox
 record: a publisher
-announces the pending Order action as `OrderDelete`, `OrderCancel`, or
-`OrderExpire` and retries until the broker confirms it. These events describe
+announces the pending Order action as `OrderDelete`,
+`OrderCancellationRequested`, or
+`OrderExpired` and retries until the broker confirms it. These events describe
 only what is happening in Order Service. They contain the order and reservation
 identifiers for correlation and do not request an operation from Credit
 Service.
@@ -64,11 +65,14 @@ Service.
 Credit Service may independently react to these events and publish
 `CreditReleased` or `CreditReleaseFailed`. The Order Service consumer locks the
 pending task that matches the event's reservation ID. A small dispatcher calls
-the task's delete, cancel, or expire handler inside one Order DB transaction. A
-cancellation or expiry also records its lifecycle event in the standard event
-outbox. Unknown and duplicate results are acknowledged without changing an
-order. A failed final transaction requeues the RabbitMQ delivery; a definite
-release failure keeps the order and marks its task failed for review.
+the task's delete, cancel, or expire handler inside one Order DB transaction.
+For cancellation, a successful release changes the order to `CANCELLED`,
+completes the task, and records `OrderCancelled` for durable publication. A
+definite release failure leaves the order unchanged, marks the task failed, and
+records `OrderCancellationFailed`. Unknown and duplicate results are
+acknowledged without changing an order. A failed final transaction rolls back
+both the local result and its outcome event, then requeues the RabbitMQ
+delivery.
 
 `GET /orders/deletions/{task_id}` lets the requester check a deletion result.
 Orders with pending or failed release tasks are hidden from the courier listing

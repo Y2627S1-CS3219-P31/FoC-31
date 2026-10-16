@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
-OrderActionEventType = Literal["OrderDelete", "OrderCancel", "OrderExpire"]
+OrderActionEventType = Literal["OrderDelete", "OrderCancellationRequested", "OrderExpired"]
 
 
 class OrderActionEvent(BaseModel):
@@ -20,3 +20,17 @@ class OrderActionEvent(BaseModel):
     requester_id: str
     timestamp: datetime
     reason: str | None = None
+
+
+class OrderCancellationFailedEvent(BaseModel):
+    """Final Order Service outcome after cancellation cannot be completed."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["OrderCancellationFailed"] = "OrderCancellationFailed"
+    task_id: str
+    order_id: str
+    reservation_id: str
+    requester_id: str
+    timestamp: datetime
+    reason: str

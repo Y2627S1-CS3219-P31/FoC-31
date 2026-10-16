@@ -4,10 +4,19 @@ from __future__ import annotations
 import aio_pika
 
 from app.config import settings
-from foc_shared.events import OrderEvent
+from app.schemas.order_action_events import OrderCancellationFailedEvent
+from foc_shared.events import OrderEvent, OrderEventType
+
+OrderPublishableEvent = OrderEvent | OrderCancellationFailedEvent
 
 
-async def publish_order_event(event: OrderEvent, *, event_id: str) -> None:
+def _routing_key(event: OrderPublishableEvent) -> str:
+    if isinstance(event.event_type, OrderEventType):
+        return event.event_type.value
+    return event.event_type
+
+
+async def publish_order_event(event: OrderPublishableEvent, *, event_id: str) -> None:
     connection = await aio_pika.connect_robust(settings.rabbitmq_url, timeout=3)
     async with connection:
         channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
@@ -21,7 +30,7 @@ async def publish_order_event(event: OrderEvent, *, event_id: str) -> None:
                 message_id=event_id,
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
-            routing_key=event.event_type.value,
+            routing_key=_routing_key(event),
             mandatory=True,
             timeout=5,
         )

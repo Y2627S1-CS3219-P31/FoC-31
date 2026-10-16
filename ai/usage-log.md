@@ -429,8 +429,8 @@ Format for each entry:
 - Scope: Implemented the Order Service cancellation workflow and generalized
   terminal-action result dispatcher. Added the cancellation API, durable
   `cancel` task creation, Order-domain event publication (`OrderDelete`,
-  `OrderCancel`, or `OrderExpire`), separate delete/cancel/expire handlers,
-  Credit outcome routing by reservation ID, lifecycle-event persistence, and
+  `OrderCancelled`, or `OrderExpired`), separate delete/cancel/expire handlers,
+  Credit outcome routing by reservation ID, transactional result handling, and
   retry/idempotency tests. No service outside `order-service/` was modified.
 - Prompt(s): "Implement this: To cancel, Order Service authenticates the
   requester, locks the order, and validates ownership, status, pending updates,
@@ -450,3 +450,21 @@ Format for each entry:
 - Author review: Pending contributor review. Ruff passed; 131 tests passed and
   12 optional PostgreSQL tests were skipped because no PostgreSQL test URL was
   provided.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Revised the cancellation saga to publish
+  `OrderCancellationRequested` when a valid request becomes pending, then
+  durably record `OrderCancelled` after `CreditReleased` or
+  `OrderCancellationFailed` after `CreditReleaseFailed`. The final order/task
+  state and outcome event are committed atomically. No service outside
+  `order-service/` was modified.
+- Prompt(s): "To cancel an order, Order Service authenticates the requester,
+  locks the order, validates ownership and status, and rejects pending updates
+  or conflicting terminal actions... Make sure the code is neat, simple to
+  understand, and add clear comments where appropriate but don't overdo the
+  comments either. Make sure it follows the project's architecture."
+- Author review: Pending contributor review. Codex added focused request,
+  success, failure, publication, duplicate, and rollback coverage and ran the
+  complete Order Service validation suite.
