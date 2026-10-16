@@ -33,6 +33,7 @@ from app.services.clients.supplier.error import (
 from app.services.errors import (
     OrderAcceptanceError,
     OrderAccessDeniedError,
+    OrderCancellationError,
     OrderDeletionError,
     OrderNotEditableError,
     OrderNotFoundError,
@@ -58,6 +59,11 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "order_acceptance_failed",
         "The order could not be accepted because the database operation failed.",
+    ),
+    OrderCancellationError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_cancellation_failed",
+        "The order cancellation could not be started because the database operation failed.",
     ),
     OrderNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,
@@ -261,14 +267,14 @@ async def _handle_order_deletion_error(
     exc: OrderDeletionError,
 ) -> JSONResponse:
     logger.error(
-        "Order database deletion failed",
+        "Order deletion request could not be saved",
         extra={"order_id": exc.order_id},
         exc_info=(type(exc), exc, exc.__traceback__),
     )
     return _error_response(
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "order_deletion_failed",
-        "The order could not be deleted because the database operation failed.",
+        "The order deletion could not be started because the database operation failed.",
     )
 
 

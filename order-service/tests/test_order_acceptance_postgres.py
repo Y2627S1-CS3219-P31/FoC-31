@@ -9,8 +9,8 @@ import pytest
 from sqlalchemy import event, func, select
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.models.order_deletion_outbox import OrderDeletionOutbox
 from app.models.order_event_outbox import OrderEventOutbox
+from app.models.order_release_outbox import OrderReleaseOutbox, ReleaseAction
 from app.models.order_update_outbox import OrderUpdateOutbox
 from app.models.orders import OrderTable
 from app.repositories import orders as order_repository
@@ -111,15 +111,16 @@ async def test_outbox_status_controls_acceptance(postgres_sessions, status):
         await _accept(postgres_sessions)
 
 
-@pytest.mark.parametrize("status", ["pending", "processing", "failed"])
+@pytest.mark.parametrize("status", ["pending", "failed"])
 async def test_deletion_blocks_acceptance(postgres_sessions, status):
     await _seed(
         postgres_sessions,
         _order("order-1"),
-        OrderDeletionOutbox(
+        OrderReleaseOutbox(
             order_id="order-1",
             requester_id="requester-1",
             reservation_id="reservation-order-1",
+            action=ReleaseAction.DELETE.value,
             status=status,
         ),
     )

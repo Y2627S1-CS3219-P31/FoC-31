@@ -31,7 +31,7 @@ def acceptance(monkeypatch):
         (orders.order_repository, "count_ongoing_for_courier", 0),
         (orders.order_repository, "assign_courier", None),
         (orders.update_outbox_repository, "get_pending_for_order", None),
-        (orders.deletion_outbox_repository, "get_for_order", None),
+        (orders.release_outbox_repository, "get_for_order", None),
         (orders.event_outbox_repository, "create_event", None),
     ):
         mock = AsyncMock(return_value=result)

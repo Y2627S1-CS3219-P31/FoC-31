@@ -14,21 +14,32 @@ from app.services.client_manager import (
     close_remote_clients,
 )
 from app.services.event_worker import run_event_worker
+from app.services.release_consumer import run_release_consumer
+from app.services.release_worker import run_order_action_worker
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
     _start_remote_clients()
-    event_worker = asyncio.create_task(run_event_worker())
+    order_action_worker_task = asyncio.create_task(run_order_action_worker())
+    release_consumer_task = asyncio.create_task(run_release_consumer())
+    event_worker_task = asyncio.create_task(run_event_worker())
     try:
         yield
     finally:
-        event_worker.cancel()
+        order_action_worker_task.cancel()
+        release_consumer_task.cancel()
+        event_worker_task.cancel()
         with suppress(asyncio.CancelledError):
-            await event_worker
+            await order_action_worker_task
+        with suppress(asyncio.CancelledError):
+            await release_consumer_task
+        with suppress(asyncio.CancelledError):
+            await event_worker_task
         await close_remote_clients()
         await engine.dispose()
+
 
 app = FastAPI(
     title="FoC Order Service",

@@ -37,6 +37,8 @@ class OrderNotEditableError(OrderServiceError):
         self.order_id = order_id
 
 
+
+
 class OrderPersistenceError(OrderServiceError):
     """Raised when a new order cannot be persisted to the database."""
 
@@ -57,8 +59,16 @@ class OrderRetrievalError(OrderServiceError):
 
 
 class OrderDeletionError(OrderServiceError):
-    """Raised when an order cannot be deleted from the database."""
+    """Raised when an order deletion task cannot be saved."""
 
     def __init__(self, order_id: str) -> None:
-        super().__init__(f"Failed to delete order '{order_id}' from the database.")
+        super().__init__(f"Failed to start deletion of order '{order_id}'.")
+        self.order_id = order_id
+
+
+class OrderCancellationError(OrderServiceError):
+    """Raised when an order cancellation task cannot be saved."""
+
+    def __init__(self, order_id: str) -> None:
+        super().__init__(f"Failed to start cancellation of order '{order_id}'.")
         self.order_id = order_id

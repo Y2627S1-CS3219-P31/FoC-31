@@ -4,7 +4,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    field_validator,
+)
 
 from app.services.lifecycle import OrderStatus
 
@@ -49,7 +55,29 @@ class OrderResponse(BaseModel):
     status: OrderStatus
     created_at: datetime
 
+
+class OrderActionTaskResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    task_id: str
+    order_id: str
+    status: str
+
+
+class OrderDeletionResponse(OrderActionTaskResponse):
+    """Backward-compatible response name for the deletion endpoints."""
+
+
+class OrderCancellationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    reason: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=255)]
+
+
+
+
 # The fields here are restricted to the fields that the client is authorized to edit
+
 class OrderUpdate(BaseModel):
     name: NonEmptyString 
     details: NonEmptyString 
@@ -57,4 +85,4 @@ class OrderUpdate(BaseModel):
     deadline: datetime 
     supplier_id: NonEmptyString 
     pickup_location: NonEmptyString 
-    delivery_location: NonEmptyString 
+    delivery_location: NonEmptyString

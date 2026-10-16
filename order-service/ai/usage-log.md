@@ -51,3 +51,48 @@ files are preserved. An isolated export of the staged snapshot passed all
 82 runnable tests, including the health test; 13 PostgreSQL integration tests
 were skipped without a database URL. The snapshot does not import the
 unstaged workers that depend on missing shared contracts.
+
+## 2026-10-16 — Route credit-release outcomes to local order actions
+
+User request: implement the Order Service RabbitMQ workflow that consumes a
+credit-release outcome, matches its reservation ID to a pending local task,
+and then deletes, cancels, or expires the order according to that task.
+
+Codex generalized the deletion outbox into an Order Service release-task
+outbox with local `delete`, `cancel`, and `expire` actions. The publisher sends
+the corresponding `OrderDelete`, `OrderCancel`, or `OrderExpire` domain event
+and does not request an operation from another service. One
+consumer validates the concrete `CreditReleased` and `CreditReleaseFailed`
+events through the internal `CreditReleaseResult` model, locks the pending task
+by reservation ID, and applies the local action transactionally. Cancellation
+and expiry record their lifecycle event in the existing event outbox. Unknown
+and duplicate results are acknowledged without changing an order, while a
+failed database transaction leaves the RabbitMQ delivery retryable.
+
+The implementation includes a migration from the legacy deletion table,
+startup integration, repository queries, documentation, and tests for all
+three actions, release failures, duplicates, rollback, publication payloads,
+consumer acknowledgements, and legacy data migration. Changes remain confined
+to `order-service/` as required. Validation: Ruff passed; 117 tests passed and
+12 optional PostgreSQL tests were skipped because no PostgreSQL test URL was
+provided.
+
+## 2026-10-16 — Cancellation initiation and terminal-action handlers
+
+User request: implement the supplied cancellation workflow and general
+dispatcher pseudocode while keeping published events limited to facts from
+the publishing service.
+
+Codex added `POST /orders/{order_id}/cancel` with trusted requester identity,
+ownership and lifecycle validation, pending-update and conflicting-action
+guards, idempotent reuse of an existing pending cancellation, and durable
+creation of a `cancel` release task. The Order action publisher continues to
+emit only `OrderDelete`, `OrderCancel`, or `OrderExpire` facts.
+
+The Credit outcome dispatcher now selects explicit delete, cancel, and expire
+handlers from a handler map. Each handler locks and revalidates its order,
+performs its local change, and completes or fails the task. Cancellation and
+expiry persist their final lifecycle event atomically with the status change.
+Database failures roll back and cause RabbitMQ redelivery; unmatched and
+duplicate outcomes remain safe no-ops. Validation: Ruff passed; 131 tests
+passed and 12 optional PostgreSQL tests were skipped without a PostgreSQL URL.

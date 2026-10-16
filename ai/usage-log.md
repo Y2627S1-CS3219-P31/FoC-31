@@ -422,3 +422,31 @@ Format for each entry:
 - Author review: Pending contributor review. Codex ran focused tests and
   checked the new error mapping and update guard. Existing create/delete test
   failures and unrelated lint errors from the in-progress client refactor remain.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the Order Service cancellation workflow and generalized
+  terminal-action result dispatcher. Added the cancellation API, durable
+  `cancel` task creation, Order-domain event publication (`OrderDelete`,
+  `OrderCancel`, or `OrderExpire`), separate delete/cancel/expire handlers,
+  Credit outcome routing by reservation ID, lifecycle-event persistence, and
+  retry/idempotency tests. No service outside `order-service/` was modified.
+- Prompt(s): "Implement this: To cancel, Order Service authenticates the
+  requester, locks the order, and validates ownership, status, pending updates,
+  and conflicting tasks. It returns an existing pending task or creates a
+  CANCEL task and responds 202. A publisher maps pending DELETE, CANCEL, and
+  EXPIRE tasks to OrderDelete, OrderCancel, and OrderExpire events, publishing
+  with retries. Credit Service independently releases the reservation
+  idempotently, then publishes CreditReleased or CreditReleaseFailed. Order
+  Service locks the matching task by reservation ID. Failure marks it failed;
+  success calls its mapped handler. Each handler locks and revalidates the
+  order, then deletes it or changes its state, records any final lifecycle
+  event, and completes the task. Transaction errors roll back and requeue;
+  unmatched or duplicate events are acknowledged. Implement this and this
+  pseudocode. Make sure the code is neat, simple to understand, and add clear
+  comments where appropriate but don't overdo the comments either. Make sure
+  it follows the project's architecture."
+- Author review: Pending contributor review. Ruff passed; 131 tests passed and
+  12 optional PostgreSQL tests were skipped because no PostgreSQL test URL was
+  provided.

@@ -46,6 +46,34 @@ make test-order-service
 
 Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
+## Credit release workflows
+
+`DELETE /orders/{order_id}` returns `202` after saving a deletion task in the
+Order DB. `POST /orders/{order_id}/cancel` accepts a non-empty `reason` and
+returns `202` after saving a cancellation task for an owned `OPEN` or `ACCEPTED`
+order. Repeating the same pending action returns its existing task; failed or
+conflicting terminal actions require review. Expiry flows use the same release
+task with their own local action. The task also serves as a durable outbox
+record: a publisher
+announces the pending Order action as `OrderDelete`, `OrderCancel`, or
+`OrderExpire` and retries until the broker confirms it. These events describe
+only what is happening in Order Service. They contain the order and reservation
+identifiers for correlation and do not request an operation from Credit
+Service.
+
+Credit Service may independently react to these events and publish
+`CreditReleased` or `CreditReleaseFailed`. The Order Service consumer locks the
+pending task that matches the event's reservation ID. A small dispatcher calls
+the task's delete, cancel, or expire handler inside one Order DB transaction. A
+cancellation or expiry also records its lifecycle event in the standard event
+outbox. Unknown and duplicate results are acknowledged without changing an
+order. A failed final transaction requeues the RabbitMQ delivery; a definite
+release failure keeps the order and marks its task failed for review.
+
+`GET /orders/deletions/{task_id}` lets the requester check a deletion result.
+Orders with pending or failed release tasks are hidden from the courier listing
+and cannot be edited or accepted by a courier.
+
 ## Order acceptance (F2.6)
 
 `POST /orders/{order_id}/accept` accepts an order and returns `200` with the
@@ -103,6 +131,8 @@ The order-service contract is documented in `docs/`:
 At runtime, FastAPI also serves the live specification at `/openapi.json` and
 interactive documentation at `/docs`.
 
-> Status: `POST /orders`, `GET /orders`, `GET /orders/{order_id}`, and
-> `DELETE /orders/{order_id}`, and `POST /orders/{order_id}/accept` are implemented.
-> Remaining lifecycle operations belong to later sprints.
+> Status: `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
+> `DELETE /orders/{order_id}`,
+> `POST /orders/{order_id}/cancel`, and
+> `POST /orders/{order_id}/accept` are implemented. Remaining lifecycle
+> operations belong to later sprints.

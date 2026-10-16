@@ -31,6 +31,7 @@ from app.services.clients.supplier.error import (
 )
 from app.services.errors import (
     OrderAccessDeniedError,
+    OrderCancellationError,
     OrderDeletionError,
     OrderNotEditableError,
     OrderNotFoundError,
@@ -56,6 +57,11 @@ def _app_raising(exception_factory: Callable[[], Exception]) -> FastAPI:
     [
         (lambda: OrderNotFoundError("order-1"), 404, "order_not_found"),
         (lambda: OrderAccessDeniedError("order-1"), 403, "order_access_denied"),
+        (
+            lambda: OrderCancellationError("order-1"),
+            500,
+            "order_cancellation_failed",
+        ),
         (
             lambda: OrderStateConflictError("order-1", "Invalid state."),
             409,
@@ -199,7 +205,7 @@ def test_order_persistence_error_identifies_database_failure() -> None:
         (
             OrderDeletionError("order-1"),
             "order_deletion_failed",
-            "The order could not be deleted because the database operation failed.",
+            "The order deletion could not be started because the database operation failed.",
         ),
     ],
 )

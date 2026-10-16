@@ -197,7 +197,7 @@ def test_get_order_uses_centralized_error_handler(
     assert response.json()["code"] == code
 
 
-def test_delete_order_returns_no_content(
+def test_delete_order_returns_accepted_task(
     client: TestClient,
     fake_session: object,
     monkeypatch: pytest.MonkeyPatch,
@@ -206,6 +206,7 @@ def test_delete_order_returns_no_content(
         assert session is fake_session
         assert order_id == "order-1"
         assert requester_id == "user-1"
+        return SimpleNamespace(task_id="task-1", order_id=order_id, status="pending")
 
     monkeypatch.setattr(
         order_routes.order_service,
@@ -218,8 +219,76 @@ def test_delete_order_returns_no_content(
         headers={"X-User-Id": "user-1"},
     )
 
-    assert response.status_code == 204
-    assert response.content == b""
+    assert response.status_code == 202
+    assert response.json() == {
+        "task_id": "task-1",
+        "order_id": "order-1",
+        "status": "pending",
+    }
+
+
+def test_cancel_order_returns_accepted_task(
+    client: TestClient,
+    fake_session: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    task = SimpleNamespace(task_id="task-1", order_id="order-1", status="pending")
+    cancel = AsyncMock(return_value=task)
+    monkeypatch.setattr(order_routes.order_service, "cancel_order_for_requester", cancel)
+
+    response = client.post(
+        "/orders/order-1/cancel",
+        headers={"X-User-Id": "user-1"},
+        json={"reason": "Requester changed their mind"},
+    )
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "task_id": "task-1",
+        "order_id": "order-1",
+        "status": "pending",
+    }
+    cancel.assert_awaited_once_with(
+        fake_session,
+        "order-1",
+        "user-1",
+        "Requester changed their mind",
+    )
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"reason": ""},
+        {"reason": "cancel", "unexpected": True},
+    ],
+)
+def test_cancel_order_validates_reason(client: TestClient, payload: dict[str, Any]) -> None:
+    response = client.post(
+        "/orders/order-1/cancel",
+        headers={"X-User-Id": "user-1"},
+        json=payload,
+    )
+
+    assert response.status_code == 422
+    assert response.json()["code"] == "validation_error"
+
+
+def test_get_deletion_reports_completion_to_owner(
+    client: TestClient, fake_session: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async def fake_get_deletion(session, task_id, requester_id):
+        assert session is fake_session
+        assert (task_id, requester_id) == ("task-1", "user-1")
+        return SimpleNamespace(task_id=task_id, order_id="order-1", status="completed")
+
+    monkeypatch.setattr(order_routes.order_service, "get_deletion_for_requester", fake_get_deletion)
+    response = client.get("/orders/deletions/task-1", headers={"X-User-Id": "user-1"})
+    assert response.status_code == 200
+    assert response.json()["status"] == "completed"
+
+
 
 
 def test_delete_order_uses_state_conflict_handler(

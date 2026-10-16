@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     credit_service_url: str = "http://credit-service:8000"
     rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672/"
     order_events_exchange: str = "foc.order.events"
+    credit_events_exchange: str = "foc.credit.events"
+    release_results_queue: str = "order-service.credit-release-results"
 
 
 settings = Settings()

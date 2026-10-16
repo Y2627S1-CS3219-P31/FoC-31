@@ -6,6 +6,9 @@ from hashlib import sha256
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.order_release_outbox import FAILED as RELEASE_FAILED
+from app.models.order_release_outbox import PENDING as RELEASE_PENDING
+from app.models.order_release_outbox import OrderReleaseOutbox
 from app.models.orders import OrderTable
 from app.schemas.orders import OrderCreate, OrderUpdate
 from app.services.lifecycle import OrderStatus
@@ -52,6 +55,12 @@ async def list_available_orders(
             OrderTable.status == OrderStatus.OPEN,
             OrderTable.courier_id.is_(None),
             OrderTable.requester_id != requester_id,
+            ~select(OrderReleaseOutbox.task_id)
+            .where(
+                OrderReleaseOutbox.order_id == OrderTable.order_id,
+                OrderReleaseOutbox.status.in_((RELEASE_PENDING, RELEASE_FAILED)),
+            )
+            .exists(),
         )
         .order_by(OrderTable.deadline.asc(), OrderTable.order_id.asc())
     )
@@ -105,6 +114,11 @@ async def count_ongoing_for_courier(session: AsyncSession, courier_id: str) -> i
 async def assign_courier(session: AsyncSession, order: OrderTable, courier_id: str) -> None:
     order.courier_id = courier_id
     order.status = OrderStatus.ACCEPTED
+    await session.flush()
+
+
+async def set_status(session: AsyncSession, order: OrderTable, status: OrderStatus) -> None:
+    order.status = status
     await session.flush()
 
 

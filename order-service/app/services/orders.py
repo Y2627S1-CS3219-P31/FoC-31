@@ -7,20 +7,21 @@ from uuid import uuid4
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.order_release_outbox import FAILED as RELEASE_FAILED
+from app.models.order_release_outbox import OrderReleaseOutbox, ReleaseAction
 from app.models.orders import OrderTable
-from app.repositories import order_deletion_outbox as deletion_outbox_repository
 from app.repositories import order_event_outbox as event_outbox_repository
+from app.repositories import order_release_outbox as release_outbox_repository
 from app.repositories import order_update_outbox as update_outbox_repository
 from app.repositories import orders as order_repository
 from app.schemas.orders import OrderCreate, OrderUpdate
 from app.services.client_manager import get_credit_client
-from app.services.clients.credit.error import CreditClientError
-from app.services.clients.errors import RemoteServiceError
 from app.services.clients.supplier.error import SupplierInactiveError
 from app.services.clients.supplier.get_supplier import get_supplier
 from app.services.errors import (
     OrderAcceptanceError,
     OrderAccessDeniedError,
+    OrderCancellationError,
     OrderDeletionError,
     OrderNotEditableError,
     OrderNotFoundError,
@@ -52,7 +53,7 @@ async def accept_order(session: AsyncSession, order_id: str, courier_id: str) ->
             # Published amendments remain pending until their result is applied.
             if await update_outbox_repository.get_pending_for_order(session, order_id):
                 raise OrderStateConflictError(order_id, "Order update is still pending.")
-            if await deletion_outbox_repository.get_for_order(session, order_id):
+            if await release_outbox_repository.get_for_order(session, order_id):
                 raise OrderStateConflictError(order_id, "Order is unavailable due to deletion.")
             if await order_repository.count_ongoing_for_courier(session, courier_id) >= 3:
                 raise OrderStateConflictError(order_id, "You already have 3 ongoing orders.")
@@ -147,11 +148,25 @@ async def get_order_for_requester(
     return order
 
 
+async def get_deletion_for_requester(
+    session: AsyncSession, task_id: str, requester_id: str
+) -> OrderReleaseOutbox:
+    try:
+        task = await release_outbox_repository.get_task(session, task_id)
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError() from exc
+    if task is None or task.action != ReleaseAction.DELETE:
+        raise OrderNotFoundError(task_id)
+    if task.requester_id != requester_id:
+        raise OrderAccessDeniedError(task.order_id)
+    return task
+
+
 async def delete_order_for_requester(
     session: AsyncSession,
     order_id: str,
     requester_id: str,
-) -> None:
+) -> OrderReleaseOutbox:
     try:
         async with session.begin():
             order = await order_repository.get_order_for_update(session, order_id)
@@ -160,6 +175,14 @@ async def delete_order_for_requester(
             if order.requester_id != requester_id:
                 raise OrderAccessDeniedError(order_id)
 
+            existing = await release_outbox_repository.get_for_order(session, order_id)
+            if existing is not None:
+                if existing.status == RELEASE_FAILED:
+                    raise OrderStateConflictError(
+                        order_id, "Order deletion failed and needs support review."
+                    )
+                return existing
+
             status = OrderStatus(order.status)
             if status != OrderStatus.OPEN or order.courier_id is not None:
                 raise OrderStateConflictError(
@@ -167,22 +190,82 @@ async def delete_order_for_requester(
                     "Only an open order without an assigned courier can be deleted.",
                 )
 
-            await order_repository.delete_order(session, order)
+            if await update_outbox_repository.get_pending_for_order(session, order_id):
+                raise OrderStateConflictError(
+                    order_id, "This order has an update in progress. Try deleting it later."
+                )
 
-        await get_credit_client().release_credits(
-            reservation_id=order.reservation_id,
-            requester_id=requester_id,
-        )
+            return await release_outbox_repository.create_task(
+                session,
+                order_id=order_id,
+                requester_id=requester_id,
+                reservation_id=order.reservation_id,
+                action=ReleaseAction.DELETE,
+            )
     except (
-        CreditClientError,
         OrderAccessDeniedError,
         OrderNotFoundError,
         OrderStateConflictError,
-        RemoteServiceError,
     ):
         raise
     except SQLAlchemyError as exc:
         raise OrderDeletionError(order_id) from exc
+
+
+async def cancel_order_for_requester(
+    session: AsyncSession,
+    order_id: str,
+    requester_id: str,
+    reason: str,
+) -> OrderReleaseOutbox:
+    try:
+        async with session.begin():
+            order = await order_repository.get_order_for_update(session, order_id)
+            if order is None:
+                raise OrderNotFoundError(order_id)
+            if order.requester_id != requester_id:
+                raise OrderAccessDeniedError(order_id)
+
+            existing = await release_outbox_repository.get_for_order(session, order_id)
+            if existing is not None:
+                if existing.status == RELEASE_FAILED:
+                    raise OrderStateConflictError(
+                        order_id, "The existing terminal action needs support review."
+                    )
+                if existing.action != ReleaseAction.CANCEL.value:
+                    raise OrderStateConflictError(
+                        order_id, "A different terminal action is already pending."
+                    )
+                return existing
+
+            current_status = OrderStatus(order.status)
+            if current_status not in (OrderStatus.OPEN, OrderStatus.ACCEPTED):
+                raise OrderStateConflictError(
+                    order_id, "Only an open or accepted order can be cancelled."
+                )
+
+            if await update_outbox_repository.get_pending_for_order(session, order_id):
+                raise OrderStateConflictError(
+                    order_id, "This order has an update in progress. Try cancelling it later."
+                )
+
+            assert_transition(current_status, OrderStatus.CANCELLED)
+            return await release_outbox_repository.create_task(
+                session,
+                order_id=order_id,
+                requester_id=requester_id,
+                reservation_id=order.reservation_id,
+                action=ReleaseAction.CANCEL,
+                reason=reason,
+            )
+    except (
+        OrderAccessDeniedError,
+        OrderNotFoundError,
+        OrderStateConflictError,
+    ):
+        raise
+    except SQLAlchemyError as exc:
+        raise OrderCancellationError(order_id) from exc
 
 
 async def update_order(
