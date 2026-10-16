@@ -22,6 +22,9 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
+    from app.models import order_deletion_outbox as deletion_models  # noqa: F401
+    from app.models import order_event_outbox as event_models  # noqa: F401
+    from app.models import order_update_outbox as outbox_models  # noqa: F401
     from app.models import orders as order_models  # noqa: F401
 
     async with engine.begin() as connection:

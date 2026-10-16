@@ -3,15 +3,29 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Response, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.schemas.orders import OrderCreate, OrderResponse, OrderUpdate
 from app.services import orders as order_service
-from foc_shared.auth import HEADER_USER_ID
+from foc_shared.auth import HEADER_USER_ID, HEADER_USER_ROLE, Role
 
 router = APIRouter(prefix="/orders", tags=["orders"])
+
+
+@router.post("/{order_id}/accept", response_model=OrderResponse)
+async def accept_order(
+    order_id: str,
+    courier_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    role: Annotated[str, Header(alias=HEADER_USER_ROLE)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrderResponse:
+    if role != Role.CLIENT.value:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only clients can accept orders as couriers."
+        )
+    return await order_service.accept_order(session, order_id, courier_id)
 
 
 @router.post(

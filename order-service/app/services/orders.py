@@ -1,12 +1,16 @@
 # AI-INFLUENCED: Sprint 1 Order Service workflows implemented with Codex.
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from uuid import uuid4
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.orders import OrderTable
+from app.repositories import order_deletion_outbox as deletion_outbox_repository
+from app.repositories import order_event_outbox as event_outbox_repository
+from app.repositories import order_update_outbox as update_outbox_repository
 from app.repositories import orders as order_repository
 from app.schemas.orders import OrderCreate, OrderUpdate
 from app.services.client_manager import get_credit_client
@@ -15,6 +19,7 @@ from app.services.clients.errors import RemoteServiceError
 from app.services.clients.supplier.error import SupplierInactiveError
 from app.services.clients.supplier.get_supplier import get_supplier
 from app.services.errors import (
+    OrderAcceptanceError,
     OrderAccessDeniedError,
     OrderDeletionError,
     OrderNotEditableError,
@@ -23,7 +28,51 @@ from app.services.errors import (
     OrderRetrievalError,
     OrderStateConflictError,
 )
-from app.services.lifecycle import OrderStatus
+from app.services.lifecycle import OrderStatus, assert_transition
+from foc_shared.events import OrderEvent, OrderEventType
+
+
+async def accept_order(session: AsyncSession, order_id: str, courier_id: str) -> OrderTable:
+    try:
+        async with session.begin():
+            # Serialize this courier's count/check/write across different orders.
+            await order_repository.lock_courier_acceptance(session, courier_id)
+            order = await order_repository.get_order_for_update(session, order_id)
+            if order is None:
+                raise OrderNotFoundError(order_id)
+            if order.requester_id == courier_id:
+                raise OrderStateConflictError(order_id, "You cannot accept your own order.")
+            if order.courier_id is not None:
+                raise OrderStateConflictError(order_id, "Order already has an assigned courier.")
+            if order.status != OrderStatus.OPEN:
+                raise OrderStateConflictError(order_id, "Order is not available.")
+            if order.deadline <= datetime.now(UTC):
+                raise OrderStateConflictError(order_id, "Order has expired.")
+
+            # Published amendments remain pending until their result is applied.
+            if await update_outbox_repository.get_pending_for_order(session, order_id):
+                raise OrderStateConflictError(order_id, "Order update is still pending.")
+            if await deletion_outbox_repository.get_for_order(session, order_id):
+                raise OrderStateConflictError(order_id, "Order is unavailable due to deletion.")
+            if await order_repository.count_ongoing_for_courier(session, courier_id) >= 3:
+                raise OrderStateConflictError(order_id, "You already have 3 ongoing orders.")
+
+            assert_transition(OrderStatus(order.status), OrderStatus.ACCEPTED)
+            await order_repository.assign_courier(session, order, courier_id)
+            # Assignment and its event must either both commit or both roll back.
+            await event_outbox_repository.create_event(
+                session,
+                OrderEvent(
+                    event_type=OrderEventType.ORDER_ACCEPTED,
+                    order_id=order.order_id,
+                    requester_id=order.requester_id,
+                    courier_id=courier_id,
+                    timestamp=datetime.now(UTC),
+                ),
+            )
+        return order
+    except SQLAlchemyError as exc:
+        raise OrderAcceptanceError(order_id) from exc
 
 
 async def create_order(

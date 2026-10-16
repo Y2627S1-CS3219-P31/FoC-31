@@ -1,7 +1,9 @@
 # AI-INFLUENCED: Sprint 1 order repository queries implemented with Codex.
 from __future__ import annotations
 
-from sqlalchemy import select
+from hashlib import sha256
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.orders import OrderTable
@@ -72,8 +74,38 @@ async def get_order_for_update(
         select(OrderTable)
         .where(OrderTable.order_id == order_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     return await session.scalar(statement)
+
+
+async def lock_courier_acceptance(session: AsyncSession, courier_id: str) -> None:
+    # A transaction-scoped PostgreSQL lock also covers couriers with no orders yet.
+    # Use a stable key shared by every process, not Python's randomized hash().
+    key = int.from_bytes(
+        sha256(f"order-acceptance:{courier_id}".encode()).digest()[:8], signed=True
+    )
+    await session.execute(select(func.pg_advisory_xact_lock(key)))
+
+
+async def count_ongoing_for_courier(session: AsyncSession, courier_id: str) -> int:
+    count = await session.scalar(
+        select(func.count())
+        .select_from(OrderTable)
+        .where(
+            OrderTable.courier_id == courier_id,
+            OrderTable.status.in_(
+                (OrderStatus.ACCEPTED, OrderStatus.PICKED_UP, OrderStatus.AWAITING_APPROVAL)
+            ),
+        )
+    )
+    return count or 0
+
+
+async def assign_courier(session: AsyncSession, order: OrderTable, courier_id: str) -> None:
+    order.courier_id = courier_id
+    order.status = OrderStatus.ACCEPTED
+    await session.flush()
 
 
 async def delete_order(

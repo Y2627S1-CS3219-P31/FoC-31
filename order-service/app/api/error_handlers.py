@@ -31,6 +31,7 @@ from app.services.clients.supplier.error import (
     UnexpectedSupplierResponseError,
 )
 from app.services.errors import (
+    OrderAcceptanceError,
     OrderAccessDeniedError,
     OrderDeletionError,
     OrderNotEditableError,
@@ -53,6 +54,11 @@ class ErrorMapping:
 
 
 ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
+    OrderAcceptanceError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_acceptance_failed",
+        "The order could not be accepted because the database operation failed.",
+    ),
     OrderNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,
         "order_not_found",
@@ -175,7 +181,7 @@ async def _handle_mapped_error(
             if value is not None:
                 context[f"remote_{field}"] = value
         logger.error(
-            "Order API dependency failure",
+            "Order API processing failure",
             extra=context,
             exc_info=(type(exc), exc, exc.__traceback__),
         )

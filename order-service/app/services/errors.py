@@ -5,6 +5,12 @@ class OrderServiceError(Exception):
     """Base class for expected Order Service failures."""
 
 
+class OrderAcceptanceError(OrderServiceError):
+    def __init__(self, order_id: str) -> None:
+        super().__init__(f"Failed to accept order '{order_id}'.")
+        self.order_id = order_id
+
+
 class OrderNotFoundError(OrderServiceError):
     def __init__(self, order_id: str) -> None:
         super().__init__(f"Order '{order_id}' was not found.")

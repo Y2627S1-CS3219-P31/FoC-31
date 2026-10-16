@@ -1,7 +1,8 @@
 # AI-INFLUENCED: Centralized API exception registration added with Codex.
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
+import asyncio
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 
@@ -12,15 +13,20 @@ from app.services.client_manager import (
     _start_remote_clients,
     close_remote_clients,
 )
+from app.services.event_worker import run_event_worker
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
     _start_remote_clients()
+    event_worker = asyncio.create_task(run_event_worker())
     try:
         yield
     finally:
+        event_worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await event_worker
         await close_remote_clients()
         await engine.dispose()
 

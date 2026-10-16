@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import FastAPI
@@ -13,6 +14,7 @@ from app.api.error_handlers import register_exception_handlers
 from app.api.routes import orders as order_routes
 from app.db import get_session
 from app.services.errors import (
+    OrderAcceptanceError,
     OrderAccessDeniedError,
     OrderNotFoundError,
     OrderStateConflictError,
@@ -64,6 +66,60 @@ def _stored_order(
         created_at=datetime.now(UTC),
         **_payload(),
     )
+
+
+def test_accept_uses_gateway_identity(client, fake_session, monkeypatch):
+    order = _stored_order()
+    order.courier_id = "courier-1"
+    order.status = OrderStatus.ACCEPTED
+    accept = AsyncMock(return_value=order)
+    monkeypatch.setattr(order_routes.order_service, "accept_order", accept)
+    response = client.post(
+        "/orders/order-1/accept",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
+        json={"courier_id": "someone-else", "role": "admin"},
+    )
+    assert response.status_code == 200
+    assert response.json()["courier_id"] == "courier-1"
+    assert response.json()["status"] == "ACCEPTED"
+    accept.assert_awaited_once_with(fake_session, "order-1", "courier-1")
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected"),
+    [
+        ({}, 422),
+        ({"X-User-Id": "courier-1"}, 422),
+        ({"X-User-Role": "client"}, 422),
+        ({"X-User-Id": "", "X-User-Role": "client"}, 422),
+        ({"X-User-Id": "courier-1", "X-User-Role": "admin"}, 403),
+        ({"X-User-Id": "courier-1", "X-User-Role": "courier"}, 403),
+    ],
+)
+def test_accept_requires_trusted_client_headers(client, monkeypatch, headers, expected):
+    accept = AsyncMock()
+    monkeypatch.setattr(order_routes.order_service, "accept_order", accept)
+    response = client.post("/orders/order-1/accept", headers=headers)
+    assert response.status_code == expected
+    accept.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("error", "expected_status", "expected_code"),
+    [
+        (OrderNotFoundError("order-1"), 404, "order_not_found"),
+        (OrderStateConflictError("order-1", "Pending update"), 409, "invalid_order_state"),
+        (OrderAcceptanceError("order-1"), 500, "order_acceptance_failed"),
+    ],
+)
+def test_accept_maps_domain_errors(client, monkeypatch, error, expected_status, expected_code):
+    monkeypatch.setattr(order_routes.order_service, "accept_order", AsyncMock(side_effect=error))
+    response = client.post(
+        "/orders/order-1/accept",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
+    )
+    assert response.status_code == expected_status
+    assert response.json()["code"] == expected_code
 
 
 def test_create_order_returns_created_order(
