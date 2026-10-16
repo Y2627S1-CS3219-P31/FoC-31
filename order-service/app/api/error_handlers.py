@@ -40,6 +40,7 @@ from app.services.errors import (
     OrderPersistenceError,
     OrderRetrievalError,
     OrderStateConflictError,
+    OrderUpdatePendingError,
 )
 from foc_shared.errors import ErrorEnvelope
 
@@ -87,6 +88,11 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         HTTPStatus.CONFLICT,
         "order_not_editable",
         "Only an open order without an assigned courier can be updated.",
+    ),
+    OrderUpdatePendingError: ErrorMapping(
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "order_update_pending",
+        "The order update is still pending and will be retried.",
     ),
     SupplierNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,

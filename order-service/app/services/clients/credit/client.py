@@ -12,23 +12,13 @@ from app.services.clients.transport import JsonHttpTransport
 
 
 class CreditClient(JsonServiceClient):
-    def __init__(
-        self,
-        *,
-        base_url: str,
-        transport: JsonHttpTransport
-    ):
+    def __init__(self, *, base_url: str, transport: JsonHttpTransport):
         super().__init__(
-            service_name="Credit Service",
-            base_url=base_url.rstrip("/"),
-            transport=transport
+            service_name="Credit Service", base_url=base_url.rstrip("/"), transport=transport
         )
 
     async def reserve_credits(
-        self,
-        reward: int,
-        requester_id: str,
-        order_id: str
+        self, reward: int, requester_id: str, order_id: str
     ) -> ReservationDetails:
         return await self._request_model(
             method="POST",
@@ -41,21 +31,11 @@ class CreditClient(JsonServiceClient):
                 (409, "conflict"): ReservationConflictError,
             },
             # Header
-            headers={
-                "X-User-Id": requester_id
-            },
-            json={
-                "user_id": requester_id,
-                "order_id": order_id,
-                "amount": reward
-            }
+            headers={"X-User-Id": requester_id},
+            json={"user_id": requester_id, "order_id": order_id, "amount": reward},
         )
 
-    async def release_credits(
-        self,
-        reservation_id: str,
-        requester_id: str
-    ):
+    async def release_credits(self, reservation_id: str, requester_id: str):
         return await self._request_model(
             method="POST",
             path=f"/credits/reservations/{reservation_id}/release",
@@ -66,16 +46,11 @@ class CreditClient(JsonServiceClient):
                 (403, "forbidden"): ReservationForbiddenError,
                 (409, "conflict"): ReservationConflictError,
             },
-            headers={
-                "X-User-Id": requester_id
-            }
-        )   
+            headers={"X-User-Id": requester_id},
+        )
 
     async def amend_credits(
-        self,
-        reservation_id: str,
-        requester_id: str,
-        amount: int
+        self, reservation_id: str, requester_id: str, amount: int
     ) -> ReservationDetails:
         return await self._request_model(
             method="POST",
@@ -86,12 +61,8 @@ class CreditClient(JsonServiceClient):
                 (403, "forbidden"): ReservationForbiddenError,
                 (404, "not_found"): ReservationNotFoundError,
                 (409, "insufficient_credits"): InsufficientCreditsError,
-                (409, "conflict"): ReservationConflictError
+                (409, "conflict"): ReservationConflictError,
             },
-            headers={
-                "X-User-Id": requester_id
-            },
-            json={
-                "amount": amount
-            }
+            headers={"X-User-Id": requester_id},
+            json={"amount": amount},
         )

@@ -4,10 +4,17 @@ from __future__ import annotations
 import aio_pika
 
 from app.config import settings
-from app.schemas.order_action_events import OrderCancellationFailedEvent
+from app.schemas.order_action_events import OrderActionEvent, OrderLocalOutcomeEvent
+from app.schemas.order_update_events import OrderUpdateEvent, OrderUpdateOutcomeEvent
 from foc_shared.events import OrderEvent, OrderEventType
 
-OrderPublishableEvent = OrderEvent | OrderCancellationFailedEvent
+OrderPublishableEvent = (
+    OrderEvent
+    | OrderActionEvent
+    | OrderLocalOutcomeEvent
+    | OrderUpdateEvent
+    | OrderUpdateOutcomeEvent
+)
 
 
 def _routing_key(event: OrderPublishableEvent) -> str:

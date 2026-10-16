@@ -6,16 +6,9 @@ from app.services.clients.transport import JsonHttpTransport
 
 
 class SupplierClient(JsonServiceClient):
-    def __init__(
-        self,
-        *,
-        base_url: str,
-        transport: JsonHttpTransport
-    ):
+    def __init__(self, *, base_url: str, transport: JsonHttpTransport):
         super().__init__(
-            service_name="Supplier Service",
-            base_url=base_url.rstrip("/"),
-            transport=transport
+            service_name="Supplier Service", base_url=base_url.rstrip("/"), transport=transport
         )
 
     async def get_supplier(self, supplier_id: str):
@@ -24,7 +17,5 @@ class SupplierClient(JsonServiceClient):
             path=f"/suppliers/{supplier_id}",
             expected_status=200,
             response_model=SupplierDetails,
-            endpoint_errors={
-                (404, "not_found"): SupplierNotFoundError
-            },
+            endpoint_errors={(404, "not_found"): SupplierNotFoundError},
         )

@@ -38,6 +38,7 @@ from app.services.errors import (
     OrderPersistenceError,
     OrderRetrievalError,
     OrderStateConflictError,
+    OrderUpdatePendingError,
 )
 
 
@@ -57,6 +58,7 @@ def _app_raising(exception_factory: Callable[[], Exception]) -> FastAPI:
     [
         (lambda: OrderNotFoundError("order-1"), 404, "order_not_found"),
         (lambda: OrderAccessDeniedError("order-1"), 403, "order_access_denied"),
+        (lambda: OrderUpdatePendingError("order-1"), 503, "order_update_pending"),
         (
             lambda: OrderCancellationError("order-1"),
             500,

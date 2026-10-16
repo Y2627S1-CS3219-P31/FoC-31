@@ -6,7 +6,19 @@ import logging
 
 from app.db import SessionLocal
 from app.repositories import order_event_outbox as event_repository
-from app.schemas.order_action_events import OrderCancellationFailedEvent
+from app.schemas.order_action_events import (
+    OrderActionEvent,
+    OrderCancellationFailedEvent,
+    OrderDeletedEvent,
+    OrderDeletionFailedEvent,
+    OrderLocalOutcomeEvent,
+)
+from app.schemas.order_update_events import (
+    OrderUpdatedEvent,
+    OrderUpdateEvent,
+    OrderUpdateFailedEvent,
+    OrderUpdateOutcomeEvent,
+)
 from app.services.events import publish_order_event
 from foc_shared.events import OrderEvent
 
@@ -14,9 +26,39 @@ logger = logging.getLogger(__name__)
 POLL_INTERVAL_SECONDS = 5
 
 
-def _parse_event(payload: dict) -> OrderEvent | OrderCancellationFailedEvent:
-    if payload.get("event_type") == "OrderCancellationFailed":
-        return OrderCancellationFailedEvent.model_validate(payload)
+LOCAL_OUTCOME_TYPES: dict[str, type[OrderLocalOutcomeEvent]] = {
+    "OrderCancellationFailed": OrderCancellationFailedEvent,
+    "OrderDeleted": OrderDeletedEvent,
+    "OrderDeletionFailed": OrderDeletionFailedEvent,
+}
+ACTION_EVENT_TYPES = {
+    "OrderDeletionRequested",
+    "OrderCancellationRequested",
+    "OrderExpiryRequested",
+}
+UPDATE_OUTCOME_TYPES: dict[str, type[OrderUpdateOutcomeEvent]] = {
+    "OrderUpdated": OrderUpdatedEvent,
+    "OrderUpdateFailed": OrderUpdateFailedEvent,
+}
+
+
+def _parse_event(
+    payload: dict,
+) -> (
+    OrderEvent
+    | OrderActionEvent
+    | OrderLocalOutcomeEvent
+    | OrderUpdateEvent
+    | OrderUpdateOutcomeEvent
+):
+    event_type = payload.get("event_type")
+    if event_type in ACTION_EVENT_TYPES:
+        return OrderActionEvent.model_validate(payload)
+    if event_type == "OrderUpdate":
+        return OrderUpdateEvent.model_validate(payload)
+    event_model = LOCAL_OUTCOME_TYPES.get(event_type) or UPDATE_OUTCOME_TYPES.get(event_type)
+    if event_model is not None:
+        return event_model.model_validate(payload)
     return OrderEvent.model_validate(payload)
 
 

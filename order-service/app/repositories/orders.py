@@ -6,9 +6,9 @@ from hashlib import sha256
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.order_release_outbox import FAILED as RELEASE_FAILED
-from app.models.order_release_outbox import PENDING as RELEASE_PENDING
-from app.models.order_release_outbox import OrderReleaseOutbox
+from app.models.order_release_tasks import PENDING as RELEASE_PENDING
+from app.models.order_release_tasks import OrderReleaseTask
+from app.models.order_update_tasks import PENDING, OrderUpdateTask
 from app.models.orders import OrderTable
 from app.schemas.orders import OrderCreate, OrderUpdate
 from app.services.lifecycle import OrderStatus
@@ -55,10 +55,16 @@ async def list_available_orders(
             OrderTable.status == OrderStatus.OPEN,
             OrderTable.courier_id.is_(None),
             OrderTable.requester_id != requester_id,
-            ~select(OrderReleaseOutbox.task_id)
+            ~select(OrderUpdateTask.task_id)
             .where(
-                OrderReleaseOutbox.order_id == OrderTable.order_id,
-                OrderReleaseOutbox.status.in_((RELEASE_PENDING, RELEASE_FAILED)),
+                OrderUpdateTask.order_id == OrderTable.order_id,
+                OrderUpdateTask.status == PENDING,
+            )
+            .exists(),
+            ~select(OrderReleaseTask.task_id)
+            .where(
+                OrderReleaseTask.order_id == OrderTable.order_id,
+                OrderReleaseTask.status == RELEASE_PENDING,
             )
             .exists(),
         )
@@ -129,14 +135,13 @@ async def delete_order(
     await session.delete(order)
     await session.flush()
 
+
 async def update_order(
-    order: OrderTable,
-    updated_order: OrderUpdate,
-    session: AsyncSession
+    order: OrderTable, updated_order: OrderUpdate, session: AsyncSession
 ) -> OrderTable:
     changes = updated_order.model_dump(exclude_unset=True)
 
-    for (key, value) in changes.items():
+    for key, value in changes.items():
         setattr(order, key, value)
 
     await session.flush()

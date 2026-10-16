@@ -7,10 +7,17 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order_event_outbox import OrderEventOutbox
-from app.schemas.order_action_events import OrderCancellationFailedEvent
+from app.schemas.order_action_events import OrderActionEvent, OrderLocalOutcomeEvent
+from app.schemas.order_update_events import OrderUpdateEvent, OrderUpdateOutcomeEvent
 from foc_shared.events import OrderEvent
 
-OrderOutboxEvent = OrderEvent | OrderCancellationFailedEvent
+OrderOutboxEvent = (
+    OrderEvent
+    | OrderActionEvent
+    | OrderLocalOutcomeEvent
+    | OrderUpdateEvent
+    | OrderUpdateOutcomeEvent
+)
 
 
 async def create_event(session: AsyncSession, event: OrderOutboxEvent) -> OrderEventOutbox:

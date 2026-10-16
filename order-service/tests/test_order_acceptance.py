@@ -30,8 +30,8 @@ def acceptance(monkeypatch):
         (orders.order_repository, "get_order_for_update", order),
         (orders.order_repository, "count_ongoing_for_courier", 0),
         (orders.order_repository, "assign_courier", None),
-        (orders.update_outbox_repository, "get_pending_for_order", None),
-        (orders.release_outbox_repository, "get_for_order", None),
+        (orders.update_tasks, "get_pending_for_order", None),
+        (orders.release_tasks, "get_for_order", None),
         (orders.event_outbox_repository, "create_event", None),
     ):
         mock = AsyncMock(return_value=result)
@@ -88,20 +88,16 @@ async def test_deadline_equal_to_now_is_expired(acceptance, monkeypatch):
         await orders.accept_order(acceptance.session, "order-1", "courier-1")
 
 
-@pytest.mark.parametrize("published_at", [None, datetime(2026, 10, 16, tzinfo=UTC)])
-async def test_pending_update_blocks_acceptance_even_after_publication(acceptance, published_at):
-    acceptance.get_pending_for_order.return_value = SimpleNamespace(
-        status="pending", published_at=published_at
-    )
+async def test_pending_update_blocks_acceptance_until_result_is_applied(acceptance):
+    acceptance.get_pending_for_order.return_value = SimpleNamespace(status="pending")
     with pytest.raises(OrderStateConflictError, match="update is still pending"):
         await orders.accept_order(acceptance.session, "order-1", "courier-1")
     acceptance.assign_courier.assert_not_awaited()
     acceptance.create_event.assert_not_awaited()
 
 
-@pytest.mark.parametrize("status", ["pending", "processing", "failed", "completed"])
-async def test_any_deletion_task_blocks_acceptance(acceptance, status):
-    acceptance.get_for_order.return_value = SimpleNamespace(status=status)
+async def test_pending_deletion_task_blocks_acceptance(acceptance):
+    acceptance.get_for_order.return_value = SimpleNamespace(status="pending")
     with pytest.raises(OrderStateConflictError, match="deletion"):
         await orders.accept_order(acceptance.session, "order-1", "courier-1")
     acceptance.create_event.assert_not_awaited()

@@ -13,6 +13,20 @@ class CreditReleaseResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     event_type: Literal["CreditReleased", "CreditReleaseFailed"]
+    task_id: str
+    order_id: str | None = None
     reservation_id: str
     timestamp: datetime
+    reason: str | None = None
+
+
+class CreditAmendResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["CreditAmended", "CreditAmendRejected"]
+    task_id: str
+    order_id: str | None = None
+    reservation_id: str
+    requester_id: str
+    amount: int
     reason: str | None = None

@@ -1,43 +1,30 @@
 # AI-INFLUENCED: Order-action publication and credit-outcome handling implemented with Codex.
 from __future__ import annotations
 
-import asyncio
-import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 
-import aio_pika
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import settings
-from app.db import SessionLocal
-from app.models.order_release_outbox import (
+from app.models.order_release_tasks import (
     COMPLETED,
     FAILED,
     PENDING,
-    OrderReleaseOutbox,
+    OrderReleaseTask,
     ReleaseAction,
 )
 from app.models.orders import OrderTable
 from app.repositories import order_event_outbox as event_outbox_repository
-from app.repositories import order_release_outbox as release_tasks
+from app.repositories import order_release_tasks as release_tasks
 from app.repositories import orders as order_repository
 from app.schemas.credit_events import CreditReleaseResult
 from app.schemas.order_action_events import (
-    OrderActionEvent,
-    OrderActionEventType,
     OrderCancellationFailedEvent,
+    OrderDeletedEvent,
+    OrderDeletionFailedEvent,
 )
 from app.services.lifecycle import OrderStatus, assert_transition
 from foc_shared.events import OrderEvent, OrderEventType
-
-logger = logging.getLogger(__name__)
-POLL_INTERVAL_SECONDS = 5
-ORDER_ACTION_EVENT_TYPES: dict[ReleaseAction, OrderActionEventType] = {
-    ReleaseAction.DELETE: "OrderDelete",
-    ReleaseAction.CANCEL: "OrderCancellationRequested",
-    ReleaseAction.EXPIRE: "OrderExpired",
-}
 
 
 def _utc_datetime(value: datetime) -> datetime:
@@ -47,81 +34,18 @@ def _utc_datetime(value: datetime) -> datetime:
     return value.astimezone(UTC)
 
 
-def build_order_action_event(task: OrderReleaseOutbox) -> OrderActionEvent | None:
-    try:
-        action = ReleaseAction(task.action)
-    except ValueError:
-        return None
-
-    return OrderActionEvent(
-        event_type=ORDER_ACTION_EVENT_TYPES[action],
-        order_id=task.order_id,
-        reservation_id=task.reservation_id,
-        requester_id=task.requester_id,
-        timestamp=task.created_at,
-        reason=task.reason,
-    )
-
-
-async def publish_order_action(event: OrderActionEvent) -> None:
-    connection = await aio_pika.connect_robust(settings.rabbitmq_url, timeout=3)
-    async with connection:
-        channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
-        exchange = await channel.declare_exchange(
-            settings.order_events_exchange, aio_pika.ExchangeType.TOPIC, durable=True
-        )
-        await exchange.publish(
-            aio_pika.Message(
-                body=event.model_dump_json().encode(),
-                content_type="application/json",
-                delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
-            ),
-            routing_key=event.event_type,
-            mandatory=True,
-        )
-
-
-async def publish_pending_order_actions() -> None:
-    async with SessionLocal() as session:
-        task_ids = await release_tasks.list_unpublished_task_ids(session)
-
-    for task_id in task_ids:
-        async with SessionLocal() as session, session.begin():
-            task = await release_tasks.get_task_for_update(session, task_id, skip_locked=True)
-            if task is None or task.status != PENDING or task.published_at is not None:
-                continue
-
-            event = build_order_action_event(task)
-            if event is None:
-                _fail_task(task, "Unknown order action.")
-                continue
-
-            try:
-                await publish_order_action(event)
-            except Exception as exc:
-                logger.warning(
-                    "Could not publish pending Order action",
-                    extra={"task_id": task_id},
-                    exc_info=True,
-                )
-                error = str(exc)[:500]
-            else:
-                error = None
-            await release_tasks.record_publication(session, task, error)
-
-
-def _fail_task(task: OrderReleaseOutbox, error: str) -> None:
+def _fail_task(task: OrderReleaseTask, error: str) -> None:
     task.status = FAILED
     task.last_error = error[:500]
 
 
-def _complete_task(task: OrderReleaseOutbox) -> None:
+def _complete_task(task: OrderReleaseTask) -> None:
     task.status = COMPLETED
     task.last_error = None
 
 
 async def _record_cancellation_failed(
-    session: AsyncSession, task: OrderReleaseOutbox, error: str
+    session: AsyncSession, task: OrderReleaseTask, error: str
 ) -> None:
     _fail_task(task, error)
     await event_outbox_repository.create_event(
@@ -137,30 +61,77 @@ async def _record_cancellation_failed(
     )
 
 
-async def _get_locked_order(session: AsyncSession, task: OrderReleaseOutbox) -> OrderTable | None:
+async def _record_deletion_failed(
+    session: AsyncSession, task: OrderReleaseTask, error: str
+) -> None:
+    _fail_task(task, error)
+    await event_outbox_repository.create_event(
+        session,
+        OrderDeletionFailedEvent(
+            task_id=task.task_id,
+            order_id=task.order_id,
+            reservation_id=task.reservation_id,
+            requester_id=task.requester_id,
+            timestamp=datetime.now(UTC),
+            reason=task.last_error,
+        ),
+    )
+
+
+async def _get_locked_order(session: AsyncSession, task: OrderReleaseTask) -> OrderTable | None:
     order = await order_repository.get_order_for_update(session, task.order_id)
     if order is None:
         _fail_task(task, "The order no longer exists.")
+    elif order.reservation_id != task.reservation_id:
+        _fail_task(task, "The order reservation does not match the terminal-action task.")
+        return None
     return order
 
 
-async def handle_delete(session: AsyncSession, task: OrderReleaseOutbox) -> None:
+async def handle_delete(
+    session: AsyncSession, task: OrderReleaseTask, event: CreditReleaseResult
+) -> None:
+    if event.event_type == "CreditReleaseFailed":
+        await _record_deletion_failed(
+            session, task, event.reason or "Credit Service rejected the release."
+        )
+        return
+
     order = await _get_locked_order(session, task)
     if order is None:
+        await _record_deletion_failed(session, task, task.last_error or "Order not found.")
         return
 
     if order.status != OrderStatus.OPEN:
-        _fail_task(task, "Order can no longer be deleted.")
+        await _record_deletion_failed(session, task, "Order can no longer be deleted.")
         return
     if order.courier_id is not None:
-        _fail_task(task, "An assigned order cannot be deleted.")
+        await _record_deletion_failed(session, task, "An assigned order cannot be deleted.")
         return
 
     await order_repository.delete_order(session, order)
+    await event_outbox_repository.create_event(
+        session,
+        OrderDeletedEvent(
+            task_id=task.task_id,
+            order_id=task.order_id,
+            reservation_id=task.reservation_id,
+            requester_id=task.requester_id,
+            timestamp=datetime.now(UTC),
+        ),
+    )
     _complete_task(task)
 
 
-async def handle_cancel(session: AsyncSession, task: OrderReleaseOutbox) -> None:
+async def handle_cancel(
+    session: AsyncSession, task: OrderReleaseTask, event: CreditReleaseResult
+) -> None:
+    if event.event_type == "CreditReleaseFailed":
+        await _record_cancellation_failed(
+            session, task, event.reason or "Credit Service rejected the release."
+        )
+        return
+
     order = await _get_locked_order(session, task)
     if order is None:
         await _record_cancellation_failed(session, task, task.last_error or "Order not found.")
@@ -188,7 +159,13 @@ async def handle_cancel(session: AsyncSession, task: OrderReleaseOutbox) -> None
     _complete_task(task)
 
 
-async def handle_expire(session: AsyncSession, task: OrderReleaseOutbox) -> None:
+async def handle_expire(
+    session: AsyncSession, task: OrderReleaseTask, event: CreditReleaseResult
+) -> None:
+    if event.event_type == "CreditReleaseFailed":
+        _fail_task(task, event.reason or "Credit Service rejected the release.")
+        return
+
     order = await _get_locked_order(session, task)
     if order is None:
         return
@@ -203,20 +180,21 @@ async def handle_expire(session: AsyncSession, task: OrderReleaseOutbox) -> None
         return
 
     await order_repository.set_status(session, order, OrderStatus.EXPIRED)
+    await event_outbox_repository.create_event(
+        session,
+        OrderEvent(
+            event_type=OrderEventType.ORDER_EXPIRED,
+            order_id=order.order_id,
+            requester_id=order.requester_id,
+            courier_id=order.courier_id,
+            timestamp=datetime.now(UTC),
+            reason=task.reason,
+        ),
+    )
     _complete_task(task)
 
 
-async def handle_credit_release_failed(
-    session: AsyncSession, task: OrderReleaseOutbox, event: CreditReleaseResult
-) -> None:
-    error = event.reason or "Credit Service rejected the release."
-    if task.action == ReleaseAction.CANCEL.value:
-        await _record_cancellation_failed(session, task, error)
-        return
-    _fail_task(task, error)
-
-
-ActionHandler = Callable[[AsyncSession, OrderReleaseOutbox], Awaitable[None]]
+ActionHandler = Callable[[AsyncSession, OrderReleaseTask, CreditReleaseResult], Awaitable[None]]
 ACTION_HANDLERS: dict[ReleaseAction, ActionHandler] = {
     ReleaseAction.DELETE: handle_delete,
     ReleaseAction.CANCEL: handle_cancel,
@@ -227,15 +205,15 @@ ACTION_HANDLERS: dict[ReleaseAction, ActionHandler] = {
 async def process_release_result(session: AsyncSession, event: CreditReleaseResult) -> bool:
     """Apply a credit-domain fact to the matching local workflow, if one exists."""
     async with session.begin():
-        task = await release_tasks.get_pending_by_reservation_for_update(
-            session, event.reservation_id
-        )
+        task = await release_tasks.get_task_for_update(session, event.task_id)
         if task is None:
             return False
-
-        if event.event_type == "CreditReleaseFailed":
-            await handle_credit_release_failed(session, task, event)
-            return True
+        if task.status != PENDING:
+            return False
+        if task.reservation_id != event.reservation_id or (
+            event.order_id is not None and task.order_id != event.order_id
+        ):
+            raise ValueError(f"Credit release result does not match task '{event.task_id}'.")
 
         try:
             action = ReleaseAction(task.action)
@@ -244,14 +222,5 @@ async def process_release_result(session: AsyncSession, event: CreditReleaseResu
             return True
 
         handler = ACTION_HANDLERS[action]
-        await handler(session, task)
+        await handler(session, task, event)
         return True
-
-
-async def run_order_action_worker() -> None:
-    while True:
-        try:
-            await publish_pending_order_actions()
-        except Exception:
-            logger.exception("Could not scan pending Order actions")
-        await asyncio.sleep(POLL_INTERVAL_SECONDS)

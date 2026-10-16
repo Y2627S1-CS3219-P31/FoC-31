@@ -46,37 +46,31 @@ make test-order-service
 
 Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
-## Credit release workflows
+## Reward update recovery
 
-`DELETE /orders/{order_id}` returns `202` after saving a deletion task in the
-Order DB. `POST /orders/{order_id}/cancel` accepts a non-empty `reason` and
-returns `202` after saving a cancellation task for an owned `OPEN` or `ACCEPTED`
-order. Repeating the same pending action returns its existing task; failed or
-conflicting terminal actions require review. Expiry flows use the same release
-task with their own local action. The task also serves as a durable outbox
-record: a publisher
-announces the pending Order action as `OrderDelete`,
-`OrderCancellationRequested`, or
-`OrderExpired` and retries until the broker confirms it. These events describe
-only what is happening in Order Service. They contain the order and reservation
-identifiers for correlation and do not request an operation from Credit
-Service.
+`PATCH /orders/{order_id}` commits a pending update task and its `OrderUpdate`
+event to `order_event_outbox` in one transaction, then returns `202` with the
+task ID. Credit Service independently decides whether the reservation needs
+amendment, then publishes `CreditAmended` or `CreditAmendRejected`. The separate
+update-result consumer locks the update task by `task_id`, verifies its
+reservation ID and any supplied order ID, then applies or rejects the update.
+Order Service records `OrderUpdated` or `OrderUpdateFailed` in the same event
+outbox as the task result. A failed final commit requeues the credit result;
+rejection leaves the live order unchanged. `GET /orders/updates/{task_id}` lets
+the requester poll the result. Pending orders cannot receive another edit, be
+deleted, appear in the courier listing, or be accepted by a courier.
 
-Credit Service may independently react to these events and publish
-`CreditReleased` or `CreditReleaseFailed`. The Order Service consumer locks the
-pending task that matches the event's reservation ID. A small dispatcher calls
-the task's delete, cancel, or expire handler inside one Order DB transaction.
-For cancellation, a successful release changes the order to `CANCELLED`,
-completes the task, and records `OrderCancelled` for durable publication. A
-definite release failure leaves the order unchanged, marks the task failed, and
-records `OrderCancellationFailed`. Unknown and duplicate results are
-acknowledged without changing an order. A failed final transaction rolls back
-both the local result and its outcome event, then requeues the RabbitMQ
-delivery.
+Every outbound Order Service event uses one `order_event_outbox` table and one
+event worker. Workflow task tables store local state only; each task and its
+initial event are committed together. The worker publishes all event types with
+RabbitMQ confirmation and retries. Inbound release-result and update-result
+consumers remain separate because their event contracts and local handlers
+differ.
 
-`GET /orders/deletions/{task_id}` lets the requester check a deletion result.
-Orders with pending or failed release tasks are hidden from the courier listing
-and cannot be edited or accepted by a courier.
+Existing Order databases need `alembic upgrade head` from `order-service/`
+before starting this version. The migration moves unpublished task events into
+`order_event_outbox`, renames workflow tables to `order_release_tasks` and
+`order_update_tasks`, and removes their old publication state.
 
 ## Order acceptance (F2.6)
 
@@ -90,7 +84,7 @@ Acceptance rejects missing orders (`404`), non-client roles (`403`), and state
 conflicts (`409`): own orders, assigned couriers, non-`OPEN` orders, passed
 deadlines, pending update tasks, any deletion task, or three existing ongoing
 orders. `ACCEPTED`, `PICKED_UP`, and `AWAITING_APPROVAL` count as ongoing.
-A published update task still blocks acceptance until it leaves `pending`.
+A pending update task blocks acceptance until its credit result is applied.
 
 The service locks the order and takes a transaction-scoped PostgreSQL advisory
 lock for the courier before checking the ongoing count. This prevents double
@@ -98,7 +92,7 @@ assignment and concurrent requests from exceeding the three-order limit.
 Both assignment and an `OrderAccepted` event are saved in one transaction.
 Database failures roll back both and return `500 order_acceptance_failed`.
 
-The event worker publishes committed records from `order_event_outbox` to the
+The single event worker publishes committed records from `order_event_outbox` to the
 existing `ORDER_EVENTS_EXCHANGE` with routing key `OrderAccepted`. It uses the
 shared `OrderEvent` payload (`order_id`, `requester_id`, `courier_id`,
 `timestamp`, and `event_type`) and persistent messages with broker confirmation.
@@ -107,9 +101,10 @@ Failed or unroutable publications remain pending for retry. The AMQP
 consumers should deduplicate by that ID. The event timestamp is the acceptance
 time, not the retry time. The worker starts and stops with the application.
 
-The `20261016_order_event_outbox` migration adds the event table. Run
-`alembic upgrade head` inside `order-service` before deployment; startup also
-creates missing tables for fresh installations.
+The `20261016_order_event_outbox` migration adds the event table, and the
+`20261016_single_order_event_outbox` migration consolidates workflow task
+publication state into it. Run `alembic upgrade head` inside `order-service`
+before deployment; startup also creates missing tables for fresh installations.
 
 ### Acceptance verification
 
@@ -136,7 +131,7 @@ At runtime, FastAPI also serves the live specification at `/openapi.json` and
 interactive documentation at `/docs`.
 
 > Status: `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
-> `DELETE /orders/{order_id}`,
+> `PATCH /orders/{order_id}`, `DELETE /orders/{order_id}`,
 > `POST /orders/{order_id}/cancel`, and
 > `POST /orders/{order_id}/accept` are implemented. Remaining lifecycle
 > operations belong to later sprints.

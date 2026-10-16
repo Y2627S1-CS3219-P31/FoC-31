@@ -224,6 +224,7 @@ def test_delete_order_returns_accepted_task(
         "task_id": "task-1",
         "order_id": "order-1",
         "status": "pending",
+        "failure_reason": None,
     }
 
 
@@ -247,6 +248,7 @@ def test_cancel_order_returns_accepted_task(
         "task_id": "task-1",
         "order_id": "order-1",
         "status": "pending",
+        "failure_reason": None,
     }
     cancel.assert_awaited_once_with(
         fake_session,
@@ -289,6 +291,36 @@ def test_get_deletion_reports_completion_to_owner(
     assert response.json()["status"] == "completed"
 
 
+def test_patch_returns_pending_task_and_can_be_polled(client, fake_session, monkeypatch):
+    task = SimpleNamespace(
+        task_id="task-1",
+        order_id="order-1",
+        status="pending",
+        rejection_code=None,
+        last_error=None,
+    )
+
+    async def fake_update_order(*, order_id, updated_order, requester_id, session):
+        assert (order_id, requester_id) == ("order-1", "user-1")
+        assert updated_order.reward == 5
+        assert session is fake_session
+        return task
+
+    async def fake_get_update(session, task_id, requester_id):
+        assert (session, task_id, requester_id) == (fake_session, "task-1", "user-1")
+        return task
+
+    monkeypatch.setattr(order_routes.order_service, "update_order", fake_update_order)
+    monkeypatch.setattr(order_routes.order_service, "get_update_for_requester", fake_get_update)
+
+    response = client.patch("/orders/order-1", headers={"X-User-Id": "user-1"}, json=_payload())
+    assert response.status_code == 202
+    assert response.json()["task_id"] == "task-1"
+    assert response.json()["status"] == "pending"
+
+    poll = client.get("/orders/updates/task-1", headers={"X-User-Id": "user-1"})
+    assert poll.status_code == 200
+    assert poll.json()["status"] == "pending"
 
 
 def test_delete_order_uses_state_conflict_handler(

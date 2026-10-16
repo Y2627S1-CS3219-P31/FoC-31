@@ -37,6 +37,12 @@ class OrderNotEditableError(OrderServiceError):
         self.order_id = order_id
 
 
+class OrderUpdatePendingError(OrderServiceError):
+    """The update remains durable and will be retried by the worker."""
+
+    def __init__(self, order_id: str) -> None:
+        super().__init__("The order update is still pending and will be retried.")
+        self.order_id = order_id
 
 
 class OrderPersistenceError(OrderServiceError):

@@ -18,14 +18,16 @@ logger = logging.getLogger(__name__)
 async def _handle_message(message: aio_pika.abc.AbstractIncomingMessage) -> None:
     try:
         event = CreditReleaseResult.model_validate_json(message.body)
+        if event.event_type != message.routing_key:
+            raise ValueError("Credit release result routing key does not match its payload.")
         async with SessionLocal() as session:
             matched = await process_release_result(session, event)
         if not matched:
             logger.info(
                 "Ignoring credit release with no pending order action",
-                extra={"reservation_id": event.reservation_id},
+                extra={"task_id": event.task_id, "reservation_id": event.reservation_id},
             )
-    except ValidationError:
+    except (ValidationError, ValueError):
         logger.exception("Invalid credit release event")
         await message.nack(requeue=False)
     except Exception:

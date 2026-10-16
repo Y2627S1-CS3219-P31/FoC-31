@@ -113,3 +113,43 @@ order unchanged, marks the task failed with the reason, and records the local
 validates and publishes both shared lifecycle events and the Order-owned
 cancellation-failure contract. Duplicate results remain no-ops, while database
 failures roll back the task, order, and outcome event before redelivery.
+
+## 2026-10-16 — Publish explicit deletion request and outcome facts
+
+User request: replace the pending `OrderDelete` event with
+`OrderDeletionRequested`, then publish `OrderDeleted` or
+`OrderDeletionFailed` after Order Service receives the corresponding credit
+outcome.
+
+Codex updated the deletion action publisher and added Order-owned deletion
+outcome contracts. `CreditReleased` now deletes the order, completes its task,
+and records `OrderDeleted` in the durable event outbox in one transaction.
+`CreditReleaseFailed`, or a failed final deletion validation, leaves the order
+unchanged, fails the task with its reason, and records
+`OrderDeletionFailed`. The existing lifecycle-event worker publishes both
+outcomes with broker confirmation and retry. Focused tests cover request
+publication, both outcomes, parsing, and transaction rollback.
+
+## 2026-10-16 — Reject conflicting deletion workflows
+
+User request: make deletion retries idempotent only for an existing pending
+deletion, while rejecting pending cancellation or expiry tasks, failed terminal
+tasks, and orders whose state does not allow deletion.
+
+Codex updated the deletion service to return an existing pending `delete` task,
+reject a different pending terminal action with a state conflict, and retain the
+existing failed-task and order-state guards. Focused tests cover idempotent
+deletion retries, cancellation and expiry conflicts, and failed terminal tasks.
+
+## 2026-10-16 — Publish final order-update outcomes
+
+User request: publish `OrderUpdated` or `OrderUpdateFailed` after consuming the
+corresponding `CreditAmended` or `CreditAmendRejected` result.
+
+Codex added Order-owned update outcome contracts and records the matching event
+in the durable lifecycle-event outbox. Applying the proposed order, completing
+its task, and recording `OrderUpdated` now commit atomically. Rejecting the task
+with its reason and recording `OrderUpdateFailed` also commit atomically. The
+existing event worker validates and publishes both outcomes with broker
+confirmation and retry. Tests cover success, rejection, duplicate handling,
+parsing, and rollback of both the task result and outcome event.

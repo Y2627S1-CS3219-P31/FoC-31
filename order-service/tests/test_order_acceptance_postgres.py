@@ -10,8 +10,8 @@ from sqlalchemy import event, func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.models.order_event_outbox import OrderEventOutbox
-from app.models.order_release_outbox import OrderReleaseOutbox, ReleaseAction
-from app.models.order_update_outbox import OrderUpdateOutbox
+from app.models.order_release_tasks import OrderReleaseTask, ReleaseAction
+from app.models.order_update_tasks import OrderUpdateTask
 from app.models.orders import OrderTable
 from app.repositories import orders as order_repository
 from app.services import event_worker, orders
@@ -95,13 +95,12 @@ async def test_outbox_status_controls_acceptance(postgres_sessions, status):
     await _seed(
         postgres_sessions,
         _order("order-1"),
-        OrderUpdateOutbox(
+        OrderUpdateTask(
             order_id="order-1",
             requester_id="requester-1",
             reservation_id="reservation-order-1",
             proposed_order={"reward": 10},
             status=status,
-            published_at=datetime.now(UTC),
         ),
     )
     if status == "pending":
@@ -111,12 +110,14 @@ async def test_outbox_status_controls_acceptance(postgres_sessions, status):
         await _accept(postgres_sessions)
 
 
-@pytest.mark.parametrize("status", ["pending", "failed"])
-async def test_deletion_blocks_acceptance(postgres_sessions, status):
+@pytest.mark.parametrize(("status", "blocks_acceptance"), [("pending", True), ("failed", False)])
+async def test_only_pending_deletion_blocks_acceptance(
+    postgres_sessions, status, blocks_acceptance
+):
     await _seed(
         postgres_sessions,
         _order("order-1"),
-        OrderReleaseOutbox(
+        OrderReleaseTask(
             order_id="order-1",
             requester_id="requester-1",
             reservation_id="reservation-order-1",
@@ -124,7 +125,10 @@ async def test_deletion_blocks_acceptance(postgres_sessions, status):
             status=status,
         ),
     )
-    with pytest.raises(OrderStateConflictError, match="deletion"):
+    if blocks_acceptance:
+        with pytest.raises(OrderStateConflictError, match="deletion"):
+            await _accept(postgres_sessions)
+    else:
         await _accept(postgres_sessions)
 
 

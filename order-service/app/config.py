@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     order_events_exchange: str = "foc.order.events"
     credit_events_exchange: str = "foc.credit.events"
     release_results_queue: str = "order-service.credit-release-results"
+    amendment_results_queue: str = "order-service.credit-amend-results"
 
 
 settings = Settings()

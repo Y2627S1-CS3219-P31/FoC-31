@@ -10,7 +10,12 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from app.models.order_event_outbox import OrderEventOutbox
 from app.repositories import order_event_outbox
-from app.schemas.order_action_events import OrderCancellationFailedEvent
+from app.schemas.order_action_events import (
+    OrderCancellationFailedEvent,
+    OrderDeletedEvent,
+    OrderDeletionFailedEvent,
+)
+from app.schemas.order_update_events import OrderUpdatedEvent, OrderUpdateFailedEvent
 from app.services import event_worker, events
 from foc_shared.events import OrderEvent, OrderEventType
 
@@ -132,3 +137,51 @@ async def test_publisher_supports_order_cancellation_failed(monkeypatch):
     message = exchange.publish.await_args.args[0]
     assert OrderCancellationFailedEvent.model_validate_json(message.body) == event
     assert exchange.publish.await_args.kwargs["routing_key"] == "OrderCancellationFailed"
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        OrderDeletedEvent(
+            task_id="task-1",
+            order_id="order-1",
+            reservation_id="reservation-1",
+            requester_id="requester-1",
+            timestamp=datetime.now(UTC),
+        ),
+        OrderDeletionFailedEvent(
+            task_id="task-1",
+            order_id="order-1",
+            reservation_id="reservation-1",
+            requester_id="requester-1",
+            timestamp=datetime.now(UTC),
+            reason="release_rejected",
+        ),
+    ],
+)
+def test_event_worker_parses_deletion_outcomes(outcome):
+    assert event_worker._parse_event(outcome.model_dump(mode="json")) == outcome
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        OrderUpdatedEvent(
+            task_id="task-1",
+            order_id="order-1",
+            reservation_id="reservation-1",
+            requester_id="requester-1",
+            timestamp=datetime.now(UTC),
+        ),
+        OrderUpdateFailedEvent(
+            task_id="task-1",
+            order_id="order-1",
+            reservation_id="reservation-1",
+            requester_id="requester-1",
+            timestamp=datetime.now(UTC),
+            reason="credit_rejected",
+        ),
+    ],
+)
+def test_event_worker_parses_update_outcomes(outcome):
+    assert event_worker._parse_event(outcome.model_dump(mode="json")) == outcome

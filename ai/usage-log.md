@@ -17,6 +17,17 @@ Format for each entry:
 
 ---
 
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Removed the “Credit release workflows” section from
+  `order-service/README.md` as requested.
+- Prompt(s): “Remove the entire Credit Relesae Workflows section from the
+  order service's readme”
+- Author review: Confirmed the section is removed and the following
+  “Order acceptance” section remains intact. Documentation-only change; no
+  tests run.
+
 ## 18/09/2026 — John Gao Jiahao
 
 - Tool: Claude Code (model: Opus)
@@ -468,3 +479,113 @@ Format for each entry:
 - Author review: Pending contributor review. Codex added focused request,
   success, failure, publication, duplicate, and rollback coverage and ran the
   complete Order Service validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Revised the deletion saga to publish `OrderDeletionRequested` while
+  deletion is pending, followed by the durable Order-domain outcome
+  `OrderDeleted` or `OrderDeletionFailed`. The final task, order, and outcome
+  event changes are transactional. No service outside `order-service/` was
+  modified.
+- Prompt(s): "Okay so change the initial published event to be
+  OrderDeletionRequested. After receiving the corresponding credit events,
+  should publish OrderDeleted or OrderDeletionFailed."
+- Author review: Pending contributor review. Codex added focused outcome,
+  publication, parsing, and rollback coverage and ran the Order Service
+  validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Corrected deletion conflict handling so only a repeated pending
+  deletion returns its existing task. Pending cancellation or expiry and any
+  failed terminal action now reject the DELETE request with the existing state
+  conflict API behavior. No service outside `order-service/` was modified.
+- Prompt(s): "Implement this logic in the deletion workflow: existing pending
+  DELETE task return the same task; existing pending CANCEL or EXPIRE task
+  reject deletion; existing FAILED terminal task reject for review; reject an
+  ineligible order; otherwise create a pending DELETE task."
+- Author review: Pending contributor review. Codex added focused service tests
+  and ran the Order Service validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added durable final Order Service outcomes for the asynchronous update
+  workflow. `CreditAmended` now results in `OrderUpdated`, while
+  `CreditAmendRejected` results in `OrderUpdateFailed`; each outcome event is
+  committed atomically with its order/task state. No service outside
+  `order-service/` was modified.
+- Prompt(s): "Make Order Service publish a final `OrderUpdated` or
+  `OrderUpdateFailed` event after completion of consuming the CreditAmended/
+  CreditAmendRejected."
+- Author review: Pending contributor review. Codex added focused success,
+  failure, parsing, duplicate, and rollback coverage and ran the Order Service
+  validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Consolidated Order Service outbound event publication into one event
+  outbox and one publisher, while keeping the credit-release and credit-update
+  result consumers separate. Both consumers now look up and lock tasks by
+  `task_id`, ignore non-pending duplicates, validate reservation and optional
+  order IDs, and check event type against the RabbitMQ routing key. Release
+  dispatch is chosen from the local task action. A migration preserves
+  unpublished task events while renaming the workflow tables. No service
+  outside `order-service/` was modified.
+- Prompt(s): "Apply this to the current order service: make both consumer flows
+  match using task ID, verify reservation ID and any supplied order ID, validate
+  event type against the routing key, and dispatch release results using the
+  local task action. Use one Order Service event outbox and one event worker."
+- Author review: Pending contributor review. Ruff checks and formatting passed;
+  the Order Service test suite passed with 12 optional PostgreSQL tests skipped.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Aligned credit release result handling so the locked pending task's
+  local `action` selects the delete, cancel, or expire handler for both
+  `CreditReleased` and `CreditReleaseFailed`. The release and update consumers
+  correlate results by `task_id`, validate reservation and optional order IDs,
+  acknowledge duplicate non-pending tasks, and validate event routing keys.
+  No service outside `order-service/` was modified.
+- Prompt(s): "Apply this to the current order service: Make sure that both
+  consumer flows in order service match using task id for consistency and
+  correctness. Then, make sure their reservation id matches as well. Conduct
+  the checks to ensure that the order that the reservation by the credit
+  service and the order referenced by the task matches... [the request also
+  specified pending-state duplicate handling, optional order ID validation,
+  type/routing-key validation, task-action dispatch, and one outbound event
+  outbox and worker]."
+- Author review: Pending contributor review. Focused Order Service checks run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Replaced the separate Order Service update, deletion, and action task
+  response schemas with one `OrderActionResponse`. It exposes a shared optional
+  `failure_reason` sourced from the task's stored error. No service outside
+  `order-service/` was modified.
+- Prompt(s): "okay so get rid of the orderupdatetaskresponse, and use one
+  \"OrderActionResponse\" exactly."
+- Author review: Pending contributor review. Tests were not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added concise FastAPI docstrings to each Order Service route, each
+  limited to ten words. No service outside `order-service/` was modified.
+- Prompt(s): "For each of the endpoints in routes/orders.py, add the
+  `description` of what the endpoint does in 10 words max for each of them."
+- Author review: Pending contributor review. Tests were not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Applied Ruff formatting to remove trailing whitespace in
+  `order-service/app/api/routes/orders.py`. Order Service Ruff lint, format,
+  and diff whitespace checks passed.
+- Prompt(s): "ok make the code base agree with ruff and the CI linting"
+- Author review: Pending contributor review. Tests were not run.
