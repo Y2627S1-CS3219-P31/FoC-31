@@ -125,6 +125,32 @@ async def test_list_available_orders_translates_database_failure(
         await order_service.list_available_orders(_Session(), "user-1")
 
 
+async def test_list_assigned_orders_filters_by_courier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orders = [_order(courier_id="courier-1", status=OrderStatus.ACCEPTED)]
+    listing = AsyncMock(return_value=orders)
+    monkeypatch.setattr(order_service.order_repository, "list_assigned_orders", listing)
+
+    result = await order_service.list_assigned_orders(_Session(), "courier-1")
+
+    assert result == orders
+    listing.assert_awaited_once_with(ANY, "courier-1")
+
+
+async def test_list_assigned_orders_translates_database_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        order_service.order_repository,
+        "list_assigned_orders",
+        AsyncMock(side_effect=SQLAlchemyError("database unavailable")),
+    )
+
+    with pytest.raises(OrderRetrievalError):
+        await order_service.list_assigned_orders(_Session(), "courier-1")
+
+
 async def test_get_order_enforces_requester_ownership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

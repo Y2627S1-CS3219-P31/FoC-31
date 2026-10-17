@@ -631,3 +631,39 @@ Format for each entry:
   with 145 passed and 12 optional PostgreSQL tests skipped. Ruff lint,
   formatting, and `git diff --check` passed; one existing Starlette deprecation
   warning remains.
+
+## 17/10/2026 — Name the update request event explicitly
+
+- Tool: Codex (model: GPT-6)
+- Scope: Renamed the Order Service's outbound update request event to
+  `OrderUpdateRequested`, updated its schema, outbox worker and README. Added a
+  migration to rename unpublished legacy outbox payloads while preserving
+  already-published event history.
+- Prompt: "ok so change this to OrderUpdateRequested"
+- Author review: Pending contributor review. Ruff lint, formatting, and
+  `git diff --check` passed. Tests were not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the F3 courier assigned-orders listing in Order Service.
+  The endpoint uses trusted caller headers, lists ongoing assigned orders in
+  deadline and ID order, and follows the existing route → service → repository
+  architecture. Added focused API and service tests and documented the
+  endpoint. No other service or the API Gateway was modified.
+- Prompt(s): “Implement F3 in `order-service` only: add `GET /orders/assigned`,
+  requiring trusted `X-User-Id` and `X-User-Role: client` headers. Return a
+  JSON array of existing `OrderResponse` objects for that courier’s orders in
+  `ACCEPTED`, `PICKED_UP`, or `AWAITING_APPROVAL` status, sorted by deadline
+  then order ID; return `[]` when none match. Follow the route → service →
+  repository architecture and query only Order Service’s database. Register
+  the static route before `/{order_id}`. Keep it read-only and publish no
+  events. Add focused tests and update Order Service documentation. Add
+  required AI attribution headers and record this prompt in the permitted AI
+  usage log. Do not modify other services or the gateway. Make sure the code
+  is neat, simple to understand, and add clear comments where appropriate but
+  don't overdo the comments either. Make sure it follows the project's
+  architecture.”
+- Author review: The focused Order Service API and service tests passed. Ruff
+  lint and format checks passed, and `git diff --check` passed.
+  One pre-existing Starlette `httpx` deprecation warning remains.

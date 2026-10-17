@@ -7,12 +7,12 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict
 
 
-class OrderUpdateEvent(BaseModel):
-    """Fact published when Order Service has accepted a pending update."""
+class OrderUpdateRequestedEvent(BaseModel):
+    """Fact published when Order Service records a requested order update."""
 
     model_config = ConfigDict(extra="forbid")
 
-    event_type: Literal["OrderUpdate"] = "OrderUpdate"
+    event_type: Literal["OrderUpdateRequested"] = "OrderUpdateRequested"
     task_id: str
     order_id: str
     reservation_id: str

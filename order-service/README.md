@@ -49,12 +49,13 @@ Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
 ## Reward update recovery
 
-`PATCH /orders/{order_id}` commits a pending update task and its `OrderUpdate`
-event to `order_event_outbox` in one transaction, then returns `202` with the
-task ID. Credit Service independently decides whether the reservation needs
-amendment, then publishes `CreditAmended` or `CreditAmendRejected`. The separate
-update-result consumer locks the update task by `task_id`, verifies its
-reservation ID and any supplied order ID, then applies or rejects the update.
+`PATCH /orders/{order_id}` commits a pending update task and its
+`OrderUpdateRequested` event to `order_event_outbox` in one transaction, then
+returns `202` with the task ID. Credit Service independently decides whether the
+reservation needs amendment, then publishes `CreditAmended` or
+`CreditAmendRejected`. The separate update-result consumer locks the update task
+by `task_id`, verifies its reservation ID and any supplied order ID, then
+applies or rejects the update.
 Order Service records `OrderUpdated` or `OrderUpdateFailed` in the same event
 outbox as the task result. A failed final commit requeues the credit result;
 rejection leaves the live order unchanged. `GET /orders/updates/{task_id}` lets
@@ -143,10 +144,21 @@ The order-service contract is documented in `docs/`:
   reference covering endpoints, authentication, data models, dependency
   workflows, errors, filtering, and versioning.
 
+### Assigned orders (F3)
+
+`GET /orders/assigned` lists the authenticated courier's ongoing assigned
+orders. It requires the gateway-injected `X-User-Id` and
+`X-User-Role: client` headers; courier identity is taken from `X-User-Id`.
+The response is an array of `OrderResponse` objects for orders in `ACCEPTED`,
+`PICKED_UP`, or `AWAITING_APPROVAL` status, sorted by deadline and then order
+ID. An empty list returns `200` with `[]`. The endpoint reads only the
+Order Service database and publishes no event.
+
 At runtime, FastAPI also serves the live specification at `/openapi.json` and
 interactive documentation at `/docs`.
 
-> Status: `POST /orders`, `GET /orders`, `GET /orders/{order_id}`,
+> Status: `POST /orders`, `GET /orders`, `GET /orders/assigned`,
+> `GET /orders/{order_id}`,
 > `PATCH /orders/{order_id}`, `DELETE /orders/{order_id}`,
 > `POST /orders/{order_id}/cancel`, and
 > `POST /orders/{order_id}/accept` are implemented. Remaining lifecycle

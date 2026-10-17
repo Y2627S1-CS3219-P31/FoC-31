@@ -107,6 +107,21 @@ async def list_orders(
     return await order_service.list_available_orders(session, requester_id, **selected_options)
 
 
+@router.get("/assigned", response_model=list[OrderResponse])
+async def list_assigned_orders(
+    courier_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    role: Annotated[str, Header(alias=HEADER_USER_ROLE)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OrderResponse]:
+    """Lists the courier's ongoing assigned orders."""
+
+    if role != Role.CLIENT.value:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only clients can view assigned courier orders."
+        )
+    return await order_service.list_assigned_orders(session, courier_id)
+
+
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
     order_id: str,

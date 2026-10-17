@@ -92,6 +92,25 @@ async def list_available_orders(
     return list(result.all())
 
 
+async def list_assigned_orders(session: AsyncSession, courier_id: str) -> list[OrderTable]:
+    statement = (
+        select(OrderTable)
+        .where(
+            OrderTable.courier_id == courier_id,
+            OrderTable.status.in_(
+                (
+                    OrderStatus.ACCEPTED,
+                    OrderStatus.PICKED_UP,
+                    OrderStatus.AWAITING_APPROVAL,
+                )
+            ),
+        )
+        .order_by(OrderTable.deadline.asc(), OrderTable.order_id.asc())
+    )
+    result = await session.scalars(statement)
+    return list(result.all())
+
+
 async def get_order(
     session: AsyncSession,
     order_id: str,

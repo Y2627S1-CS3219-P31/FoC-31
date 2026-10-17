@@ -168,6 +168,69 @@ def test_list_orders_returns_available_orders(
     assert [order["order_id"] for order in response.json()] == ["order-1"]
 
 
+def test_list_assigned_orders_uses_courier_identity(
+    client: TestClient,
+    fake_session: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order = _stored_order(requester_id="requester-1")
+    order.courier_id = "courier-1"
+    order.status = OrderStatus.ACCEPTED
+    listing = AsyncMock(return_value=[order])
+    monkeypatch.setattr(order_routes.order_service, "list_assigned_orders", listing)
+
+    response = client.get(
+        "/orders/assigned",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
+    )
+
+    assert response.status_code == 200
+    assert [item["order_id"] for item in response.json()] == ["order-1"]
+    listing.assert_awaited_once_with(fake_session, "courier-1")
+
+
+def test_list_assigned_orders_returns_empty_array_when_none_match(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "list_assigned_orders",
+        AsyncMock(return_value=[]),
+    )
+
+    response = client.get(
+        "/orders/assigned",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected_status"),
+    [
+        ({"X-User-Id": "courier-1"}, 422),
+        ({"X-User-Role": "client"}, 422),
+        ({"X-User-Id": "courier-1", "X-User-Role": "admin"}, 403),
+    ],
+)
+def test_list_assigned_orders_requires_client_identity(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    headers: dict[str, str],
+    expected_status: int,
+) -> None:
+    listing = AsyncMock()
+    monkeypatch.setattr(order_routes.order_service, "list_assigned_orders", listing)
+
+    response = client.get("/orders/assigned", headers=headers)
+
+    assert response.status_code == expected_status
+    listing.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     ("error", "status_code", "code"),
     [

@@ -15,7 +15,7 @@ from app.repositories import order_release_tasks as release_tasks
 from app.repositories import order_update_tasks as update_tasks
 from app.repositories import orders as order_repository
 from app.schemas.order_action_events import OrderActionEvent, OrderActionEventType
-from app.schemas.order_update_events import OrderUpdateEvent
+from app.schemas.order_update_events import OrderUpdateRequestedEvent
 from app.schemas.orders import OrderCreate, OrderSortField, OrderUpdate, SortDirection
 from app.services.client_manager import get_credit_client, get_supplier_client
 from app.services.clients.supplier.error import SupplierInactiveError
@@ -167,6 +167,13 @@ async def list_available_orders(
             sort_by=sort_by,
             sort_order=sort_order,
         )
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError() from exc
+
+
+async def list_assigned_orders(session: AsyncSession, courier_id: str) -> list[OrderTable]:
+    try:
+        return await order_repository.list_assigned_orders(session, courier_id)
     except SQLAlchemyError as exc:
         raise OrderRetrievalError() from exc
 
@@ -342,7 +349,7 @@ async def update_order(
         )
         await event_outbox_repository.create_event(
             session,
-            OrderUpdateEvent(
+            OrderUpdateRequestedEvent(
                 task_id=task.task_id,
                 order_id=task.order_id,
                 reservation_id=task.reservation_id,
