@@ -8,6 +8,12 @@ Implements:
 - F4  release on cancellation/expiry; never on courier withdrawal
 - F5  transaction-history recording + retrieval
 
+Order Service tasks (``OrderDeletionRequested``/``OrderCancellationRequested``
+→ release, ``OrderUpdateRequested`` → amend) are answered with a definitive
+result event, so the Order Service saga can complete its delete/cancel/update
+workflows. Task handling is idempotent by ``task_id``: the recorded outcome is
+republished instead of re-applying a duplicate task.
+
 Concurrency (N1.2.2): account/reservation rows are locked with SELECT ...
 FOR UPDATE for the duration of each operation, and every operation commits
 atomically (N1.2.1).
@@ -26,14 +32,23 @@ from app.errors import (
     ForbiddenError,
     InsufficientCreditsError,
     NotFoundError,
+    ServiceError,
 )
 from app.models._util import _utcnow
 from app.models.account import CreditAccount
 from app.models.reservation import CreditReservation, ReservationStatus
+from app.models.task_result import CreditTaskResult, TaskResultKind, TaskResultOutcome
 from app.models.transaction import CreditTransaction, TransactionKind
 from app.repositories.account_repo import AccountRepository
 from app.repositories.reservation_repo import ReservationRepository
+from app.repositories.task_result_repo import TaskResultRepository
 from app.repositories.transaction_repo import TransactionRepository
+from app.schemas.interop import (
+    CreditAmendResult,
+    CreditReleaseResult,
+    OrderActionEvent,
+    OrderUpdateRequestedEvent,
+)
 from app.services import publisher
 from foc_shared.auth import Role
 from foc_shared.events import (
@@ -52,6 +67,7 @@ class CreditService:
         self._session = session
         self._accounts = AccountRepository(session)
         self._reservations = ReservationRepository(session)
+        self._task_results = TaskResultRepository(session)
         self._transactions = TransactionRepository(session)
 
     # ── F1: accounts ──────────────────────────────────────────────────────────
@@ -193,9 +209,14 @@ class CreditService:
         reservation = await self._reservation_for_caller(
             reservation_id, caller_user_id, caller_role
         )
+        return await self._amend_reservation(reservation, new_amount)
+
+    async def _amend_reservation(
+        self, reservation: CreditReservation, new_amount: int
+    ) -> CreditReservation:
         if reservation.status != ReservationStatus.RESERVED.value:
             raise ConflictError(
-                f"Reservation '{reservation_id}' is {reservation.status} and cannot be amended."
+                f"Reservation '{reservation.id}' is {reservation.status} and cannot be amended."
             )
 
         account = await self._accounts.get_for_update(reservation.user_id)
@@ -353,8 +374,7 @@ class CreditService:
     # ── Event handling ───────────────────────────────────────────────────────
 
     async def handle_order_event(self, event: OrderEvent) -> None:
-        """Dispatch only the event types this service subscribes to (the
-        consumer binds exactly these four routing keys)."""
+        """Handle the legacy order lifecycle events (no reply expected)."""
         if event.event_type == OrderEventType.ORDER_COMPLETED:
             if event.courier_id is None:
                 logger.error(
@@ -363,7 +383,7 @@ class CreditService:
                 )
                 return
             await self.transfer_for_order(event.order_id, event.courier_id)
-        elif event.event_type in (OrderEventType.ORDER_CANCELLED, OrderEventType.ORDER_EXPIRED):
+        elif event.event_type == OrderEventType.ORDER_EXPIRED:
             await self.release_for_order(event.order_id)
         elif event.event_type == OrderEventType.COURIER_WITHDRAWN:
             # Credit F4.1.2: withdrawal keeps the credits reserved.
@@ -372,8 +392,162 @@ class CreditService:
                 event.order_id,
             )
 
+    async def handle_release_requested(self, event: OrderActionEvent) -> None:
+        """Release the reservation for a delete/cancel request and answer the
+        Order Service task (Credit F4.1.1).
+
+        Idempotent by ``task_id``: a repeated delivery republishes the stored
+        outcome instead of releasing a second time. Every definitive outcome
+        (released or failed) is recorded and published, so the Order Service
+        saga always receives exactly one answer per ``task_id``."""
+        recorded = await self._task_results.get(event.task_id)
+        if recorded is not None:
+            await self._publish_release_outcome(recorded)
+            return
+
+        reservation = await self._reservations.get_for_update(event.reservation_id)
+        reason = self._request_mismatch(
+            reservation, order_id=event.order_id, requester_id=event.requester_id
+        )
+        if reason is None and reservation.status == ReservationStatus.TRANSFERRED.value:
+            reason = "Reservation has already been transferred and cannot be released."
+        if reason is not None:
+            await self._record_release_outcome(event, TaskResultOutcome.RELEASE_FAILED, reason)
+            return
+
+        try:
+            await self._release_reservation(reservation)
+        except ServiceError as exc:
+            await self._record_release_outcome(event, TaskResultOutcome.RELEASE_FAILED, str(exc))
+            return
+        await self._record_release_outcome(event, TaskResultOutcome.RELEASED)
+
+    async def handle_update_requested(self, event: OrderUpdateRequestedEvent) -> None:
+        """Amend the reservation to the reward carried by the order update
+        (Credit F2.3) and answer the Order Service task.
+
+        Idempotent by ``task_id``; definitive outcomes become
+        ``CreditAmended`` or ``CreditAmendRejected``."""
+        recorded = await self._task_results.get(event.task_id)
+        if recorded is not None:
+            await self._publish_amend_outcome(recorded)
+            return
+
+        reservation = await self._reservations.get_for_update(event.reservation_id)
+        reason = self._request_mismatch(
+            reservation, order_id=event.order_id, requester_id=event.requester_id
+        )
+        if reason is None and reservation.status != ReservationStatus.RESERVED.value:
+            reason = f"Reservation is {reservation.status} and cannot be amended."
+        if reason is None and event.reward < 0:
+            reason = "Reward cannot be negative."
+        if reason is not None:
+            await self._record_amend_outcome(event, TaskResultOutcome.AMEND_REJECTED, reason)
+            return
+
+        try:
+            await self._amend_reservation(reservation, event.reward)
+        except ServiceError as exc:
+            await self._record_amend_outcome(event, TaskResultOutcome.AMEND_REJECTED, str(exc))
+            return
+        await self._record_amend_outcome(event, TaskResultOutcome.AMENDED)
+
     async def handle_user_registered_event(self, event: UserRegisteredEvent) -> None:
         await self.ensure_account(event.user_id)
+
+    @staticmethod
+    def _request_mismatch(
+        reservation: CreditReservation | None, *, order_id: str, requester_id: str
+    ) -> str | None:
+        """Return a rejection reason when a task targets the wrong reservation."""
+        if reservation is None:
+            return "Reservation was not found."
+        if reservation.order_id != order_id:
+            return "Reservation does not belong to this order."
+        if reservation.user_id != requester_id:
+            return "Reservation does not belong to this requester."
+        return None
+
+    async def _record_release_outcome(
+        self,
+        event: OrderActionEvent,
+        outcome: TaskResultOutcome,
+        reason: str | None = None,
+    ) -> None:
+        result = await self._save_task_result(
+            CreditTaskResult(
+                task_id=event.task_id,
+                kind=TaskResultKind.RELEASE.value,
+                reservation_id=event.reservation_id,
+                order_id=event.order_id,
+                requester_id=event.requester_id,
+                outcome=outcome.value,
+                reason=reason,
+            )
+        )
+        await self._publish_release_outcome(result)
+
+    async def _record_amend_outcome(
+        self,
+        event: OrderUpdateRequestedEvent,
+        outcome: TaskResultOutcome,
+        reason: str | None = None,
+    ) -> None:
+        result = await self._save_task_result(
+            CreditTaskResult(
+                task_id=event.task_id,
+                kind=TaskResultKind.AMEND.value,
+                reservation_id=event.reservation_id,
+                order_id=event.order_id,
+                requester_id=event.requester_id,
+                outcome=outcome.value,
+                amount=event.reward,
+                reason=reason,
+            )
+        )
+        await self._publish_amend_outcome(result)
+
+    async def _save_task_result(self, result: CreditTaskResult) -> CreditTaskResult:
+        """Persist the outcome; a concurrent duplicate keeps the first one."""
+        try:
+            await self._task_results.add(result)
+            await self._session.commit()
+        except IntegrityError:
+            await self._session.rollback()
+            existing = await self._task_results.get(result.task_id)
+            if existing is None:
+                raise
+            return existing
+        return result
+
+    @staticmethod
+    async def _publish_release_outcome(result: CreditTaskResult) -> None:
+        released = result.outcome == TaskResultOutcome.RELEASED.value
+        await publisher.publish_credit_event(
+            CreditReleaseResult(
+                event_type="CreditReleased" if released else "CreditReleaseFailed",
+                task_id=result.task_id,
+                order_id=result.order_id,
+                reservation_id=result.reservation_id,
+                timestamp=_utcnow(),
+                reason=None if released else result.reason,
+            )
+        )
+
+    @staticmethod
+    async def _publish_amend_outcome(result: CreditTaskResult) -> None:
+        amended = result.outcome == TaskResultOutcome.AMENDED.value
+        await publisher.publish_credit_event(
+            CreditAmendResult(
+                event_type="CreditAmended" if amended else "CreditAmendRejected",
+                task_id=result.task_id,
+                order_id=result.order_id,
+                reservation_id=result.reservation_id,
+                requester_id=result.requester_id,
+                amount=result.amount if result.amount is not None else 0,
+                reason=None if amended else result.reason,
+            )
+        )
 
     # ── F5: transaction history ──────────────────────────────────────────────
 
