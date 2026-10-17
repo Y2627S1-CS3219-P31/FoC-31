@@ -4,9 +4,11 @@ from datetime import datetime
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    Index,
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy import (
     Enum as SqlEnum,
@@ -48,6 +50,13 @@ class OrderTable(Base):
         CheckConstraint(
             "char_length(btrim(reservation_id)) > 0",
             name="ck_orders_reservation_id_not_blank",
+        ),
+        Index(
+            "ix_orders_open_deadline",
+            "deadline",
+            "order_id",
+            postgresql_where=text("status = 'OPEN'"),
+            sqlite_where=text("status = 'OPEN'"),
         ),
     )
 

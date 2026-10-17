@@ -27,13 +27,6 @@ from app.services.lifecycle import OrderStatus, assert_transition
 from foc_shared.events import OrderEvent, OrderEventType
 
 
-def _utc_datetime(value: datetime) -> datetime:
-    """Normalize timestamps loaded by drivers that omit the UTC offset."""
-    if value.tzinfo is None:
-        return value.replace(tzinfo=UTC)
-    return value.astimezone(UTC)
-
-
 def _fail_task(task: OrderReleaseTask, error: str) -> None:
     task.status = FAILED
     task.last_error = error[:500]
@@ -159,46 +152,10 @@ async def handle_cancel(
     _complete_task(task)
 
 
-async def handle_expire(
-    session: AsyncSession, task: OrderReleaseTask, event: CreditReleaseResult
-) -> None:
-    if event.event_type == "CreditReleaseFailed":
-        _fail_task(task, event.reason or "Credit Service rejected the release.")
-        return
-
-    order = await _get_locked_order(session, task)
-    if order is None:
-        return
-
-    if _utc_datetime(order.deadline) > datetime.now(UTC):
-        _fail_task(task, "The order deadline has not passed.")
-        return
-    try:
-        assert_transition(OrderStatus(order.status), OrderStatus.EXPIRED)
-    except ValueError as exc:
-        _fail_task(task, str(exc))
-        return
-
-    await order_repository.set_status(session, order, OrderStatus.EXPIRED)
-    await event_outbox_repository.create_event(
-        session,
-        OrderEvent(
-            event_type=OrderEventType.ORDER_EXPIRED,
-            order_id=order.order_id,
-            requester_id=order.requester_id,
-            courier_id=order.courier_id,
-            timestamp=datetime.now(UTC),
-            reason=task.reason,
-        ),
-    )
-    _complete_task(task)
-
-
 ActionHandler = Callable[[AsyncSession, OrderReleaseTask, CreditReleaseResult], Awaitable[None]]
 ACTION_HANDLERS: dict[ReleaseAction, ActionHandler] = {
     ReleaseAction.DELETE: handle_delete,
     ReleaseAction.CANCEL: handle_cancel,
-    ReleaseAction.EXPIRE: handle_expire,
 }
 
 
@@ -221,6 +178,9 @@ async def process_release_result(session: AsyncSession, event: CreditReleaseResu
             _fail_task(task, "Unknown order action.")
             return True
 
-        handler = ACTION_HANDLERS[action]
+        handler = ACTION_HANDLERS.get(action)
+        if handler is None:
+            _fail_task(task, "Unsupported release task action.")
+            return True
         await handler(session, task, event)
         return True

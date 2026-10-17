@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from enum import Enum
 from typing import Annotated
 
 from pydantic import (
@@ -19,6 +20,16 @@ NonEmptyString = Annotated[
     str,
     StringConstraints(strip_whitespace=True, min_length=1),
 ]
+
+
+class OrderSortField(str, Enum):
+    DEADLINE = "deadline"
+    REWARD = "reward"
+
+
+class SortDirection(str, Enum):
+    ASC = "asc"
+    DESC = "desc"
 
 
 class OrderCreate(BaseModel):

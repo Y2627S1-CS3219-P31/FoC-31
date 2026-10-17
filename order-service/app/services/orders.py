@@ -16,8 +16,8 @@ from app.repositories import order_update_tasks as update_tasks
 from app.repositories import orders as order_repository
 from app.schemas.order_action_events import OrderActionEvent, OrderActionEventType
 from app.schemas.order_update_events import OrderUpdateEvent
-from app.schemas.orders import OrderCreate, OrderUpdate
-from app.services.client_manager import get_credit_client
+from app.schemas.orders import OrderCreate, OrderSortField, OrderUpdate, SortDirection
+from app.services.client_manager import get_credit_client, get_supplier_client
 from app.services.clients.supplier.error import SupplierInactiveError
 from app.services.clients.supplier.get_supplier import get_supplier
 from app.services.errors import (
@@ -37,7 +37,6 @@ from foc_shared.events import OrderEvent, OrderEventType
 ORDER_ACTION_EVENT_TYPES: dict[ReleaseAction, OrderActionEventType] = {
     ReleaseAction.DELETE: "OrderDeletionRequested",
     ReleaseAction.CANCEL: "OrderCancellationRequested",
-    ReleaseAction.EXPIRE: "OrderExpiryRequested",
 }
 
 
@@ -144,9 +143,30 @@ async def create_order(
 async def list_available_orders(
     session: AsyncSession,
     requester_id: str,
+    categories: list[str] | None = None,
+    min_reward: int | None = None,
+    max_reward: int | None = None,
+    sort_by: OrderSortField = OrderSortField.DEADLINE,
+    sort_order: SortDirection = SortDirection.ASC,
 ) -> list[OrderTable]:
+    supplier_ids = None
+    if categories:
+        supplier_ids = await get_supplier_client().get_supplier_ids_by_categories(
+            list(dict.fromkeys(categories))
+        )
+        if not supplier_ids:
+            return []
+
     try:
-        return await order_repository.list_available_orders(session, requester_id)
+        return await order_repository.list_available_orders(
+            session,
+            requester_id,
+            supplier_ids=supplier_ids,
+            min_reward=min_reward,
+            max_reward=max_reward,
+            sort_by=sort_by,
+            sort_order=sort_order,
+        )
     except SQLAlchemyError as exc:
         raise OrderRetrievalError() from exc
 

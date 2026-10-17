@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
@@ -12,7 +12,9 @@ from app.schemas.orders import (
     OrderCancellationRequest,
     OrderCreate,
     OrderResponse,
+    OrderSortField,
     OrderUpdate,
+    SortDirection,
 )
 from app.services import orders as order_service
 from foc_shared.auth import HEADER_USER_ID, HEADER_USER_ROLE, Role
@@ -80,10 +82,29 @@ async def create_order(
 async def list_orders(
     requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
+    category: Annotated[list[str] | None, Query()] = None,
+    min_reward: Annotated[int | None, Query(ge=1)] = None,
+    max_reward: Annotated[int | None, Query(ge=1)] = None,
+    sort_by: Annotated[OrderSortField | None, Query()] = None,
+    sort_order: Annotated[SortDirection | None, Query()] = None,
 ) -> list[OrderResponse]:
-    """Lists open orders available to the current user."""
+    """Lists available orders with optional filters and sorting."""
 
-    return await order_service.list_available_orders(session, requester_id)
+    if min_reward is not None and max_reward is not None and min_reward > max_reward:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="min_reward cannot exceed max_reward.",
+        )
+
+    options = {
+        "categories": category,
+        "min_reward": min_reward,
+        "max_reward": max_reward,
+        "sort_by": sort_by,
+        "sort_order": sort_order,
+    }
+    selected_options = {key: value for key, value in options.items() if value is not None}
+    return await order_service.list_available_orders(session, requester_id, **selected_options)
 
 
 @router.get("/{order_id}", response_model=OrderResponse)

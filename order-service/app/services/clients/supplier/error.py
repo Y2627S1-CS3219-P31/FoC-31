@@ -1,3 +1,4 @@
+# AI-INFLUENCED: Supplier category filter error added with Codex; see ai/usage-log.md.
 # Base class for all supplier related error in the Order Service
 class SupplierClientError(Exception):
     pass
@@ -8,6 +9,10 @@ class SupplierNotFoundError(SupplierClientError):
 
 
 class SupplierInactiveError(SupplierClientError):
+    pass
+
+
+class SupplierCategoryFilterError(SupplierClientError):
     pass
 
 

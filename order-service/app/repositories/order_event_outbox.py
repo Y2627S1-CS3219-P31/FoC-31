@@ -27,6 +27,11 @@ async def create_event(session: AsyncSession, event: OrderOutboxEvent) -> OrderE
     return task
 
 
+async def create_events(session: AsyncSession, events: list[OrderOutboxEvent]) -> None:
+    session.add_all(OrderEventOutbox(payload=event.model_dump(mode="json")) for event in events)
+    await session.flush()
+
+
 async def list_pending_event_ids(session: AsyncSession, limit: int = 20) -> list[str]:
     result = await session.scalars(
         select(OrderEventOutbox.event_id)

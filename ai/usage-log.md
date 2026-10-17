@@ -15,6 +15,20 @@ Format for each entry:
 - Author review: <how you validated/edited/tested the output>
 ```
 
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the user-specified category lookup flow, reward-range
+  filters, and deadline/reward sorting for Order Service listings. Category
+  filters resolve supplier IDs via Supplier Service's paginated HTTP API;
+  Order Service stores no category map. Default ordering remains nearest
+  deadline first. No other service was changed.
+- Prompt(s): “Make sure the code is neat, simple to understand, and add clear
+  comments where appropriate but don't overdo the comments either. Make sure
+  it follows the project's architecture. Implement this for the filtering and
+  sorting then which addresses F2.1, F2.1.1, F2.2, and F2.2.1.”
+- Author review: Pending contributor review. Tests were not run.
+
 ---
 
 ## 17/10/2026 — Alexander Gerald
@@ -589,3 +603,31 @@ Format for each entry:
   and diff whitespace checks passed.
 - Prompt(s): "ok make the code base agree with ruff and the CI linting"
 - Author review: Pending contributor review. Tests were not run.
+
+## 17/10/2026 — Direct order expiry workflow
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added an Order Service expiry sweeper that runs every five seconds,
+  locks and processes up to 100 due open orders per transaction in deadline
+  order, marks them `EXPIRED`, and records `OrderExpired` facts in the existing
+  event outbox. The sweeper drains subsequent batches immediately and emits a
+  structured log signal when an order exceeds the 20-second expiry target. The
+  existing event worker publishes these events with broker confirmation and
+  retries. Expiry no longer waits for a Credit result or creates new release
+  tasks. Added a partial index migration, updated Order Service docs, and
+  aligned release-worker tests with the new ownership of expiry. Added tests
+  for eligibility, outbox records, and multi-batch draining. No service outside
+  `order-service/` was modified.
+- Prompt: "Implement the Order Service expiry workflow: run a sweeper every
+  five seconds; process up to 100 due eligible orders per transaction in
+  oldest-deadline order with row locks and `SKIP LOCKED`; recheck eligibility,
+  set each to `EXPIRED`, and add `OrderExpired` to the existing event outbox;
+  drain batches immediately; use no task table; reuse the confirmed, retrying
+  event worker; leave reservation release and retries to Credit Service; and
+  signal orders overdue by more than 20 seconds. Keep the code neat and follow
+  the architecture. Change only `order-service/` and this permitted AI usage
+  log."
+- Author review: Pending contributor review. `make test-order-service` passed
+  with 145 passed and 12 optional PostgreSQL tests skipped. Ruff lint,
+  formatting, and `git diff --check` passed; one existing Starlette deprecation
+  warning remains.

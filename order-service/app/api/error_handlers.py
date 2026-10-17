@@ -24,6 +24,7 @@ from app.services.clients.errors import (
     UnexpectedRemoteResponseError,
 )
 from app.services.clients.supplier.error import (
+    SupplierCategoryFilterError,
     SupplierInactiveError,
     SupplierNotFoundError,
     SupplierServiceContractError,
@@ -104,6 +105,11 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         HTTPStatus.CONFLICT,
         "supplier_inactive",
         "The specified supplier is inactive.",
+    ),
+    SupplierCategoryFilterError: ErrorMapping(
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_category_filter",
+        "One or more category filters are not supported.",
     ),
     CreditAccountNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,

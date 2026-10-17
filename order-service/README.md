@@ -18,7 +18,8 @@ and expiry (backlog: Order Service; project M4).
 - **F5** lifecycle **state machine** — see `app/services/lifecycle.py`
   (status set: `OPEN, ACCEPTED, PICKED_UP, AWAITING_APPROVAL, COMPLETED,
   CANCELLED, EXPIRED`). Invalid transitions are rejected.
-- **F6** periodic **expiry sweeper**; publishes `OrderExpired`.
+- **F6** expiry sweeper runs every five seconds, expires due orders in batches,
+  and publishes `OrderExpired`.
 
 ## Events
 
@@ -67,6 +68,19 @@ RabbitMQ confirmation and retries. Inbound release-result and update-result
 consumers remain separate because their event contracts and local handlers
 differ.
 
+### Expiry workflow (F6)
+
+The expiry sweeper selects up to 100 open orders whose deadlines have passed,
+oldest deadline first, using row locks with `SKIP LOCKED`. Each batch rechecks
+eligibility, marks its orders `EXPIRED`, and writes one `OrderExpired` fact per
+order to `order_event_outbox` in the same transaction. It immediately processes
+another batch until none remain, then waits for the next five-second sweep.
+Expiry does not create a workflow task or wait for a Credit Service result.
+Credit Service consumes the `OrderExpired` fact and owns reservation-release
+retries. The sweeper logs the structured signal
+`order_expiry_slo_breached` when an open order is overdue by more than 20
+seconds.
+
 Existing Order databases need `alembic upgrade head` from `order-service/`
 before starting this version. The migration moves unpublished task events into
 `order_event_outbox`, renames workflow tables to `order_release_tasks` and
@@ -103,8 +117,10 @@ time, not the retry time. The worker starts and stops with the application.
 
 The `20261016_order_event_outbox` migration adds the event table, and the
 `20261016_single_order_event_outbox` migration consolidates workflow task
-publication state into it. Run `alembic upgrade head` inside `order-service`
-before deployment; startup also creates missing tables for fresh installations.
+publication state into it. The `20261017_order_expiry_index` migration adds a
+partial index for due open orders. Run `alembic upgrade head` inside `order-service`
+before deployment; startup also creates missing tables for fresh
+installations.
 
 ### Acceptance verification
 

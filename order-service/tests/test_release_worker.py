@@ -125,25 +125,15 @@ async def test_credit_released_cancels_order_and_records_final_event(maker) -> N
         assert event_task.payload["reason"] == "requester_cancelled"
 
 
-async def test_credit_released_expires_order_and_completes_task(maker) -> None:
+@pytest.mark.parametrize("deadline_offset_seconds", [-60, 60])
+async def test_credit_result_does_not_drive_order_expiry(
+    maker, deadline_offset_seconds: int
+) -> None:
     task_id = await _seed_task(
         maker,
         ReleaseAction.EXPIRE,
-        deadline=datetime.now(UTC) - timedelta(minutes=1),
+        deadline=datetime.now(UTC) + timedelta(seconds=deadline_offset_seconds),
     )
-    async with maker() as session:
-        assert await release_worker.process_release_result(session, _result(task_id=task_id))
-
-    async with maker() as session:
-        order = await session.get(OrderTable, "order-1")
-        assert order.status == OrderStatus.EXPIRED
-        assert (await session.get(OrderReleaseTask, task_id)).status == COMPLETED
-        event_task = (await session.scalars(select(OrderEventOutbox))).one()
-        assert event_task.payload["event_type"] == "OrderExpired"
-
-
-async def test_expiry_is_rejected_before_deadline(maker) -> None:
-    task_id = await _seed_task(maker, ReleaseAction.EXPIRE)
     async with maker() as session:
         await release_worker.process_release_result(session, _result(task_id=task_id))
 
@@ -151,7 +141,8 @@ async def test_expiry_is_rejected_before_deadline(maker) -> None:
         assert (await session.get(OrderTable, "order-1")).status == OrderStatus.OPEN
         task = await session.get(OrderReleaseTask, task_id)
         assert task.status == FAILED
-        assert task.last_error == "The order deadline has not passed."
+        assert task.last_error == "Unsupported release task action."
+        assert (await session.scalars(select(OrderEventOutbox))).all() == []
 
 
 async def test_unknown_and_duplicate_release_events_are_no_ops(maker) -> None:
