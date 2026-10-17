@@ -1,0 +1,28 @@
+$kind: http-request
+name: Amend reservation -> 200
+description: "Change the reserved amount of an existing reservation (Credit F2.3). Uses reservationId saved by Reserve credits. Body is snake_case."
+url: "{​{baseUrl}}/api/credits/reservations/{​{reservationId}}/amend"
+method: POST
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "amount": 15
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('reservation amended (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('amount updated', function () {
+          pm.expect(pm.response.json().amount).to.eql(15);
+      });
+    language: text/javascript
+order: 1100

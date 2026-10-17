@@ -1,0 +1,27 @@
+$kind: http-request
+name: Client POST /api/suppliers -> 403
+description: "D2 RBAC: supplier creation is admin-only. An authenticated client is forbidden (403), enforced by supplier-service require_admin using the trusted X-User-Role."
+url: "{{baseUrl}}/api/suppliers"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": "Should Not Be Created",
+      "category": "Food",
+      "building": "COM1"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 RBAC: client cannot create suppliers (403)', function () {
+          pm.response.to.have.status(403);
+      });
+    language: text/javascript
+order: 1000

@@ -27,7 +27,7 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 | Layer | Choice |
 | ----- | ----- |
 | Backend services | Python 3.12 + FastAPI |
-| API Gateway | FastAPI reverse proxy (`httpx`) with edge auth + RBAC |
+| API Gateway | FastAPI reverse proxy (`httpx`); edge authentication (JWT), routing (RBAC enforced in services) |
 | Frontend | React + TypeScript + Vite (responsive SPA) |
 | Databases | PostgreSQL — one instance per service (DB-per-service) |
 | Async messaging | RabbitMQ (order lifecycle events) |
@@ -39,39 +39,20 @@ withdrawn, or exchanged for money, and only circulate within the platform.
 ## Architecture
 
 Distributed, domain-partitioned microservices. The client talks only to the
-API Gateway, which authenticates requests at the edge and reverse-proxies to
-the appropriate backend service. Order lifecycle changes are published as
-events to RabbitMQ and consumed asynchronously by the Credit and Notification
-services.
+API Gateway, which **authenticates** requests at the edge (verifies the JWT and
+injects trusted `X-User-Id` / `X-User-Role` headers) and reverse-proxies to the
+appropriate backend service; the admin-vs-client **role checks are enforced in
+the services**, not at the gateway. Each service owns its own PostgreSQL
+database (DB-per-service). `UserRegistered` and order-lifecycle changes are
+published to RabbitMQ and consumed asynchronously by the Credit and
+Notification services.
 
-```text
-                         ┌──────────────────────┐
-        Browser  ──────▶ │   Frontend (React)   │
-                         └──────────┬───────────┘
-                                    │ HTTPS/JSON
-                         ┌──────────▼───────────┐
-                         │   API Gateway         │  edge auth + RBAC
-                         │   (FastAPI)           │  (validates token,
-                         └──────────┬───────────┘   injects trusted role)
-        ┌──────────────┬───────────┼────────────┬───────────────┐
-        ▼              ▼           ▼            ▼               ▼
-  ┌───────────┐ ┌────────────┐ ┌─────────┐ ┌──────────┐ ┌───────────────┐
-  │   user    │ │  supplier  │ │  order  │ │  credit  │ │ notification  │
-  │  service  │ │  service   │ │ service │ │ service  │ │   service     │
-  └─────┬─────┘ └─────┬──────┘ └────┬────┘ └────┬─────┘ └───────┬───────┘
-        │             │             │           │               │
-   ┌────▼───┐   ┌─────▼────┐   ┌────▼───┐  ┌────▼────┐    ┌──────▼──────┐
-   │user-db │   │supplier- │   │order-db│  │credit-db│    │notification-│
-   │  (PG)  │   │  db (PG) │   │  (PG)  │  │  (PG)   │    │  db (PG)    │
-   └────────┘   └──────────┘   └────┬───┘  └────┬────┘    └──────▲──────┘
-                                    │           │                │
-                                    │  publish  │  consume       │ consume
-                                    └──────────▶┌──────────┐◀────┘
-                                                │ RabbitMQ │
-                                                └──────────┘
-```
-
-See `docs/` for the event catalog, architecture-diagram source, and ADRs.
+The authoritative diagrams (single source of truth) live in
+[`docs/architecture.md`](docs/architecture.md) — including the system container
+(C4 L2) view — with the RBAC matrix and sequence diagrams in
+[`docs/rbac.md`](docs/rbac.md), the async event contract in
+[`docs/event-catalog.md`](docs/event-catalog.md), and per-service data models
+under each service's `docs/`.
 
 ---
 

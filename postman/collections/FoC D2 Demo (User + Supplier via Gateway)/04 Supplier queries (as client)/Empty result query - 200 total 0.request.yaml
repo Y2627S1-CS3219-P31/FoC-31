@@ -1,0 +1,24 @@
+$kind: http-request
+name: Empty result query -> 200 total 0
+description: "D2 Supplier pt2: a query matching nothing returns an empty page with total 0, never a 404."
+url: "{{baseUrl}}/api/suppliers?q=zzzzznomatchzzzzz"
+method: GET
+queryParams:
+  q: zzzzznomatchzzzzz
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: no match is 200 not 404', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('total == 0, items empty', function () {
+          var b = pm.response.json();
+          pm.expect(b.total).to.eql(0);
+          pm.expect(b.items).to.be.an('array').that.is.empty;
+      });
+    language: text/javascript
+order: 7000

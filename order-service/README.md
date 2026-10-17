@@ -1,3 +1,5 @@
+<!-- AI-INFLUENCED: Sprint 1 implementation status documented with Codex. -->
+
 # order-service
 
 Manages the complete **lifecycle of an errand request** — creation, listing,
@@ -30,9 +32,9 @@ app/
 ├── main.py
 ├── config.py
 ├── db.py
-├── api/routes/        # health, orders (stubs)
+├── api/routes/        # health and order endpoints
 ├── services/          # lifecycle.py (state machine), events.py (publisher)
-├── models/  schemas/  repositories/   # stubs
+├── models/  schemas/  repositories/
 ```
 
 ## Run
@@ -44,4 +46,17 @@ make test-order-service
 
 Database: `order-db` (PostgreSQL). Exposes `GET /health`.
 
-> Status: **scaffold**. Endpoints return `501 Not Implemented` until built.
+## API
+
+The order-service contract is documented in `docs/`:
+
+- [`order-service-api.md`](../docs/order-service-api.md) — human-readable
+  reference covering endpoints, authentication, data models, dependency
+  workflows, errors, filtering, and versioning.
+
+At runtime, FastAPI also serves the live specification at `/openapi.json` and
+interactive documentation at `/docs`.
+
+> Status: `POST /orders`, `GET /orders`, `GET /orders/{order_id}`, and
+> `DELETE /orders/{order_id}` are implemented. Order acceptance and the
+> remaining lifecycle operations belong to later sprints.

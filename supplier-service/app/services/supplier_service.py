@@ -26,9 +26,19 @@ class SupplierService:
         categories: list[str] | None = None,
         zone: str | None = None,
         q: str | None = None,
+        sort: str = "name",
+        order: str = "asc",
+        include_inactive: bool = False,
     ) -> SupplierList:
         return await self._repo.list(
-            page=page, page_size=page_size, categories=categories, zone=zone, q=q
+            page=page,
+            page_size=page_size,
+            categories=categories,
+            zone=zone,
+            q=q,
+            sort=sort,
+            order=order,
+            include_inactive=include_inactive,
         )
 
     async def update(self, supplier_id: str, patch: SupplierUpdate) -> Supplier:
@@ -46,3 +56,13 @@ class SupplierService:
         deactivated = await self._repo.deactivate(supplier_id)
         assert deactivated is not None  # existence just confirmed
         return deactivated
+
+    async def reactivate(self, supplier_id: str) -> Supplier:
+        current = await self._repo.get(supplier_id)
+        if current is None:
+            raise NotFoundError(f"Supplier '{supplier_id}' was not found.")
+        if current.active:
+            raise ConflictError(f"Supplier '{supplier_id}' is already active.")
+        reactivated = await self._repo.reactivate(supplier_id)
+        assert reactivated is not None  # existence just confirmed
+        return reactivated

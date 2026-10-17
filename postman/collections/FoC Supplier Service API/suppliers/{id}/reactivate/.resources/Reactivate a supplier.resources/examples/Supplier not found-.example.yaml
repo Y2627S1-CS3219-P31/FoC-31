@@ -1,0 +1,59 @@
+$kind: http-example
+name: Supplier not found.
+request:
+  url: "{{baseUrl}}/suppliers/:id/reactivate"
+  method: POST
+  headers:
+    - key: Accept
+      value: application/json
+    - key: X-User-Role
+      value: <API Key>
+      description: "Added as a part of security scheme: apikey"
+  pathVariables:
+    - key: id
+      value: string
+      disabled: false
+      description: Supplier identifier.
+  body:
+    type: text
+    content: ""
+response:
+  statusCode: 404
+  statusText: Not Found
+  headers:
+    Content-Type: application/json
+  body:
+    type: json
+    content: |-
+      {
+        "code": "not_found",
+        "message": "Supplier 'sup_999' was not found."
+      }
+    $type: |-
+      {
+        "description": "Shared error shape (foc_shared.errors.ErrorEnvelope).",
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "validation_error",
+              "bad_request",
+              "unauthorized",
+              "forbidden",
+              "not_found",
+              "conflict"
+            ],
+            "description": "Stable machine-readable code."
+          },
+          "message": {
+            "type": "string",
+            "description": "Human-readable explanation."
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ]
+      }
+order: 4000

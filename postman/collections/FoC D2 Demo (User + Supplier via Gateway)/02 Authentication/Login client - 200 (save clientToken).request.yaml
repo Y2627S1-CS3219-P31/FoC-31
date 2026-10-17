@@ -1,0 +1,25 @@
+$kind: http-request
+name: Login client -> 200 (save clientToken)
+description: "D2 User pt2: authenticate the freshly verified client and save the JWT as clientToken."
+url: "{{baseUrl}}/api/users/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{{clientEmail}}",
+      "password": "{{clientPassword}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt2: client login (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.expect(b.token_type).to.eql('bearer');
+      pm.environment.set('clientToken', b.access_token);
+    language: text/javascript
+order: 2000

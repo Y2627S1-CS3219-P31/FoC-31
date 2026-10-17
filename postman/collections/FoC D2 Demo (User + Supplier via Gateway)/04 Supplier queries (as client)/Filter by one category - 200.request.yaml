@@ -1,0 +1,23 @@
+$kind: http-request
+name: Filter by one category -> 200
+description: "D2 Supplier pt2: filter by a single Category enum value."
+url: "{{baseUrl}}/api/suppliers?category=Food"
+method: GET
+queryParams:
+  category: Food
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: single-category filter (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('all returned items are Food', function () {
+          (b.items || []).forEach(function (s) { pm.expect(s.category).to.eql('Food'); });
+      });
+    language: text/javascript
+order: 2000

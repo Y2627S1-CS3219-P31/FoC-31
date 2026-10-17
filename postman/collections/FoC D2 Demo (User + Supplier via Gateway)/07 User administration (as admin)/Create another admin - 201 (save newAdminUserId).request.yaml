@@ -1,0 +1,36 @@
+$kind: http-request
+name: Create another admin -> 201 (save newAdminUserId)
+description: "D2 User pt4: admin provisions another admin account (pre-verified). Saves newAdminUserId for the role-change checks."
+url: "{{baseUrl}}/api/users/admin"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{{newAdminEmail}}",
+      "password": "NewAdmin12345",
+      "display_name": "Second Admin"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: beforeRequest
+    code: pm.environment.set('newAdminEmail', 'admin' + Date.now() + '@u.nus.edu');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt4: create admin (201)', function () {
+          pm.response.to.have.status(201);
+      });
+      var b = pm.response.json();
+      pm.test('role == admin, verified', function () {
+          pm.expect(b.role).to.eql('admin');
+          pm.expect(b.email_verified).to.eql(true);
+      });
+      pm.environment.set('newAdminUserId', b.id);
+    language: text/javascript
+order: 6000

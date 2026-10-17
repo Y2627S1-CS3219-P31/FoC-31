@@ -1,0 +1,28 @@
+$kind: http-request
+name: Update user role -> 200
+description: "Admin-only role change (promote client to admin / demote admin to client). Body role is lowercase (client|admin). Admins cannot demote themselves (400). Targets clientUserId."
+url: "{​{baseUrl}}/api/users/admin/{​{clientUserId}}/role"
+method: PATCH
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "role": "admin"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('role updated (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('role is admin', function () {
+          pm.expect(pm.response.json().role).to.eql('admin');
+      });
+    language: text/javascript
+order: 1400

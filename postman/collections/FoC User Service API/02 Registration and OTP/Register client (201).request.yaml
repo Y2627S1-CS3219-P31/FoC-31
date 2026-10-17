@@ -1,0 +1,34 @@
+$kind: http-request
+name: Register client -> 201
+description: "Self-registration with an @u.nus.edu email (public route). Creates an unverified client account and issues an email-verification OTP. Generates a fresh clientEmail so the request is repeatable."
+url: "{​{baseUrl}}/api/users/register"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{​{clientEmail}}",
+      "password": "{​{clientPassword}}",
+      "display_name": "Demo Client",
+      "contact_number": "81234567"
+    }
+scripts:
+  - type: beforeRequest
+    code: |-
+      // Fresh @u.nus.edu email each run so registration is repeatable.
+      pm.environment.set('clientEmail', 'demo' + Date.now() + '@u.nus.edu');
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('register client (201)', function () {
+          pm.response.to.have.status(201);
+      });
+      var b = pm.response.json();
+      pm.test('returns id + email', function () {
+          pm.expect(b).to.have.property('id');
+          pm.expect(b.email).to.eql(pm.environment.get('clientEmail'));
+      });
+    language: text/javascript
+order: 1000

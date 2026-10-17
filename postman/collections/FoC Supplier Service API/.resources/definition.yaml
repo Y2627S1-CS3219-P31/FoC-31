@@ -1,0 +1,17 @@
+$kind: collection
+description: |-
+  Supplier discovery, detail, and management for the Friend on Campus (FoC)
+  platform. The API Gateway is the only public entry point and proxies
+  `/api/suppliers/*` to this service, injecting the trusted `X-User-Id` and
+  `X-User-Role` headers derived from the caller's JWT.
+
+  Getting a bearer token: run "Login admin" first — it calls
+  `POST /api/users/login`, asserts `token_type: bearer`, and stores the returned
+  `access_token` in the `adminToken` environment variable. Admin-only mutations
+  (create / update / deactivate / reactivate) authenticate with
+  `Bearer {​{adminToken}}`; read-only discovery is public. All requests go through
+  the gateway at `{​{baseUrl}}/api/suppliers...`.
+
+  Use the "FoC local (D2 demo)" environment. Bodies/responses are camelCase
+  (`pageSize`, `startingTime`, `locationDescription`).
+  See docs/supplier-service-api.md and postman/README.md.

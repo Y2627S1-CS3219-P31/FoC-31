@@ -1,0 +1,29 @@
+$kind: http-request
+description: Returns the full details of a supplier, including active/deactivated status (F3.1.1). Also used by other services to validate a supplier by id (F5.1). 404 with an explanatory message when missing (F3.2, F3.2.1).
+url: "{{baseUrl}}/api/suppliers/:id"
+method: GET
+headers:
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Supplier identifier.
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: text
+  content: ""
+settings: {}
+examples: ./.resources/Get supplier detail.resources/examples
+order: 1000

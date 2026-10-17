@@ -1,0 +1,20 @@
+$kind: http-request
+name: Get deactivated by id -> 200 active false
+description: "D2 Supplier pt3: a deactivated supplier is still retrievable directly by id (for historical orders)."
+url: "{{baseUrl}}/api/suppliers/{{supplierId}}"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt3: deactivated still retrievable (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('active == false', function () {
+          pm.expect(pm.response.json().active).to.eql(false);
+      });
+    language: text/javascript
+order: 8000

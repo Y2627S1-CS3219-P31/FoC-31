@@ -1,0 +1,28 @@
+$kind: http-request
+name: Promote client -> admin -> 200
+description: "D2 User pt4 (role-change endpoint): admin promotes the demo client to admin."
+url: "{{baseUrl}}/api/users/admin/{{clientUserId}}/role"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "role": "admin"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt4: promote client to admin (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('role == admin', function () {
+          pm.expect(pm.response.json().role).to.eql('admin');
+      });
+    language: text/javascript
+order: 7000

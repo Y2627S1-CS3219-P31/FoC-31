@@ -1,0 +1,30 @@
+$kind: http-request
+name: List page 1 page_size 5 -> 200 (save firstSupplierId)
+description: "D2 Supplier pt2: discovery list is paginated; response is camelCase {items,total,page,pageSize}. Saves the first supplier id for the get-by-id request."
+url: "{{baseUrl}}/api/suppliers?page=1&page_size=5"
+method: GET
+queryParams:
+  page: "1"
+  page_size: "5"
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: paginated list (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('has items/total/page/pageSize', function () {
+          pm.expect(b).to.have.property('items');
+          pm.expect(b).to.have.property('total');
+          pm.expect(b.page).to.eql(1);
+          pm.expect(b.pageSize).to.eql(5);
+      });
+      if (b.items && b.items.length > 0) {
+          pm.environment.set('firstSupplierId', b.items[0].id);
+      }
+    language: text/javascript
+order: 1000

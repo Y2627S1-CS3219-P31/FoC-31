@@ -1,0 +1,28 @@
+$kind: http-request
+name: Login client -> 200 (save clientToken)
+description: "Authenticate a verified client and store the JWT as clientToken. Requires a client that has already registered and verified their email (clientEmail/clientPassword). Client-only requests use Bearer {​{clientToken}}."
+url: "{​{baseUrl}}/api/users/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{​{clientEmail}}",
+      "password": "{​{clientPassword}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('client login (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('bearer token issued', function () {
+          pm.expect(b.token_type).to.eql('bearer');
+          pm.expect(b).to.have.property('access_token');
+      });
+      pm.environment.set('clientToken', b.access_token);
+    language: text/javascript
+order: 1100

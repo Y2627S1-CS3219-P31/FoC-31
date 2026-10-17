@@ -1,0 +1,39 @@
+$kind: http-request
+name: Create -> 201 (save supplierId)
+description: "D2 Supplier pt1: admin creates a supplier (camelCase body, HH:MM times). Saves supplierId for the following steps."
+url: "{{baseUrl}}/api/suppliers"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": "{{createdSupplierName}}",
+      "category": "Printing",
+      "building": "Demo Hall",
+      "floor": "2",
+      "startingTime": "09:00",
+      "closingTime": "18:00"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: beforeRequest
+    code: pm.environment.set('createdSupplierName', 'Demo Supplier ' + Date.now());
+    language: text/javascript
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt1: admin create (201)', function () {
+          pm.response.to.have.status(201);
+      });
+      var b = pm.response.json();
+      pm.test('created active with echoed name', function () {
+          pm.expect(b.active).to.eql(true);
+          pm.expect(b.name).to.eql(pm.environment.get('createdSupplierName'));
+      });
+      pm.environment.set('supplierId', b.id);
+    language: text/javascript
+order: 1000

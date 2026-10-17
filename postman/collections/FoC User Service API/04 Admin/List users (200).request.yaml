@@ -1,0 +1,26 @@
+$kind: http-request
+name: List users -> 200
+description: "Admin-only paginated listing of all users. Optional query params: limit (1-100, default 50), offset (>=0), q (search), status (active|suspended). Requires an admin bearer token."
+url: "{​{baseUrl}}/api/users/admin?limit=50&offset=0"
+method: GET
+headers:
+  Accept: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('list users (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('paginated envelope', function () {
+          pm.expect(b).to.have.property('items');
+          pm.expect(b).to.have.property('total');
+          pm.expect(b).to.have.property('limit');
+          pm.expect(b).to.have.property('offset');
+      });
+    language: text/javascript
+order: 1000

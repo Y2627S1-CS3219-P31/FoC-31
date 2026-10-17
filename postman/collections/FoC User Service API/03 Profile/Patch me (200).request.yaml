@@ -1,0 +1,31 @@
+$kind: http-request
+name: Patch /me -> 200
+description: "Self-update the caller's own profile (display_name and/or contact_number). Privilege fields (role, email) are rejected with 422. Requires a client bearer token."
+url: "{​{baseUrl}}/api/users/me"
+method: PATCH
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{clientToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "display_name": "Renamed Client",
+      "contact_number": "98765432"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('profile updated (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('fields echoed', function () {
+          pm.expect(b.display_name).to.eql('Renamed Client');
+          pm.expect(b.contact_number).to.eql('98765432');
+      });
+    language: text/javascript
+order: 1100

@@ -104,3 +104,9 @@ class ProfileUpdateRequest(BaseModel):
         if self.display_name is None and self.contact_number is None:
             raise ValueError("at least one field must be provided")
         return self
+
+
+class RoleUpdateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: Role

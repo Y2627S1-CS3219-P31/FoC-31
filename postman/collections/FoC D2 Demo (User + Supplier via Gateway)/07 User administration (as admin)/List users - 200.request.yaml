@@ -1,0 +1,27 @@
+$kind: http-request
+name: List users -> 200
+description: "D2 User pt4: admin lists users with limit/offset pagination."
+url: "{{baseUrl}}/api/users/admin?limit=10&offset=0"
+method: GET
+queryParams:
+  limit: "10"
+  offset: "0"
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt4: list users (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('paginated shape', function () {
+          pm.expect(b).to.have.property('items');
+          pm.expect(b).to.have.property('total');
+          pm.expect(b.limit).to.eql(10);
+          pm.expect(b.offset).to.eql(0);
+      });
+    language: text/javascript
+order: 1000

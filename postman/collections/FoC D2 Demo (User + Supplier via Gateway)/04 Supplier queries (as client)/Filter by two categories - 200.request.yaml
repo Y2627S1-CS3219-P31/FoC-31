@@ -1,0 +1,26 @@
+$kind: http-request
+name: Filter by two categories -> 200
+description: "D2 Supplier pt2: the category param is repeatable; supplying it twice ORs the two categories."
+url: "{{baseUrl}}/api/suppliers?category=Food&category=Shopping"
+method: GET
+queryParams:
+  - key: category
+    value: Food
+  - key: category
+    value: Shopping
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: repeatable category filter (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('items are Food or Shopping', function () {
+          (b.items || []).forEach(function (s) { pm.expect(['Food', 'Shopping']).to.include(s.category); });
+      });
+    language: text/javascript
+order: 3000

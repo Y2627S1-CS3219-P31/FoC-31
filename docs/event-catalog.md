@@ -1,11 +1,30 @@
 # Event Catalog
 
-Canonical list of asynchronous events (project M6). Publisher = Order Service;
-consumers = Credit Service and Notification Service. Schemas live in
-`shared/foc_shared/events.py` so all parties share one contract.
+Canonical list of asynchronous events (project M6). Schemas live in
+`shared/foc_shared/events.py` so all parties share one contract. Consumers must
+handle redelivery **idempotently**.
 
-Broker: RabbitMQ. Exchange: `foc.order.events` (topic). Routing key = event
-type. Consumers must handle redelivery **idempotently**.
+Broker: RabbitMQ. There are two exchanges:
+
+- `foc.user.events` (**fanout**) — published by User Service.
+- `foc.order.events` (**topic**, routing key = event type) — published by
+  Order Service (PR #5).
+
+## User events — `foc.user.events` (fanout)
+
+| Event | Published when | Publisher | Consumed by | Payload (`foc_shared.events`) | Effect |
+| ----- | -------------- | --------- | ----------- | ----------------------------- | ------ |
+| `UserRegistered` | Email OTP verified (register → verify) | User Service, via a transactional outbox + background relay (`user-service/app/services/events.py`) | Credit Service (`credit-service/app/services/consumer.py`) | `event_type` (`"UserRegistered"`), `user_id`, `email`, `timestamp` (`UserRegisteredEvent`) | Provision the new account's initial balance (`INITIAL_CREDIT_ALLOCATION`, Credit F1.1). |
+
+This is the one async flow already implemented on `main`: verification writes an
+`event_outbox` row in the same transaction that sets `email_verified`, and the
+relay publishes it to the fanout exchange (see
+`user-service/docs/flowchart.md` §5).
+
+## Order events — `foc.order.events` (topic)
+
+Publisher = Order Service (**planned, PR #5**); consumers = Credit Service and
+Notification Service. Routing key = event type.
 
 | Event | Published when (backlog) | Consumed by | Effect |
 | ----- | ------------------------ | ----------- | ------ |
@@ -35,7 +54,7 @@ Credit handles requests idempotently per `task_id` and always replies —
 including for business rejections and for transient failures that exceed its
 retry budget — so the Order Service saga never waits forever.
 
-## Event envelope (scaffold)
+## Order event envelope (scaffold)
 
 See `OrderEvent` in `foc_shared.events`:
 

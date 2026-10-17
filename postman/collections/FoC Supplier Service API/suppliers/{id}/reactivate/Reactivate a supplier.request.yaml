@@ -1,0 +1,33 @@
+$kind: http-request
+description: Admin-only undo of deactivation (F1.3). Returns the supplier to the active discovery catalog.
+url: "{{baseUrl}}/api/suppliers/:id/reactivate"
+method: POST
+headers:
+  Accept: application/json
+pathVariables:
+  - key: id
+    value: string
+    disabled: false
+    description: Supplier identifier.
+    $type: |-
+      {
+        "type": "object",
+        "properties": {
+          "value": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "value"
+        ]
+      }
+body:
+  type: text
+  content: ""
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+settings: {}
+examples: ./.resources/Reactivate a supplier.resources/examples
+order: 1000

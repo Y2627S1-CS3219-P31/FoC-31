@@ -1,0 +1,17 @@
+$kind: http-request
+name: Unknown id -> 404
+description: "D2 Supplier pt3: an unknown supplier id returns 404 with an error envelope."
+url: "{{baseUrl}}/api/suppliers/sup_doesnotexist"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt3: unknown id (404)', function () {
+          pm.response.to.have.status(404);
+      });
+    language: text/javascript
+order: 9000

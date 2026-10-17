@@ -181,3 +181,177 @@ existing admin is returned unchanged, an existing non-admin with that email
 fails startup, and PostgreSQL advisory locking prevents duplicate creation
 when multiple instances start together. The password is never reset on later
 starts.
+
+### Title: First-admin bootstrap on startup (`seed_bootstrap_admin`)
+
+<!-- AI-influenced: diagram drafted with OpenCode (Claude Opus); see ai/usage-log.md -->
+
+```mermaid
+flowchart TD
+    A["App startup (lifespan)<br/><i>init_db() then seed_bootstrap_admin()</i>"]
+    B{"BOOTSTRAP_ADMIN_EMAIL<br/>and _PASSWORD both set?"}
+    S["Skip — no bootstrap<br/><i>normal start</i>"]
+    V["Validate as CreateAdminRequest<br/><i>@u.nus.edu, password rules</i>"]
+    L["Take PG advisory xact lock<br/><i>serialize concurrent instances</i>"]
+    E{"Account with<br/>that email exists?"}
+    R{"Existing role<br/>== admin?"}
+    K["Return existing admin unchanged<br/><i>password never reset</i>"]
+    F["Fail startup<br/><i>RuntimeError: email belongs to non-admin</i>"]
+    C["Create admin<br/><i>email_verified = true, hashed password</i>"]
+
+    A --> B
+    B -- No --> S
+    B -- Yes --> V --> L --> E
+    E -- Yes --> R
+    R -- Yes --> K
+    R -- No --> F
+    E -- No --> C
+
+    classDef ok fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a1a;
+    classDef err fill:#fdeaea,stroke:#b3413e,color:#1a1a1a;
+    class S,V,L,K,C ok;
+    class F err;
+```
+
+**Legend:** blue = normal/idempotent outcome; red = startup aborts.
+
+**Explained elements**
+
+- Bootstrap only runs when **both** credentials are configured; otherwise the
+  service starts normally with no seeded admin (`app/bootstrap.py`).
+- The **PostgreSQL advisory transaction lock**
+  (`pg_advisory_xact_lock`) serializes multiple app instances starting at once
+  so they cannot each create the same admin; the unique-email constraint is the
+  fallback for other databases and concurrent callers
+  (`app/services/user.py::ensure_bootstrap_admin`).
+- The operation is **idempotent**: an already-existing admin is returned
+  unchanged (the password is never reset on later starts). An existing account
+  with that email that is **not** an admin aborts startup, surfacing the
+  misconfiguration instead of silently escalating a normal user.
+
+## 5. Registration → initial credit allocation (async)
+
+### Title: register → verify → outbox → RabbitMQ → credit-service
+
+<!-- AI-influenced: diagram drafted with OpenCode (Claude Opus); see ai/usage-log.md -->
+
+This spans two services and the broker. The `UserRegistered` publish path is
+**implemented** (transactional outbox + background relay), so it is drawn with
+solid delivery arrows; only the downstream credit ledger write belongs to
+credit-service.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Client
+    participant US as user-service
+    participant DB as user-db
+    participant OW as outbox_worker<br/>(user-service)
+    participant MQ as RabbitMQ<br/>foc.user.events (fanout)
+    participant CR as credit-service
+
+    U->>US: POST /api/users/register
+    US->>US: generate 6-digit OTP, hash (SHA-256)
+    US->>DB: INSERT user (email_verified=false) + OtpCode (hashed)
+
+    alt OTP_DEV_MODE and no SMTP
+        US-->>US: log "OTP_DEV_MODE active: verification code for ... is ..."
+    else SMTP configured
+        US-->>U: email OTP
+    end
+
+    U->>US: POST /api/users/otp/verify (code)
+    Note over US,DB: single transaction
+    US->>DB: set email_verified=true + INSERT event_outbox(UserRegistered)
+    US-->>U: 200 verified
+
+    loop every 5s
+        OW->>DB: SELECT outbox WHERE published_at IS NULL
+        OW->>MQ: publish UserRegistered (payload: user_id, email, timestamp)
+        OW->>DB: set published_at (or record last_error and retry)
+    end
+
+    MQ-->>CR: deliver UserRegistered (fanout)
+    CR->>CR: allocate INITIAL_CREDIT_ALLOCATION to new account
+```
+
+**Legend:** solid `->>` = a call/publish that happens; dashed `-->>` = a
+delivery/response; `loop` = the periodic relay; `alt` = OTP delivery channel.
+
+**Explained elements**
+
+- **Atomic verify + enqueue.** `verify_email()` sets `email_verified = true`
+  and inserts the `UserRegistered` outbox row in the **same** transaction
+  (`app/services/events.py::enqueue_user_registered`), so a user is never marked
+  verified without a pending event, nor vice-versa.
+- **The relay is real, not planned.** `outbox_worker` runs from the app lifespan
+  (`app/main.py`), polling every 5 seconds; `dispatch_outbox_once` publishes any
+  row with `published_at IS NULL` to the `foc.user.events` **fanout** exchange
+  and stamps `published_at`, or records `last_error` and retries. A broker
+  outage therefore delays, but never loses, the event.
+- **credit-service is the consumer.** It binds a durable queue to the
+  `foc.user.events` fanout exchange and, on `UserRegistered`, provisions the
+  initial balance of `INITIAL_CREDIT_ALLOCATION`
+  (`credit-service/app/services/consumer.py`); redeliveries are handled
+  idempotently.
+- **Dev-mode OTP.** With `OTP_DEV_MODE=true` and no SMTP host, the code is
+  written to the user-service log instead of emailed
+  (`app/services/notification.py`) — this is what the D2 demo reads. It must
+  never be enabled in a real deployment.
+
+## 6. Role change (promote / demote) with guards
+
+### Title: `PATCH /api/users/admin/{id}/role` guard flow (`set_role`)
+
+<!-- AI-influenced: diagram drafted with OpenCode (Claude Opus); see ai/usage-log.md -->
+
+The role-change endpoint exists (`app/api/routes/users.py::update_user_role` →
+`app/services/user.py::set_role`), so its guards are diagrammed here.
+
+```mermaid
+flowchart TD
+    A["PATCH /api/users/admin/{id}/role<br/><i>admin only (_require_admin)</i>"]
+    B{"target == actor<br/>and new role != admin?"}
+    C["400 — cannot demote self"]
+    D{"target user exists?"}
+    E["404 — user not found"]
+    F{"new role == current role?"}
+    G["200 — no-op, unchanged"]
+    H{"demoting an admin?<br/>(admin -> client)"}
+    I{"remaining non-suspended<br/>admins <= 1?"}
+    J["400 — cannot demote last admin"]
+    K["Set role, commit<br/>200 updated user"]
+
+    A --> B
+    B -- Yes --> C
+    B -- No --> D
+    D -- No --> E
+    D -- Yes --> F
+    F -- Yes --> G
+    F -- No --> H
+    H -- No --> K
+    H -- Yes --> I
+    I -- Yes --> J
+    I -- No --> K
+
+    classDef ok fill:#e8f0fe,stroke:#4a6fa5,color:#1a1a1a;
+    classDef err fill:#fdeaea,stroke:#b3413e,color:#1a1a1a;
+    class G,K ok;
+    class C,E,J err;
+```
+
+**Legend:** blue = success/no-op; red = rejected.
+
+**Explained elements**
+
+- **Self-demotion is blocked (400).** An admin cannot demote itself
+  (`user_id == actor_id and new_role != admin`), preventing an admin from
+  accidentally removing its own access mid-session.
+- **Last-admin protection (400).** Demoting an `admin` to `client` is refused
+  when only one non-suspended admin would remain, so the system can never be
+  left with zero active administrators (`count_admins(exclude_suspended=True)`).
+- **No-op returns unchanged (200).** Setting the same role the user already has
+  short-circuits to a 200 with the user unchanged — the guards above apply only
+  to actual demotions.
+- **Admin-only + 404.** The route is gated by `_require_admin` (401 without
+  identity, 403 for a non-admin), and an unknown target id is a 404.

@@ -1,0 +1,29 @@
+$kind: http-request
+name: Login admin -> 200 (save adminToken)
+description: "D2 User pt2: authenticate the bootstrap admin and save the JWT as adminToken for later admin-only calls."
+url: "{{baseUrl}}/api/users/login"
+method: POST
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "email": "{{adminEmail}}",
+      "password": "{{adminPassword}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt2: admin login (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('bearer token issued', function () {
+          pm.expect(b.token_type).to.eql('bearer');
+          pm.expect(b).to.have.property('access_token');
+          pm.expect(b).to.have.property('expires_in');
+      });
+      pm.environment.set('adminToken', b.access_token);
+    language: text/javascript
+order: 1000

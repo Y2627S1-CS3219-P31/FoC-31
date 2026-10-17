@@ -1,0 +1,22 @@
+$kind: http-request
+name: GET /api/users/me (client) -> 200 (save clientUserId)
+description: "D2 User pt3: identity resolved from the gateway-injected X-User-Id. Confirms role == 'client' and saves clientUserId for admin actions later."
+url: "{{baseUrl}}/api/users/me"
+method: GET
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt3: /me after auth (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('role == client (enum value is lowercase)', function () {
+          pm.expect(b.role).to.eql('client');
+      });
+      pm.environment.set('clientUserId', b.id);
+    language: text/javascript
+order: 4000

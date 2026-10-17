@@ -1,0 +1,26 @@
+$kind: http-request
+name: Patch /me with role in body -> 422
+description: "Self-service profile update forbids privilege fields; sending role is rejected with 422 (extra=forbid)."
+url: "{​{baseUrl}}/api/users/me"
+method: PATCH
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{clientToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "display_name": "Escalate",
+      "role": "admin"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('privilege field rejected (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 1200

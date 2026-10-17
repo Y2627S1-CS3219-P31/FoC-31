@@ -1,0 +1,25 @@
+$kind: http-request
+name: Transfer reservation -> 200
+description: "Transfer the reserved credits to the fulfilling courier (Credit F3). Uses reservationId; courier_id identifies the receiving user. Body is snake_case."
+url: "{​{baseUrl}}/api/credits/reservations/{​{reservationId}}/transfer"
+method: POST
+headers:
+  Content-Type: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+body:
+  type: text
+  content: |-
+    {
+      "courier_id": "{​{courierId}}"
+    }
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('reservation transferred (200)', function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 1200

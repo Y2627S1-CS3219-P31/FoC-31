@@ -65,6 +65,7 @@ services:
     depends_on:
       user-db: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
+      mailpit: {condition: service_healthy}
     networks: [foc-net]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -237,6 +238,22 @@ services:
     networks: [foc-net]
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================
+  # Mail capture (Mailpit) — dev-only SMTP sink for OTP emails
+  # ==========================================================
+  mailpit:
+    image: axllent/mailpit:v1.31.3
+    restart: unless-stopped
+    ports:
+      - "8025:8025"     # web UI — read captured OTP emails here
+      # 1025 (SMTP) stays internal to foc-net; user-service reaches it by name
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
       interval: 10s
       timeout: 5s
       retries: 5

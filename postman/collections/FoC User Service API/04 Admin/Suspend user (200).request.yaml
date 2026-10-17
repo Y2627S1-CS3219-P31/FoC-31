@@ -1,0 +1,22 @@
+$kind: http-request
+name: Suspend user -> 200
+description: "Admin-only suspension of a client account. Uses clientUserId (populate it via 03 Profile > Get /me while logged in as the client). Admins cannot suspend other admins or themselves (400)."
+url: "{​{baseUrl}}/api/users/admin/{​{clientUserId}}/suspend"
+method: POST
+headers:
+  Accept: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('suspend client (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      pm.test('is_suspended true', function () {
+          pm.expect(pm.response.json().is_suspended).to.eql(true);
+      });
+    language: text/javascript
+order: 1200

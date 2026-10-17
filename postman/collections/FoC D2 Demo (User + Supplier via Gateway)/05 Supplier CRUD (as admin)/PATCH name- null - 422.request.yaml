@@ -1,0 +1,25 @@
+$kind: http-request
+name: "PATCH name: null -> 422"
+description: "D2 Supplier pt1: a required field cannot be explicitly nulled via PATCH; 422."
+url: "{{baseUrl}}/api/suppliers/{{supplierId}}"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "name": null
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt1: null required field (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 6000

@@ -1,0 +1,24 @@
+$kind: http-request
+name: Get balance -> 200
+description: "Return the available and reserved credit balance for a user. Self-or-admin: a client may only read their own balance; an admin may read anyone's. Uses clientUserId (populate via the User Service collection's Get /me)."
+url: "{​{baseUrl}}/api/credits/{​{clientUserId}}/balance"
+method: GET
+headers:
+  Accept: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{adminToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('balance returned (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('balance envelope', function () {
+          pm.expect(b).to.have.property('available_balance');
+          pm.expect(b).to.have.property('reserved_balance');
+      });
+    language: text/javascript
+order: 1000

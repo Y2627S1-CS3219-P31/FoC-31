@@ -1,0 +1,1698 @@
+{
+  "info": {
+    "name": "FoC D2 Demo (User + Supplier via Gateway)",
+    "_postman_id": "f0c00d2d-0000-4000-8000-000000000d2a",
+    "description": "AI-influenced: authored with OpenCode (Claude Opus); see ai/usage-log.md.\n\nMilestone D2 demo of the User Service and Supplier Service exercised end-to-end through the API Gateway (http://localhost:8080), no UI. Folders 00-07 are ordered as the demo runs; run them top to bottom. Every request has a test asserting the expected status code (and key body fields) and chains tokens/ids through environment variables. Auth is set per-request (Bearer {{adminToken}} or {{clientToken}}) so the acting role is explicit.\n\nManual OTP: with OTP_DEV_MODE=true the user-service logs the code (line 'OTP_DEV_MODE active: verification code for ...'). Read it from `docker compose logs user-service`, set the `otpCode` environment variable, then continue folder 01. See postman/README.md for the two newman run modes.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Health",
+      "item": [
+        {
+          "name": "GET /health (gateway)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 System: gateway is up (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('body status == ok', function () {",
+                  "    pm.expect(pm.response.json().status).to.eql('ok');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            },
+            "description": "D2 System: liveness of the API Gateway, the only public entry point."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 Registration (User)",
+      "item": [
+        {
+          "name": "Register client -> 201",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// Generate a fresh NUS client email per run so registration never 409s.",
+                  "if (!pm.environment.get('clientEmail') || pm.environment.get('clientEmail').indexOf('demo') !== 0) {",
+                  "    pm.environment.set('clientEmail', 'demo' + Date.now() + '@u.nus.edu');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt1: register a client (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('returns id + echoed email', function () {",
+                  "    pm.expect(b).to.have.property('id');",
+                  "    pm.expect(b.email).to.eql(pm.environment.get('clientEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"Demo Client\",\n  \"contact_number\": \"91234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "register"]
+            },
+            "description": "D2 User pt1: self-registration with an @u.nus.edu email (public route). Creates an unverified client account and issues an email-verification OTP."
+          }
+        },
+        {
+          "name": "Verify OTP -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt1: verify email OTP (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('verified == true', function () {",
+                  "    pm.expect(pm.response.json().verified).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"code\": \"{{otpCode}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/otp/verify",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "otp", "verify"]
+            },
+            "description": "D2 User pt1: verify the emailed OTP. With OTP_DEV_MODE=true the code is printed in `docker compose logs user-service` (line 'OTP_DEV_MODE active: verification code for ...'). Copy it into the `otpCode` environment variable before sending."
+          }
+        },
+        {
+          "name": "Resend OTP -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt1: resend OTP is a generic 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('returns a message', function () {",
+                  "    pm.expect(pm.response.json()).to.have.property('message');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/otp/resend",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "otp", "resend"]
+            },
+            "description": "D2 User pt1: resend endpoint always returns the same generic 200 (already-verified/unknown/unverified) to prevent email enumeration. Shown here after verification."
+          }
+        },
+        {
+          "name": "Register non-NUS email -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt1: non-NUS email rejected (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"someone@gmail.com\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"Not NUS\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "register"]
+            },
+            "description": "D2 User pt1: only @u.nus.edu addresses may register; any other domain fails validation (422)."
+          }
+        },
+        {
+          "name": "Register duplicate verified email -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt1: duplicate verified email conflicts (409)', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"Demo Client Again\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "register"]
+            },
+            "description": "D2 User pt1: re-registering an already-verified email is rejected with 409 (re-registering an unverified email would instead refresh + reissue an OTP)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Authentication",
+      "item": [
+        {
+          "name": "Login admin -> 200 (save adminToken)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt2: admin login (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('bearer token issued', function () {",
+                  "    pm.expect(b.token_type).to.eql('bearer');",
+                  "    pm.expect(b).to.have.property('access_token');",
+                  "    pm.expect(b).to.have.property('expires_in');",
+                  "});",
+                  "pm.environment.set('adminToken', b.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "login"]
+            },
+            "description": "D2 User pt2: authenticate the bootstrap admin and save the JWT as adminToken for later admin-only calls."
+          }
+        },
+        {
+          "name": "Login client -> 200 (save clientToken)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt2: client login (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.expect(b.token_type).to.eql('bearer');",
+                  "pm.environment.set('clientToken', b.access_token);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "login"]
+            },
+            "description": "D2 User pt2: authenticate the freshly verified client and save the JWT as clientToken."
+          }
+        },
+        {
+          "name": "Wrong password -> 401",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt2: wrong password rejected (401)', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"WrongPass9\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "login"]
+            },
+            "description": "D2 User pt2: invalid credentials return 401 (indistinguishable from unknown-email to avoid enumeration)."
+          }
+        },
+        {
+          "name": "GET /api/users/me (client) -> 200 (save clientUserId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt3: /me after auth (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('role == client (enum value is lowercase)', function () {",
+                  "    pm.expect(b.role).to.eql('client');",
+                  "});",
+                  "pm.environment.set('clientUserId', b.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "D2 User pt3: identity resolved from the gateway-injected X-User-Id. Confirms role == 'client' and saves clientUserId for admin actions later."
+          }
+        },
+        {
+          "name": "Protected route no token -> 401 (gateway)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Gateway: no bearer token (401)', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "D2 Gateway: protected route with no Authorization header is rejected at the gateway (401) before it ever reaches user-service."
+          }
+        },
+        {
+          "name": "Protected route garbage token -> 401 (gateway)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Gateway: invalid token (401)', function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "not.a.jwt", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "D2 Gateway: a malformed/garbage bearer token fails JWT verification at the gateway (401)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 RBAC evidence",
+      "item": [
+        {
+          "name": "Client POST /api/suppliers -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 RBAC: client cannot create suppliers (403)', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Should Not Be Created\",\n  \"category\": \"Food\",\n  \"building\": \"COM1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"]
+            },
+            "description": "D2 RBAC: supplier creation is admin-only. An authenticated client is forbidden (403), enforced by supplier-service require_admin using the trusted X-User-Role."
+          }
+        },
+        {
+          "name": "Client POST /api/suppliers + spoofed X-User-Role: admin -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 RBAC: spoofed X-User-Role stripped by gateway (403)', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-User-Role", "value": "admin" },
+              { "key": "X-User-Id", "value": "spoofed-admin" }
+            ],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Spoofed Admin Attempt\",\n  \"category\": \"Food\",\n  \"building\": \"COM1\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"]
+            },
+            "description": "D2 RBAC: the gateway strips any client-supplied X-User-Id/X-User-Role and re-injects the real role from the JWT, so a spoofed admin header is ignored and the client is still forbidden (403)."
+          }
+        },
+        {
+          "name": "Client GET /api/users/admin -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 RBAC: client cannot list users (403)', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin"]
+            },
+            "description": "D2 RBAC: the admin user-listing endpoint is admin-only; an authenticated client is forbidden (403), enforced by user-service _require_admin."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Supplier queries (as client)",
+      "item": [
+        {
+          "name": "List page 1 page_size 5 -> 200 (save firstSupplierId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: paginated list (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('has items/total/page/pageSize', function () {",
+                  "    pm.expect(b).to.have.property('items');",
+                  "    pm.expect(b).to.have.property('total');",
+                  "    pm.expect(b.page).to.eql(1);",
+                  "    pm.expect(b.pageSize).to.eql(5);",
+                  "});",
+                  "if (b.items && b.items.length > 0) {",
+                  "    pm.environment.set('firstSupplierId', b.items[0].id);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?page=1&page_size=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "5" }
+              ]
+            },
+            "description": "D2 Supplier pt2: discovery list is paginated; response is camelCase {items,total,page,pageSize}. Saves the first supplier id for the get-by-id request."
+          }
+        },
+        {
+          "name": "Filter by one category -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: single-category filter (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('all returned items are Food', function () {",
+                  "    (b.items || []).forEach(function (s) { pm.expect(s.category).to.eql('Food'); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?category=Food",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [{ "key": "category", "value": "Food" }]
+            },
+            "description": "D2 Supplier pt2: filter by a single Category enum value."
+          }
+        },
+        {
+          "name": "Filter by two categories -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: repeatable category filter (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('items are Food or Shopping', function () {",
+                  "    (b.items || []).forEach(function (s) { pm.expect(['Food', 'Shopping']).to.include(s.category); });",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?category=Food&category=Shopping",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [
+                { "key": "category", "value": "Food" },
+                { "key": "category", "value": "Shopping" }
+              ]
+            },
+            "description": "D2 Supplier pt2: the category param is repeatable; supplying it twice ORs the two categories."
+          }
+        },
+        {
+          "name": "Filter by zone -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: zone filter (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?zone=Central",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [{ "key": "zone", "value": "Central" }]
+            },
+            "description": "D2 Supplier pt2: zone matches the building column (case-insensitive substring)."
+          }
+        },
+        {
+          "name": "Keyword q -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: keyword search (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?q=coffee",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [{ "key": "q", "value": "coffee" }]
+            },
+            "description": "D2 Supplier pt2: case-insensitive keyword search over name + building + location description."
+          }
+        },
+        {
+          "name": "Combined filters -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: combined filters (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?category=Food&zone=Central&q=a&page=1&page_size=10",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [
+                { "key": "category", "value": "Food" },
+                { "key": "zone", "value": "Central" },
+                { "key": "q", "value": "a" },
+                { "key": "page", "value": "1" },
+                { "key": "page_size", "value": "10" }
+              ]
+            },
+            "description": "D2 Supplier pt2: category + zone + keyword + pagination combined in one query (all AND-ed, categories OR-ed among themselves)."
+          }
+        },
+        {
+          "name": "Empty result query -> 200 total 0",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: no match is 200 not 404', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('total == 0, items empty', function () {",
+                  "    var b = pm.response.json();",
+                  "    pm.expect(b.total).to.eql(0);",
+                  "    pm.expect(b.items).to.be.an('array').that.is.empty;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?q=zzzzznomatchzzzzz",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [{ "key": "q", "value": "zzzzznomatchzzzzz" }]
+            },
+            "description": "D2 Supplier pt2: a query matching nothing returns an empty page with total 0, never a 404."
+          }
+        },
+        {
+          "name": "Get by id -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt3: get-by-id (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('id echoes requested id', function () {",
+                  "    pm.expect(pm.response.json().id).to.eql(pm.environment.get('firstSupplierId'));",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{firstSupplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{firstSupplierId}}"]
+            },
+            "description": "D2 Supplier pt3: fetch a single supplier by an id taken from the list response."
+          }
+        },
+        {
+          "name": "Unknown id -> 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt3: unknown id (404)', function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/sup_doesnotexist",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "sup_doesnotexist"]
+            },
+            "description": "D2 Supplier pt3: an unknown supplier id returns 404 with an error envelope."
+          }
+        },
+        {
+          "name": "Invalid page_size 1000 -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: page_size over max (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?page_size=1000",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [{ "key": "page_size", "value": "1000" }]
+            },
+            "description": "D2 Supplier pt2: page_size is bounded 1..100; 1000 fails query validation (422)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Supplier CRUD (as admin)",
+      "item": [
+        {
+          "name": "Create -> 201 (save supplierId)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('createdSupplierName', 'Demo Supplier ' + Date.now());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: admin create (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('created active with echoed name', function () {",
+                  "    pm.expect(b.active).to.eql(true);",
+                  "    pm.expect(b.name).to.eql(pm.environment.get('createdSupplierName'));",
+                  "});",
+                  "pm.environment.set('supplierId', b.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{createdSupplierName}}\",\n  \"category\": \"Printing\",\n  \"building\": \"Demo Hall\",\n  \"floor\": \"2\",\n  \"startingTime\": \"09:00\",\n  \"closingTime\": \"18:00\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"]
+            },
+            "description": "D2 Supplier pt1: admin creates a supplier (camelCase body, HH:MM times). Saves supplierId for the following steps."
+          }
+        },
+        {
+          "name": "Create invalid category -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: bad category (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Category\",\n  \"category\": \"Groceries\",\n  \"building\": \"Demo Hall\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"]
+            },
+            "description": "D2 Supplier pt1: category must be one of the locked enum values; anything else is 422."
+          }
+        },
+        {
+          "name": "Create missing name -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: missing name (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"category\": \"Food\",\n  \"building\": \"Demo Hall\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"]
+            },
+            "description": "D2 Supplier pt1: name is mandatory; omitting it is 422."
+          }
+        },
+        {
+          "name": "Create bad time format -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: bad time format (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Bad Time\",\n  \"category\": \"Food\",\n  \"building\": \"Demo Hall\",\n  \"startingTime\": \"9am\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"]
+            },
+            "description": "D2 Supplier pt1: times must match HH:MM (24h); '9am' is 422."
+          }
+        },
+        {
+          "name": "PATCH one field -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: patch one field (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('only floor changed', function () {",
+                  "    pm.expect(b.floor).to.eql('5');",
+                  "    pm.expect(b.name).to.eql(pm.environment.get('createdSupplierName'));",
+                  "    pm.expect(b.category).to.eql('Printing');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"floor\": \"5\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{supplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{supplierId}}"]
+            },
+            "description": "D2 Supplier pt1: partial update changes only the supplied field (floor); name/category are untouched."
+          }
+        },
+        {
+          "name": "PATCH name: null -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: null required field (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": null\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{supplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{supplierId}}"]
+            },
+            "description": "D2 Supplier pt1: a required field cannot be explicitly nulled via PATCH; 422."
+          }
+        },
+        {
+          "name": "Deactivate -> 200 active false",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: deactivate (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('active == false', function () {",
+                  "    pm.expect(pm.response.json().active).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{supplierId}}/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{supplierId}}", "deactivate"]
+            },
+            "description": "D2 Supplier pt1: soft-delete via deactivate; the record is preserved with active == false."
+          }
+        },
+        {
+          "name": "Get deactivated by id -> 200 active false",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt3: deactivated still retrievable (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('active == false', function () {",
+                  "    pm.expect(pm.response.json().active).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{supplierId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{supplierId}}"]
+            },
+            "description": "D2 Supplier pt3: a deactivated supplier is still retrievable directly by id (for historical orders)."
+          }
+        },
+        {
+          "name": "List q=<created name> -> total 0 (excluded)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt2: deactivated excluded from discovery (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('total == 0', function () {",
+                  "    pm.expect(pm.response.json().total).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?q={{createdSupplierName}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers"],
+              "query": [{ "key": "q", "value": "{{createdSupplierName}}" }]
+            },
+            "description": "D2 Supplier pt2: the deactivated supplier no longer appears in client discovery (total 0), even though it is still retrievable by id."
+          }
+        },
+        {
+          "name": "Deactivate again -> 409",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: double deactivate (409)', function () {",
+                  "    pm.response.to.have.status(409);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{supplierId}}/deactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{supplierId}}", "deactivate"]
+            },
+            "description": "D2 Supplier pt1: deactivating an already-deactivated supplier is a 409 conflict."
+          }
+        },
+        {
+          "name": "Reactivate -> 200 active true",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 Supplier pt1: reactivate (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('active == true', function () {",
+                  "    pm.expect(pm.response.json().active).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{supplierId}}/reactivate",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "suppliers", "{{supplierId}}", "reactivate"]
+            },
+            "description": "D2 Supplier pt1 (discovered endpoint): reactivate undoes deactivation and returns the supplier to the active catalog (active == true)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Profile (as client)",
+      "item": [
+        {
+          "name": "PATCH /me display_name + contact_number -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt3: update own profile (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('fields updated', function () {",
+                  "    pm.expect(b.display_name).to.eql('Demo Client Updated');",
+                  "    pm.expect(b.contact_number).to.eql('81234567');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Demo Client Updated\",\n  \"contact_number\": \"81234567\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "D2 User pt3: a client updates its own display_name and contact_number."
+          }
+        },
+        {
+          "name": "PATCH with role in body -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt3: extra fields forbidden (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"display_name\": \"Sneaky\",\n  \"role\": \"admin\",\n  \"is_suspended\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "D2 User pt3: privilege fields (role, is_suspended) are rejected on self-update; extra=forbid returns 422 so a client cannot escalate itself."
+          }
+        },
+        {
+          "name": "PATCH invalid contact number -> 422",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt3: invalid contact number (422)', function () {",
+                  "    pm.response.to.have.status(422);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{clientToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"contact_number\": \"12345\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "me"]
+            },
+            "description": "D2 User pt3: contact_number must match ^[89]\\d{7}$; '12345' is 422."
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 User administration (as admin)",
+      "item": [
+        {
+          "name": "List users -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: list users (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('paginated shape', function () {",
+                  "    pm.expect(b).to.have.property('items');",
+                  "    pm.expect(b).to.have.property('total');",
+                  "    pm.expect(b.limit).to.eql(10);",
+                  "    pm.expect(b.offset).to.eql(0);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin?limit=10&offset=0",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin"],
+              "query": [
+                { "key": "limit", "value": "10" },
+                { "key": "offset", "value": "0" }
+              ]
+            },
+            "description": "D2 User pt4: admin lists users with limit/offset pagination."
+          }
+        },
+        {
+          "name": "Suspend client -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: suspend client (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('is_suspended == true', function () {",
+                  "    pm.expect(pm.response.json().is_suspended).to.eql(true);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin/{{clientUserId}}/suspend",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin", "{{clientUserId}}", "suspend"]
+            },
+            "description": "D2 User pt4: admin suspends the demo client (using clientUserId saved earlier)."
+          }
+        },
+        {
+          "name": "Client login while suspended -> 403",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: suspended login blocked (403)', function () {",
+                  "    pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{clientEmail}}\",\n  \"password\": \"{{clientPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "login"]
+            },
+            "description": "D2 User pt4: a suspended account can no longer authenticate; login fails closed with 403 even with the correct password."
+          }
+        },
+        {
+          "name": "Admin suspend self -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: admin cannot suspend self (400)', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin/{{adminUserId}}/suspend",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin", "{{adminUserId}}", "suspend"]
+            },
+            "description": "D2 User pt4: an admin suspending its own account is rejected with 400 (self-suspension guard). adminUserId is resolved by the pre-request script from /api/users/me."
+          }
+        },
+        {
+          "name": "Unsuspend client -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: unsuspend client (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('is_suspended == false', function () {",
+                  "    pm.expect(pm.response.json().is_suspended).to.eql(false);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin/{{clientUserId}}/unsuspend",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin", "{{clientUserId}}", "unsuspend"]
+            },
+            "description": "D2 User pt4: admin lifts the suspension; the client can authenticate again."
+          }
+        },
+        {
+          "name": "Create another admin -> 201 (save newAdminUserId)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('newAdminEmail', 'admin' + Date.now() + '@u.nus.edu');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: create admin (201)', function () {",
+                  "    pm.response.to.have.status(201);",
+                  "});",
+                  "var b = pm.response.json();",
+                  "pm.test('role == admin, verified', function () {",
+                  "    pm.expect(b.role).to.eql('admin');",
+                  "    pm.expect(b.email_verified).to.eql(true);",
+                  "});",
+                  "pm.environment.set('newAdminUserId', b.id);"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{newAdminEmail}}\",\n  \"password\": \"NewAdmin12345\",\n  \"display_name\": \"Second Admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin"]
+            },
+            "description": "D2 User pt4: admin provisions another admin account (pre-verified). Saves newAdminUserId for the role-change checks."
+          }
+        },
+        {
+          "name": "Promote client -> admin -> 200",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: promote client to admin (200)', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('role == admin', function () {",
+                  "    pm.expect(pm.response.json().role).to.eql('admin');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"admin\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin/{{clientUserId}}/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin", "{{clientUserId}}", "role"]
+            },
+            "description": "D2 User pt4 (role-change endpoint): admin promotes the demo client to admin."
+          }
+        },
+        {
+          "name": "Self-demotion rejected -> 400",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D2 User pt4: self-demotion rejected (400)', function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "auth": {
+              "type": "bearer",
+              "bearer": [{ "key": "token", "value": "{{adminToken}}", "type": "string" }]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"role\": \"client\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/users/admin/{{adminUserId}}/role",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "users", "admin", "{{adminUserId}}", "role"]
+            },
+            "description": "D2 User pt4 (role-change guard): an admin demoting itself is rejected with 400. adminUserId is set by the pre-request script."
+          }
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Collection-level pre-request: resolve the acting admin's own user id once",
+          "// (needed by the self-suspend / self-demotion negative tests) using the saved",
+          "// adminToken. Runs before every request but only performs the lookup if needed.",
+          "var adminToken = pm.environment.get('adminToken');",
+          "if (adminToken && !pm.environment.get('adminUserId')) {",
+          "    pm.sendRequest({",
+          "        url: pm.environment.get('baseUrl') + '/api/users/me',",
+          "        method: 'GET',",
+          "        header: { Authorization: 'Bearer ' + adminToken }",
+          "    }, function (err, res) {",
+          "        if (!err && res && res.code === 200) {",
+          "            pm.environment.set('adminUserId', res.json().id);",
+          "        }",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,19 @@
+$kind: http-request
+name: Invalid page_size 1000 -> 422
+description: "D2 Supplier pt2: page_size is bounded 1..100; 1000 fails query validation (422)."
+url: "{{baseUrl}}/api/suppliers?page_size=1000"
+method: GET
+queryParams:
+  page_size: "1000"
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: page_size over max (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 10000

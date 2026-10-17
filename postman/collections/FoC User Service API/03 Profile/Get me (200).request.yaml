@@ -1,0 +1,24 @@
+$kind: http-request
+name: Get /me -> 200 (save clientUserId)
+description: "Return the authenticated caller's own profile, resolved from the gateway-injected X-User-Id. Requires a client bearer token. Saves clientUserId for credit-service requests."
+url: "{​{baseUrl}}/api/users/me"
+method: GET
+headers:
+  Accept: application/json
+auth:
+  type: bearer
+  credentials:
+    token: "{​{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('profile returned (200)', function () {
+          pm.response.to.have.status(200);
+      });
+      var b = pm.response.json();
+      pm.test('role is client', function () {
+          pm.expect(b.role).to.eql('client');
+      });
+      pm.environment.set('clientUserId', b.id);
+    language: text/javascript
+order: 1000

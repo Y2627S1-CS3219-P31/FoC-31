@@ -1,0 +1,25 @@
+$kind: http-request
+name: PATCH invalid contact number -> 422
+description: "D2 User pt3: contact_number must match ^[89]\\d{7}$; '12345' is 422."
+url: "{{baseUrl}}/api/users/me"
+method: PATCH
+headers:
+  Content-Type: application/json
+body:
+  type: text
+  content: |-
+    {
+      "contact_number": "12345"
+    }
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 User pt3: invalid contact number (422)', function () {
+          pm.response.to.have.status(422);
+      });
+    language: text/javascript
+order: 3000

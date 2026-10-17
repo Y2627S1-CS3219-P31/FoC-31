@@ -1,0 +1,23 @@
+$kind: http-request
+name: Combined filters -> 200
+description: "D2 Supplier pt2: category + zone + keyword + pagination combined in one query (all AND-ed, categories OR-ed among themselves)."
+url: "{{baseUrl}}/api/suppliers?category=Food&zone=Central&q=a&page=1&page_size=10"
+method: GET
+queryParams:
+  category: Food
+  zone: Central
+  q: a
+  page: "1"
+  page_size: "10"
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: combined filters (200)', function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 6000

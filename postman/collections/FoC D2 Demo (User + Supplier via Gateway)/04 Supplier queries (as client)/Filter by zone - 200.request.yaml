@@ -1,0 +1,19 @@
+$kind: http-request
+name: Filter by zone -> 200
+description: "D2 Supplier pt2: zone matches the building column (case-insensitive substring)."
+url: "{{baseUrl}}/api/suppliers?zone=Central"
+method: GET
+queryParams:
+  zone: Central
+auth:
+  type: bearer
+  credentials:
+    token: "{{clientToken}}"
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test('D2 Supplier pt2: zone filter (200)', function () {
+          pm.response.to.have.status(200);
+      });
+    language: text/javascript
+order: 4000

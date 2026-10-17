@@ -68,7 +68,7 @@ Format for each entry:
   introducing any new design decisions.
 - Prompt(s):
   1. "Draw out architecture.md and flowchart.md" — with the `api/` and
-     `services` layers, and the `EmailOtp` and `User` models, described 
+     `services` layers, and the `EmailOtp` and `User` models, described
      to the tool in a table.
   2. "Update architecture.md and flowchart.md based on the source code."
   3. "Update this usage-log.md."
@@ -96,7 +96,7 @@ Format for each entry:
 - Author review: Ran the generated suite against the current implementation
   and confirmed every test passes; checked that no test asserts on behavior
   the code doesn't actually implement.
-  
+
 ---
 
 ## 25/09/2026 — John Gao Jiahao
@@ -119,7 +119,6 @@ Format for each entry:
   design exactly (no unrequested endpoints/fields). Verified the OpenAPI file
   parses as valid YAML/OpenAPI 3.1 and all $refs resolve. Not yet
   merged, pending final team review.
-
 
 ## 25/09/2026 — John Gao Jiahao
 
@@ -170,19 +169,19 @@ Format for each entry:
   404 on missing supplier. Confirmed the idempotent seeder re-run produces
   0 new rows on a second pass (21 → 0). Confirmed docs/OpenAPI match the
   team-decided contract from Prompt 2.
-  
+
 ---
 
 ## 26/09/2026 — Javier Enrique Wong
 
 - Tool: Claude (claude.ai, model: Claude Sonnet 5)
-- Scope: Helped understanding the transactional outbox pattern 
-  for reliable RabbitMQ event delivery; implementing secure, idempotent 
-  first-admin bootstrap on application startup; OTP rate limiting, 
-  failed-attempt tracking, and temporary lockout behavior; 
-  updating `user-service/docs/api-contract.md` with endpoint paths, 
-  request bodies, headers, response payloads, validation rules, 
-  and status codes; and updating user-service and API gateway tests 
+- Scope: Helped understanding the transactional outbox pattern
+  for reliable RabbitMQ event delivery; implementing secure, idempotent
+  first-admin bootstrap on application startup; OTP rate limiting,
+  failed-attempt tracking, and temporary lockout behavior;
+  updating `user-service/docs/api-contract.md` with endpoint paths,
+  request bodies, headers, response payloads, validation rules,
+  and status codes; and updating user-service and API gateway tests
   to match the `/users` internal prefix
 - Prompt(s):
   1. "Explain the outbox pattern and how to implement"
@@ -210,25 +209,63 @@ Format for each entry:
 - Prompt(s):
   1. "Given this architecuture.md and flowchart.md update based on the
      source code."
-  2. "Also generate pytest:  `test_routing.py` covering `resolve_upstream`,
-     unknown-prefix, and partial-segment cases and `test_gateway.py` 
-     covering `GatewayService` resolve, authorize, forward behavior, and 
+  2. "Also generate pytest: `test_routing.py` covering `resolve_upstream`,
+     unknown-prefix, and partial-segment cases and `test_gateway.py`
+     covering `GatewayService` resolve, authorize, forward behavior, and
      fix `test_auth.py` below."
 - Author review: Reviewed `docs/architecture.md`/`flowchart.md` against the
   actual resulting file layout for accuracy. Ran the generated suite and
   confirmed every test passes; checked that no test asserts on behavior the
   code doesn't actually implement.
-  
 - Tool: Claude (claude.ai, model: Claude Sonnet 5)
-- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway 
-  routes, routing table, authentication behavior, path rewriting, CORS settings, 
+- Scope: Generated `api-gateway/docs/api-contract.md` from the existing gateway
+  routes, routing table, authentication behavior, path rewriting, CORS settings,
   and error responses
 - Prompt(s): "generate api-contract.md for api-gateway based on below"
 - Author review: Compared the contract against `proxy.py`, `routing.py`, `auth.py`,
-  `gateway.py`, and gateway configuration, then corrected the documentation to 
+  `gateway.py`, and gateway configuration, then corrected the documentation to
   distinguish gateway `/api/...` routes from backend routes.
 
 ---
+
+## 27/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Opus)
+- Scope: D2 frontend implementation, plus one small backend dev-mode toggle.
+  Implemented the React + TypeScript + Vite SPA against the team's existing,
+  already-agreed user-service and supplier-service API contracts and the
+  team's Penpot wireframe (which defined the visual design, layout, and
+  screens). Added the Mantine UI library. Frontend files created/rewritten:
+  `lib/api.ts` (typed gateway client with JWT bearer + error parsing),
+  `lib/types.ts`, `lib/auth.tsx` (JWT auth context), `lib/theme.ts`;
+  `components/` (AppLayout responsive shell, RouteGuards, StatusPill,
+  SupplierCard); auth pages (Login, Register, VerifyOtp, AuthLayout);
+  supplier pages (SupplierList with live search/category+zone filter/
+  client-side sort/pagination, SupplierDetail); admin pages (AdminSuppliers
+  table + SupplierForm create/edit/deactivate, AdminClients with
+  suspend/reinstate + create-admin); Profile; `App.tsx` routing; `main.tsx`;
+  `index.css`; `package.json`. Removed dormant errand placeholder pages.
+  Backend: added an `OTP_DEV_MODE` config flag to user-service so that, when
+  SMTP is unset, the verification code is logged instead of emailed, enabling
+  the register → verify → login flow to be demoed without a mail provider
+  (`config.py`, `services/notification.py`, `.env.example`). No product
+  requirements or architecture/design decisions were made by the tool — the
+  API contract, RBAC model, and UI design were decided by the team; the tool
+  implemented the frontend against them.
+- Prompt(s):
+  1. "Currently i need to link up the frontend to the user service and supplier service …
+     I am pretty sure we need an admin portal and also the main page itself" Here is the penpot design that the team has already created.
+  2. Selected full scope (suppliers + auth + admin portal), Mantine UI, full
+     register/OTP UI with a dev-mode verification path, and to implement on a
+     new branch off main.
+- Author review: Verified `npm run build` (tsc) passes cleanly;
+  brought the stack up with `docker compose up` and tested end-to-end via the
+  gateway: admin login, supplier list/create (201) as admin vs create denied
+  (403) as client, client list allowed (200), register → OTP (dev-mode log) →
+  verify → login, and profile `/me`. Manually exercised the running UI at
+  desktop and mobile viewports (browse grid, admin suppliers table + edit
+  form, client accounts table, mobile burger nav). No console errors (only
+  React Router v7 future-flag warnings).
 
 ## 26/09/2026 — Frank Yu / Zhou Shiyao
 
@@ -239,13 +276,13 @@ Format for each entry:
   repositories with SELECT ... FOR UPDATE, `CreditService` business logic
   (provisioning with 100-credit initial allocation, reserve/amend/transfer/
   release, idempotent event handling, CourierWithdrawn no-op), error hierarchy
-  + handlers, HTTP routes (`/credits` prefix), RabbitMQ consumer
-  (`foc.user.events` fanout + `foc.order.events` topic) and best-effort
-  reservation-event publisher (`foc.credit.events`), lifespan wiring, tests,
-  README, `.env.example`.
-  All requirements and design decisions come from the D1 document and the
-  team's existing PR patterns (supplier-service layering/error envelope,
-  user-service event publishing); the tool only implemented the chosen design.
+  - handlers, HTTP routes (`/credits` prefix), RabbitMQ consumer
+    (`foc.user.events` fanout + `foc.order.events` topic) and best-effort
+    reservation-event publisher (`foc.credit.events`), lifespan wiring, tests,
+    README, `.env.example`.
+    All requirements and design decisions come from the D1 document and the
+    team's existing PR patterns (supplier-service layering/error envelope,
+    user-service event publishing); the tool only implemented the chosen design.
 - Prompt(s):
   1. "Read the Credit Service FR and NFR sections of this document; based on the D1 requirements document and the parts of the existing PRs worth following, produce the credit service implementation. Implement strictly per D1; do not add features on your own."
   2. "Review your implementation: reuse shared project components as much as possible, minimise coupling with other services, and keep the layers clean."
@@ -257,6 +294,120 @@ Format for each entry:
   Incorporated PR #7 review feedback (dead-lettering invalid events,
   idempotent reserve retries, fixed lock ordering, history amounts summing
   to balances, releasing the row lock before publishing).
+
+---
+
+## 27/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Opus)
+- Scope: D2 demo tooling only — no product/business logic and no service-code
+  changes. Generated a Postman v2.1 collection
+  (`postman/FoC-D2.postman_collection.json`) and matching local environment
+  (`postman/FoC-local.postman_environment.json`) that exercise the User Service
+  and Supplier Service end-to-end through the API Gateway (health, registration
+  - OTP verify/resend, authentication, RBAC evidence incl. gateway header-strip,
+    supplier discovery/CRUD, profile self-update, and user administration incl.
+    suspend/role-change), each request asserting the status code and key body
+    fields and chaining tokens/ids via environment variables; a curl + jq twin
+    (`scripts/demo.sh`, numbered 01–07 to match the folders, non-aborting, with
+    per-step pauses and dev-mode OTP auto-extraction); and `postman/README.md`
+    (import, prerequisites, and two newman run modes). Every endpoint, field name
+    (snake_case for user, camelCase for supplier), and expected status code was
+    derived from the service code, not invented. The tool surfaced one docs-vs-code
+    mismatch (see review) and left the test asserting the code's actual behavior.
+- Prompt(s):
+  1. "Create a Postman collection and a matching shell script to demo Milestone
+     D2 (User Service + Supplier Service) through the API gateway, without the
+     UI." (+ detailed folder/step spec and 'derive every request from the code'.)
+  2. Answered clarifying questions: match the current `.env` bootstrap admin
+     exactly in the environment file, and follow the code (assert lowercase
+     `role`) over the user-service `api-contract.md` which shows uppercase.
+- Author review: Validated both JSON files parse (`python -m json.tool`).
+  Brought the full stack up with `docker compose up --build -d` (OTP*DEV_MODE
+  and BOOTSTRAP_ADMIN*\* set), waited for gateway `/health`, ran `scripts/demo.sh`
+  (all steps returned the expected codes), and ran `newman` in the CI-ish mode
+  against a freshly verified client: **62/62 assertions passed, 0 failures**.
+  Docs-vs-code mismatch found and reported (not fixed here): user-service
+  `docs/api-contract.md` documents `role` as uppercase `CLIENT`/`ADMIN`, but the
+  service serializes the enum value lowercase (`client`/`admin`); the collection
+  asserts the code's actual lowercase output. No service code was modified.
+
+---
+
+## 27/09/2026 — John Gao Jiahao
+
+- Tool: OpenCode (model: Claude Opus)
+- Scope: D2 architecture/design documentation only — Mermaid-in-Markdown
+  diagrams and small factual doc corrections; **no code changes**. Every box,
+  column, arrow, and status code was derived from the source (compose.yaml,
+  .env.example, gateway/user/supplier/credit service code, the shared auth/event
+  contracts, and the unmerged order-service PR #5 clients), matching the
+  existing docs' `Title / Legend / Explained elements` house style. Added: a C4
+  Level-2 system container diagram in `docs/architecture.md` (above the existing
+  supplier component diagram); a user-db ER diagram (`users`, `email_otps`,
+  `event_outbox`) in `user-service/docs/architecture.md`; a supplier-db ER
+  diagram in the new `supplier-service/docs/data-model.md`; a role→capability
+  matrix plus an authenticated-supplier-write sequence diagram in the new
+  `docs/rbac.md`; and three additions to `user-service/docs/flowchart.md`
+  (registration→initial-credits sequence, first-admin bootstrap flowchart, and a
+  role-change guard flowchart). Doc fixes: replaced the README ASCII sketch with
+  a one-paragraph summary linking `docs/architecture.md` and corrected "edge auth
+  - RBAC" wording (the gateway authenticates only; RBAC is enforced in services);
+    removed the reference to the non-existent `supplier-service-architecture.excalidraw.json`;
+    corrected `docs/supplier-service-api.md` §3 (gateway does not enforce RBAC); and
+    added the `UserRegistered` event on `foc.user.events` to `docs/event-catalog.md`.
+    The team-authored "Key decisions" / ADR sections were left untouched.
+- Prompt(s):
+  1. "Add the architecture/design diagrams missing for the repo's current state, as Mermaid
+     inside Markdown … match the existing diagram docs' style … derive every box,
+     field, arrow and status code from the code." (+ detailed list of the eight
+     diagrams and the small factual doc fixes.)
+  2. "Use the diagrams mcp to draw the diagrams." (Used to draft; final diagrams
+     were hand-authored to the repo's exact Title/Legend/Explained-elements
+     house style and validated with mermaid-cli.)
+- Author review: Rendered **all 11** Mermaid blocks with
+  `npx @mermaid-js/mermaid-cli` (v12.0.0) — all pass (one initial hexagon-shape
+  syntax issue for the RabbitMQ node was fixed by switching to a stadium shape).
+  Cross-checked every column/enum/route/status against the source files.
+  Code-vs-doc mismatches found and reported (docs corrected where factual; code
+  left unchanged): (a) the `UserRegistered` outbox relay is **implemented**
+  (`outbox_worker`), not planned, so its publish path is drawn solid — this
+  corrects the task's "draw dashed if absent" assumption; (b) README + old
+  `docs/architecture.md` claimed the gateway does "edge auth + RBAC" whereas the
+  gateway authenticates only and services enforce RBAC; (c) `docs/architecture.md`
+  referenced a `.excalidraw.json` that does not exist; (d) `docs/supplier-service-api.md`
+  claimed the gateway also enforces RBAC; (e) the user-service `docs/api-contract.md`
+  documents `role` as uppercase while the code serializes lowercase (noted, not
+  changed here). order-service and its event/HTTP flows are drawn dashed and
+  labelled "PR #5" because they exist only on the unmerged branch.
+
+## 04/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-5)
+- Scope: Updated the human-readable Order Service API reference and service
+  README to match the Supplier Service documentation style and the implemented
+  Sprint 1 behavior. No endpoint or architecture decisions were introduced.
+- Prompt(s): "Check that the endpoints in the order service are documented
+  properly. Make sure it follows the style of the docs/supplier service's
+  endpoint documentation in the repo root. Then, stage the change for the
+  documentation and show me what the file looks like. Don't commit yet."
+- Author review: Pending contributor review. Codex cross-checked the staged
+  documentation against the FastAPI routes, Pydantic schemas, service and
+  repository workflows, dependency clients, centralized error mappings, and
+  API Gateway route table. No commit was created.
+
+## 04/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-5)
+- Scope: Reset the Order Service's Alembic revision history while preserving
+  the Alembic configuration, migration environment, template, and dependency.
+  The migration strategy decision and requested clean revision state were
+  supplied by the contributor.
+- Prompt(s): "keep alembic but remove migrations and currently stored
+  versioning. I want it to be clean."
+- Author review: Pending contributor review. Codex restored the Alembic
+  scaffold and dependency, removed only the two tracked revision files, kept
+  the versions directory, and did not modify a live database.
 
 ---
 
