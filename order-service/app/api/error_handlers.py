@@ -24,6 +24,7 @@ from app.services.clients.errors import (
     UnexpectedRemoteResponseError,
 )
 from app.services.clients.supplier.error import (
+    SupplierCategoryFilterError,
     SupplierInactiveError,
     SupplierNotFoundError,
     SupplierServiceContractError,
@@ -31,12 +32,18 @@ from app.services.clients.supplier.error import (
     UnexpectedSupplierResponseError,
 )
 from app.services.errors import (
+    OrderAcceptanceError,
     OrderAccessDeniedError,
+    OrderApprovalError,
+    OrderCancellationError,
     OrderDeletionError,
+    OrderDeliveryError,
+    OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
     OrderRetrievalError,
     OrderStateConflictError,
+    OrderUpdatePendingError,
 )
 from foc_shared.errors import ErrorEnvelope
 
@@ -52,6 +59,26 @@ class ErrorMapping:
 
 
 ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
+    OrderAcceptanceError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_acceptance_failed",
+        "The order could not be accepted because the database operation failed.",
+    ),
+    OrderDeliveryError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_delivery_failed",
+        "The order could not be marked as delivered because the database operation failed.",
+    ),
+    OrderApprovalError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_approval_failed",
+        "The order approval could not be started because the database operation failed.",
+    ),
+    OrderCancellationError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_cancellation_failed",
+        "The order cancellation could not be started because the database operation failed.",
+    ),
     OrderNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,
         "order_not_found",
@@ -70,6 +97,16 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         "The requested action is not valid for the order's current state.",
         expose_exception_message=True,
     ),
+    OrderNotEditableError: ErrorMapping(
+        HTTPStatus.CONFLICT,
+        "order_not_editable",
+        "Only an open order without an assigned courier can be updated.",
+    ),
+    OrderUpdatePendingError: ErrorMapping(
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "order_update_pending",
+        "The order update is still pending and will be retried.",
+    ),
     SupplierNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,
         "supplier_not_found",
@@ -80,6 +117,11 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         HTTPStatus.CONFLICT,
         "supplier_inactive",
         "The specified supplier is inactive.",
+    ),
+    SupplierCategoryFilterError: ErrorMapping(
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_category_filter",
+        "One or more category filters are not supported.",
     ),
     CreditAccountNotFoundError: ErrorMapping(
         HTTPStatus.NOT_FOUND,
@@ -169,7 +211,7 @@ async def _handle_mapped_error(
             if value is not None:
                 context[f"remote_{field}"] = value
         logger.error(
-            "Order API dependency failure",
+            "Order API processing failure",
             extra=context,
             exc_info=(type(exc), exc, exc.__traceback__),
         )
@@ -249,14 +291,14 @@ async def _handle_order_deletion_error(
     exc: OrderDeletionError,
 ) -> JSONResponse:
     logger.error(
-        "Order database deletion failed",
+        "Order deletion request could not be saved",
         extra={"order_id": exc.order_id},
         exc_info=(type(exc), exc, exc.__traceback__),
     )
     return _error_response(
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "order_deletion_failed",
-        "The order could not be deleted because the database operation failed.",
+        "The order deletion could not be started because the database operation failed.",
     )
 
 
