@@ -6,7 +6,6 @@ ROUTE_TABLE: dict[str, str] = {
     "/api/users": settings.user_service_url,
     "/api/suppliers": settings.supplier_service_url,
     "/api/orders": settings.order_service_url,
-    "/api/credits": settings.credit_service_url,
     "/api/notifications": settings.notification_service_url,
 }
 
