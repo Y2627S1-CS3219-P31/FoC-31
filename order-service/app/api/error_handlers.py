@@ -34,8 +34,10 @@ from app.services.clients.supplier.error import (
 from app.services.errors import (
     OrderAcceptanceError,
     OrderAccessDeniedError,
+    OrderApprovalError,
     OrderCancellationError,
     OrderDeletionError,
+    OrderDeliveryError,
     OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
@@ -61,6 +63,16 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "order_acceptance_failed",
         "The order could not be accepted because the database operation failed.",
+    ),
+    OrderDeliveryError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_delivery_failed",
+        "The order could not be marked as delivered because the database operation failed.",
+    ),
+    OrderApprovalError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_approval_failed",
+        "The order approval could not be started because the database operation failed.",
     ),
     OrderCancellationError: ErrorMapping(
         HTTPStatus.INTERNAL_SERVER_ERROR,

@@ -38,6 +38,35 @@ async def accept_order(
     return await order_service.accept_order(session, order_id, courier_id)
 
 
+@router.post("/{order_id}/deliver", response_model=OrderResponse)
+async def deliver_order(
+    order_id: str,
+    courier_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    role: Annotated[str, Header(alias=HEADER_USER_ROLE)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrderResponse:
+    """Marks a picked-up order delivered for approval."""
+
+    if role not in {Role.CLIENT.value, Role.ADMIN.value}:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Unsupported user role.")
+    return await order_service.deliver_order(session, order_id, courier_id)
+
+
+@router.post(
+    "/{order_id}/approve",
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=OrderActionResponse,
+)
+async def approve_order(
+    order_id: str,
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrderActionResponse:
+    """Starts requester approval for a delivered order."""
+
+    return await order_service.approve_order_for_requester(session, order_id, requester_id)
+
+
 @router.post(
     "/{order_id}/cancel",
     status_code=status.HTTP_202_ACCEPTED,

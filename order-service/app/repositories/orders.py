@@ -57,6 +57,7 @@ async def list_available_orders(
 ) -> list[OrderTable]:
     filters = [
         OrderTable.status == OrderStatus.OPEN,
+        OrderTable.deadline > func.current_timestamp(),
         OrderTable.courier_id.is_(None),
         OrderTable.requester_id != requester_id,
         ~select(OrderUpdateTask.task_id)

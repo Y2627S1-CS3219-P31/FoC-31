@@ -667,3 +667,86 @@ Format for each entry:
 - Author review: The focused Order Service API and service tests passed. Ruff
   lint and format checks passed, and `git diff --check` passed.
   One pre-existing Starlette `httpx` deprecation warning remains.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented Order Service's asynchronous approval workflow. The
+  service validates the requester and order state, atomically records a
+  pending approval task and `OrderApprovalRequested`, then applies correlated
+  credit-transfer results atomically with the task, order status, and final
+  order event. Added an approval-result consumer, task persistence and
+  migration, API route, event schemas, and Order Service documentation. No
+  service outside `order-service/` was modified.
+- Prompt(s): “Implement the order approval workflow, following Order Service’s
+  deletion and cancellation patterns. Modify only files under order-service/
+  and the root ai/usage-log.md; do not modify any other files or services. Add
+  AI attribution headers to modified AI-influenced files and log this prompt.
+
+  When the authenticated requester approves their order, validate ownership
+  and AWAITING_APPROVAL status. In one Order Service transaction, create a
+  pending approval task and write OrderApprovalRequested to the outbox. Return
+  202 with the task ID; publish through the event worker.
+
+  Treat events as facts about the publishing service, not commands. The Credit
+  Service independently validates the reservation, transfers the reward
+  idempotently, and publishes a success or failure result.
+
+  Handle each result in one Order Service transaction: lock and correlate the
+  pending task; ignore unmatched or stale results; validate task, reservation,
+  and order IDs; lock and recheck the order. On failure, fail the task, leave
+  the order AWAITING_APPROVAL, and write OrderApprovalFailed to the outbox. On
+  success, complete the order and task, and write OrderApproved to the outbox.
+  Commit before acknowledging; publish outcomes through the event worker.
+
+  Make sure the code is neat, simple to understand, and add clear comments
+  where appropriate but don't overdo the comments either. Make sure it follows
+  the project's architecture.”
+- Author review: Ruff lint, format, and `git diff --check` passed. Tests were
+  not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Updated available-order discovery to require a deadline later than
+  the database's current time, excluding overdue open orders before the expiry
+  sweeper updates their status. Added a repository-level regression test and
+  documented F2.4/F2.4.1 in the Order Service README. No other service or the
+  API Gateway was modified.
+- Prompt(s): “Update the Order Service available-orders query to exclude
+  orders whose deadline is at or before the current database time, even if
+  their status is still `OPEN`. Preserve existing filters and sorting. Add
+  focused tests proving overdue open orders are excluded and future open
+  orders remain listed. Follow the repository architecture, update Order
+  Service documentation and the permitted AI usage log, and modify no other
+  services or the API Gateway. Make sure the code is neat, simple to understand,
+  and add clear comments where appropriate but don't overdo the comments either.
+  Make sure it follows the project's architecture.”
+- Author review: The repository regression test passed. Ruff lint and format
+  checks passed, and `git diff --check` passed.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented F3.1 delivery handling in Order Service. The endpoint
+  accepts both gateway-injected `client` and `admin` roles, verifies the caller
+  is the assigned courier, locks and validates the picked-up order, transitions
+  it to `AWAITING_APPROVAL`, and records `OrderDelivered` in the existing
+  outbox transactionally. Added service and API tests and Order Service
+  documentation. No service outside `order-service/`, the API Gateway, or
+  shared code was modified.
+- Prompt(s): “Implement F3.1 in `order-service`: add
+  `POST /orders/{order_id}/deliver`. Allow both gateway-injected `client` and
+  `admin` roles; don’t restrict the endpoint to clients. Lock the order,
+  require `X-User-Id` to match its assigned courier and status to be
+  `PICKED_UP`, then transition it to `AWAITING_APPROVAL` and save an
+  `OrderDelivered` event to the outbox in the same transaction. Let the
+  existing worker publish after commit. Return the updated order; make no
+  external service calls. Add focused tests and update Order Service
+  documentation and the permitted AI usage log. Don’t modify other services,
+  the gateway, or shared code. Make sure the code is neat, simple to understand,
+  and add clear comments where appropriate but don't overdo the comments either.
+  Make sure it follows the project's architecture.”
+- Author review: Focused delivery service, API, and error-mapping tests
+  passed. Ruff lint and format checks passed, and `git diff --check` passed.
+  One pre-existing Starlette `httpx` deprecation warning remains.

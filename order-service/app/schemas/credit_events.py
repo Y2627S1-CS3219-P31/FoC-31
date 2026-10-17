@@ -30,3 +30,16 @@ class CreditAmendResult(BaseModel):
     requester_id: str
     amount: int
     reason: str | None = None
+
+
+class CreditTransferResult(BaseModel):
+    """Order-side validator for either credit-transfer outcome event."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["CreditTransferSucceeded", "CreditTransferFailed"]
+    task_id: str
+    order_id: str
+    reservation_id: str
+    timestamp: datetime
+    reason: str | None = None

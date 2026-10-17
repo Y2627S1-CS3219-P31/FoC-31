@@ -5,6 +5,7 @@ import aio_pika
 
 from app.config import settings
 from app.schemas.order_action_events import OrderActionEvent, OrderLocalOutcomeEvent
+from app.schemas.order_approval_events import OrderApprovalEvent
 from app.schemas.order_update_events import (
     OrderUpdateOutcomeEvent,
     OrderUpdateRequestedEvent,
@@ -17,6 +18,7 @@ OrderPublishableEvent = (
     | OrderLocalOutcomeEvent
     | OrderUpdateRequestedEvent
     | OrderUpdateOutcomeEvent
+    | OrderApprovalEvent
 )
 
 

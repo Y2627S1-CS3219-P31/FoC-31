@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.api.error_handlers import register_exception_handlers
 from app.api.routes import health, orders
 from app.db import engine, init_db
+from app.services.approval_consumer import run_approval_consumer
 from app.services.client_manager import (
     _start_remote_clients,
     close_remote_clients,
@@ -25,6 +26,7 @@ async def lifespan(_: FastAPI):
     _start_remote_clients()
     release_consumer_task = asyncio.create_task(run_release_consumer())
     update_consumer_task = asyncio.create_task(run_update_consumer())
+    approval_consumer_task = asyncio.create_task(run_approval_consumer())
     event_worker_task = asyncio.create_task(run_event_worker())
     expiry_sweeper_task = asyncio.create_task(run_expiry_sweeper())
     try:
@@ -32,12 +34,15 @@ async def lifespan(_: FastAPI):
     finally:
         release_consumer_task.cancel()
         update_consumer_task.cancel()
+        approval_consumer_task.cancel()
         event_worker_task.cancel()
         expiry_sweeper_task.cancel()
         with suppress(asyncio.CancelledError):
             await release_consumer_task
         with suppress(asyncio.CancelledError):
             await update_consumer_task
+        with suppress(asyncio.CancelledError):
+            await approval_consumer_task
         with suppress(asyncio.CancelledError):
             await event_worker_task
         with suppress(asyncio.CancelledError):

@@ -11,6 +11,18 @@ class OrderAcceptanceError(OrderServiceError):
         self.order_id = order_id
 
 
+class OrderDeliveryError(OrderServiceError):
+    def __init__(self, order_id: str) -> None:
+        super().__init__(f"Failed to mark order '{order_id}' as delivered.")
+        self.order_id = order_id
+
+
+class OrderApprovalError(OrderServiceError):
+    def __init__(self, order_id: str) -> None:
+        super().__init__(f"Failed to start approval of order '{order_id}'.")
+        self.order_id = order_id
+
+
 class OrderNotFoundError(OrderServiceError):
     def __init__(self, order_id: str) -> None:
         super().__init__(f"Order '{order_id}' was not found.")

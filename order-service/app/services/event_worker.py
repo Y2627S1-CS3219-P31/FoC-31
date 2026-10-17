@@ -13,6 +13,12 @@ from app.schemas.order_action_events import (
     OrderDeletionFailedEvent,
     OrderLocalOutcomeEvent,
 )
+from app.schemas.order_approval_events import (
+    OrderApprovalEvent,
+    OrderApprovalFailedEvent,
+    OrderApprovalRequestedEvent,
+    OrderApprovedEvent,
+)
 from app.schemas.order_update_events import (
     OrderUpdatedEvent,
     OrderUpdateFailedEvent,
@@ -40,6 +46,10 @@ UPDATE_OUTCOME_TYPES: dict[str, type[OrderUpdateOutcomeEvent]] = {
     "OrderUpdated": OrderUpdatedEvent,
     "OrderUpdateFailed": OrderUpdateFailedEvent,
 }
+APPROVAL_OUTCOME_TYPES: dict[str, type[OrderApprovalEvent]] = {
+    "OrderApprovalFailed": OrderApprovalFailedEvent,
+    "OrderApproved": OrderApprovedEvent,
+}
 
 
 def _parse_event(
@@ -50,13 +60,20 @@ def _parse_event(
     | OrderLocalOutcomeEvent
     | OrderUpdateRequestedEvent
     | OrderUpdateOutcomeEvent
+    | OrderApprovalEvent
 ):
     event_type = payload.get("event_type")
     if event_type in ACTION_EVENT_TYPES:
         return OrderActionEvent.model_validate(payload)
     if event_type == "OrderUpdateRequested":
         return OrderUpdateRequestedEvent.model_validate(payload)
-    event_model = LOCAL_OUTCOME_TYPES.get(event_type) or UPDATE_OUTCOME_TYPES.get(event_type)
+    if event_type == "OrderApprovalRequested":
+        return OrderApprovalRequestedEvent.model_validate(payload)
+    event_model = (
+        LOCAL_OUTCOME_TYPES.get(event_type)
+        or UPDATE_OUTCOME_TYPES.get(event_type)
+        or APPROVAL_OUTCOME_TYPES.get(event_type)
+    )
     if event_model is not None:
         return event_model.model_validate(payload)
     return OrderEvent.model_validate(payload)

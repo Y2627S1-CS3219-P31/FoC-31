@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     credit_events_exchange: str = "foc.credit.events"
     release_results_queue: str = "order-service.credit-release-results"
     amendment_results_queue: str = "order-service.credit-amend-results"
+    approval_results_queue: str = "order-service.credit-approval-results"
 
 
 settings = Settings()

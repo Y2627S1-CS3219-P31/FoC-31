@@ -16,6 +16,7 @@ from app.db import get_session
 from app.services.errors import (
     OrderAcceptanceError,
     OrderAccessDeniedError,
+    OrderDeliveryError,
     OrderNotFoundError,
     OrderStateConflictError,
 )
@@ -83,6 +84,61 @@ def test_accept_uses_gateway_identity(client, fake_session, monkeypatch):
     assert response.json()["courier_id"] == "courier-1"
     assert response.json()["status"] == "ACCEPTED"
     accept.assert_awaited_once_with(fake_session, "order-1", "courier-1")
+
+
+@pytest.mark.parametrize("role", ["client", "admin"])
+def test_deliver_accepts_both_gateway_roles(client, fake_session, monkeypatch, role):
+    order = _stored_order(requester_id="requester-1")
+    order.courier_id = "courier-1"
+    order.status = OrderStatus.AWAITING_APPROVAL
+    deliver = AsyncMock(return_value=order)
+    monkeypatch.setattr(order_routes.order_service, "deliver_order", deliver)
+
+    response = client.post(
+        "/orders/order-1/deliver",
+        headers={"X-User-Id": "courier-1", "X-User-Role": role},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "AWAITING_APPROVAL"
+    deliver.assert_awaited_once_with(fake_session, "order-1", "courier-1")
+
+
+@pytest.mark.parametrize(
+    ("headers", "expected_status"),
+    [
+        ({}, 422),
+        ({"X-User-Id": "courier-1"}, 422),
+        ({"X-User-Role": "client"}, 422),
+        ({"X-User-Id": "courier-1", "X-User-Role": "courier"}, 403),
+    ],
+)
+def test_deliver_requires_identity_and_supported_role(
+    client, monkeypatch, headers, expected_status
+):
+    deliver = AsyncMock()
+    monkeypatch.setattr(order_routes.order_service, "deliver_order", deliver)
+
+    response = client.post("/orders/order-1/deliver", headers=headers)
+
+    assert response.status_code == expected_status
+    deliver.assert_not_awaited()
+
+
+def test_deliver_maps_database_failure(client, monkeypatch):
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "deliver_order",
+        AsyncMock(side_effect=OrderDeliveryError("order-1")),
+    )
+
+    response = client.post(
+        "/orders/order-1/deliver",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "admin"},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["code"] == "order_delivery_failed"
 
 
 @pytest.mark.parametrize(

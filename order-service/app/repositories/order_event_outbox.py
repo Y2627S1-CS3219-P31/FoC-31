@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.order_event_outbox import OrderEventOutbox
 from app.schemas.order_action_events import OrderActionEvent, OrderLocalOutcomeEvent
+from app.schemas.order_approval_events import OrderApprovalEvent
 from app.schemas.order_update_events import (
     OrderUpdateOutcomeEvent,
     OrderUpdateRequestedEvent,
@@ -20,6 +21,7 @@ OrderOutboxEvent = (
     | OrderLocalOutcomeEvent
     | OrderUpdateRequestedEvent
     | OrderUpdateOutcomeEvent
+    | OrderApprovalEvent
 )
 
 

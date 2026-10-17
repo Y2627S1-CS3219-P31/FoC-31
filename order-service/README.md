@@ -154,12 +154,40 @@ The response is an array of `OrderResponse` objects for orders in `ACCEPTED`,
 ID. An empty list returns `200` with `[]`. The endpoint reads only the
 Order Service database and publishes no event.
 
+Available-order discovery (`GET /orders`) excludes orders whose deadline is
+at or before the database's current time. This keeps overdue orders out of
+the listing even before the expiry sweeper marks them `EXPIRED` (F2.4,
+F2.4.1).
+
+### Mark delivered (F3.1)
+
+`POST /orders/{order_id}/deliver` marks an assigned order as delivered and
+moves it from `PICKED_UP` to `AWAITING_APPROVAL`. It accepts gateway-injected
+`client` and `admin` roles, but the caller's `X-User-Id` must match the
+assigned courier. The order update and `OrderDelivered` outbox record commit
+in one transaction; the event worker publishes the event after commit. The
+endpoint returns the updated `OrderResponse` and makes no external service
+calls.
+
 At runtime, FastAPI also serves the live specification at `/openapi.json` and
 interactive documentation at `/docs`.
+
+### Approve delivered order (F3.5)
+
+`POST /orders/{order_id}/approve` starts approval for the authenticated
+requester's order when its status is `AWAITING_APPROVAL`. It returns `202`
+with a task ID after saving the pending task and `OrderApprovalRequested`
+event to the outbox in one transaction. The Order Service consumes
+`CreditTransferSucceeded` or `CreditTransferFailed` from the Credit Service.
+Each result is correlated to its pending task and applied in one transaction
+with the resulting `OrderApproved` or `OrderApprovalFailed` outbox event.
+Failed transfers leave the order awaiting approval. Run `alembic upgrade head`
+to create the approval-task table in an existing database.
 
 > Status: `POST /orders`, `GET /orders`, `GET /orders/assigned`,
 > `GET /orders/{order_id}`,
 > `PATCH /orders/{order_id}`, `DELETE /orders/{order_id}`,
 > `POST /orders/{order_id}/cancel`, and
-> `POST /orders/{order_id}/accept` are implemented. Remaining lifecycle
+> `POST /orders/{order_id}/accept`, `POST /orders/{order_id}/deliver`, and
+> `POST /orders/{order_id}/approve` are implemented. Remaining lifecycle
 > operations belong to later sprints.
