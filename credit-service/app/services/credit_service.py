@@ -212,8 +212,10 @@ class CreditService:
         return await self._amend_reservation(reservation, new_amount)
 
     async def _amend_reservation(
-        self, reservation: CreditReservation, new_amount: int
+        self, reservation: CreditReservation, new_amount: int, *, commit: bool = True
     ) -> CreditReservation:
+        """Amend the reservation; ``commit=False`` leaves the transaction open so
+        the caller can record the task outcome in the same transaction."""
         if reservation.status != ReservationStatus.RESERVED.value:
             raise ConflictError(
                 f"Reservation '{reservation.id}' is {reservation.status} and cannot be amended."
@@ -240,8 +242,9 @@ class CreditService:
                     order_id=reservation.order_id,
                 )
             )
-        await self._session.commit()
-        await self._session.refresh(reservation)
+        if commit:
+            await self._session.commit()
+            await self._session.refresh(reservation)
         return reservation
 
     # ── F3: transfers ────────────────────────────────────────────────────────
@@ -344,7 +347,11 @@ class CreditService:
             return None
         return await self._release_reservation(reservation)
 
-    async def _release_reservation(self, reservation: CreditReservation) -> CreditReservation:
+    async def _release_reservation(
+        self, reservation: CreditReservation, *, commit: bool = True
+    ) -> CreditReservation:
+        """Release the reservation; ``commit=False`` leaves the transaction open
+        so the caller can record the task outcome in the same transaction."""
         if reservation.status == ReservationStatus.RELEASED.value:
             return reservation  # idempotent
         if reservation.status == ReservationStatus.TRANSFERRED.value:
@@ -367,8 +374,9 @@ class CreditService:
                 order_id=reservation.order_id,
             )
         )
-        await self._session.commit()
-        await self._session.refresh(reservation)
+        if commit:
+            await self._session.commit()
+            await self._session.refresh(reservation)
         return reservation
 
     # ── Event handling ───────────────────────────────────────────────────────
@@ -416,7 +424,7 @@ class CreditService:
             return
 
         try:
-            await self._release_reservation(reservation)
+            await self._release_reservation(reservation, commit=False)
         except ServiceError as exc:
             await self._record_release_outcome(event, TaskResultOutcome.RELEASE_FAILED, str(exc))
             return
@@ -446,7 +454,7 @@ class CreditService:
             return
 
         try:
-            await self._amend_reservation(reservation, event.reward)
+            await self._amend_reservation(reservation, event.reward, commit=False)
         except ServiceError as exc:
             await self._record_amend_outcome(event, TaskResultOutcome.AMEND_REJECTED, str(exc))
             return
@@ -454,6 +462,53 @@ class CreditService:
 
     async def handle_user_registered_event(self, event: UserRegisteredEvent) -> None:
         await self.ensure_account(event.user_id)
+
+    async def report_release_retries_exhausted(
+        self, event: OrderActionEvent, error: Exception
+    ) -> None:
+        """Answer a release task we could not finish within the retry budget.
+
+        If the release already committed and only the reply kept failing, the
+        recorded outcome is republished: Order must never be told "failed" for
+        work that succeeded."""
+        recorded = await self._task_results.get(event.task_id)
+        if recorded is not None:
+            await self._publish_release_outcome(recorded)
+            return
+        await publisher.publish_credit_event(
+            CreditReleaseResult(
+                event_type="CreditReleaseFailed",
+                task_id=event.task_id,
+                order_id=event.order_id,
+                reservation_id=event.reservation_id,
+                timestamp=_utcnow(),
+                reason=self._retry_limit_reason(error),
+            )
+        )
+
+    async def report_amend_retries_exhausted(
+        self, event: OrderUpdateRequestedEvent, error: Exception
+    ) -> None:
+        """Amend counterpart of :meth:`report_release_retries_exhausted`."""
+        recorded = await self._task_results.get(event.task_id)
+        if recorded is not None:
+            await self._publish_amend_outcome(recorded)
+            return
+        await publisher.publish_credit_event(
+            CreditAmendResult(
+                event_type="CreditAmendRejected",
+                task_id=event.task_id,
+                order_id=event.order_id,
+                reservation_id=event.reservation_id,
+                requester_id=event.requester_id,
+                amount=event.reward,
+                reason=self._retry_limit_reason(error),
+            )
+        )
+
+    @staticmethod
+    def _retry_limit_reason(error: Exception) -> str:
+        return f"Retry limit exceeded: {error}"[:500]
 
     @staticmethod
     def _request_mismatch(
@@ -508,7 +563,10 @@ class CreditService:
         await self._publish_amend_outcome(result)
 
     async def _save_task_result(self, result: CreditTaskResult) -> CreditTaskResult:
-        """Persist the outcome; a concurrent duplicate keeps the first one."""
+        """Persist the outcome and commit it together with whatever state change
+        the caller already staged (release or amendment), so the operation can
+        never be committed without its outcome. A concurrent duplicate keeps the
+        first recorded outcome."""
         try:
             await self._task_results.add(result)
             await self._session.commit()

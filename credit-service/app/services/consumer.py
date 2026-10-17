@@ -36,15 +36,11 @@ from pydantic import ValidationError
 from app.config import settings
 from app.db import SessionLocal
 from app.errors import ServiceError
-from app.models._util import _utcnow
 from app.schemas.interop import (
     RELEASE_REQUEST_EVENT_TYPES,
-    CreditAmendResult,
-    CreditReleaseResult,
     OrderActionEvent,
     OrderUpdateRequestedEvent,
 )
-from app.services import publisher
 from app.services.credit_service import CreditService
 from foc_shared.events import OrderEvent, OrderEventType, UserRegisteredEvent
 
@@ -57,10 +53,6 @@ _ORDER_EVENT_BINDINGS: tuple[str, ...] = (
     *RELEASE_REQUEST_EVENT_TYPES,
     "OrderUpdateRequested",
 )
-
-
-def _reason(prefix: str, error: Exception) -> str:
-    return f"{prefix}: {error}"[:500]
 
 
 async def handle_order_event(event: OrderEvent) -> None:
@@ -86,32 +78,14 @@ async def handle_user_registered_event(event: UserRegisteredEvent) -> None:
 
 async def _release_retries_exhausted(event: OrderActionEvent, error: Exception) -> None:
     """Answer a release task we could not process within the retry budget."""
-    await publisher.publish_credit_event(
-        CreditReleaseResult(
-            event_type="CreditReleaseFailed",
-            task_id=event.task_id,
-            order_id=event.order_id,
-            reservation_id=event.reservation_id,
-            timestamp=_utcnow(),
-            reason=_reason("Retry limit exceeded", error),
-        )
-    )
+    async with SessionLocal() as session:
+        await CreditService(session).report_release_retries_exhausted(event, error)
 
 
 async def _amend_retries_exhausted(event: OrderUpdateRequestedEvent, error: Exception) -> None:
     """Answer an amendment task we could not process within the retry budget."""
-    await publisher.publish_credit_event(
-        CreditAmendResult(
-            event_type="CreditAmendRejected",
-            task_id=event.task_id,
-            order_id=event.order_id,
-            reservation_id=event.reservation_id,
-            requester_id=event.requester_id,
-            amount=event.reward,
-            timestamp=_utcnow(),
-            reason=_reason("Retry limit exceeded", error),
-        )
-    )
+    async with SessionLocal() as session:
+        await CreditService(session).report_amend_retries_exhausted(event, error)
 
 
 class CreditEventConsumer:

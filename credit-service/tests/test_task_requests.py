@@ -8,7 +8,12 @@ from datetime import UTC, datetime
 import pytest
 
 from app.models.reservation import ReservationStatus
-from app.schemas.interop import OrderActionEvent, OrderUpdateRequestedEvent
+from app.schemas.interop import (
+    CreditAmendResult,
+    CreditReleaseResult,
+    OrderActionEvent,
+    OrderUpdateRequestedEvent,
+)
 from app.services import publisher
 from app.services.credit_service import CreditService
 from foc_shared.events import OrderEvent, OrderEventType
@@ -263,3 +268,125 @@ async def test_expired_order_publishes_no_reply(session, published):
     assert published == []
     requester = await service.get_balances("requester")
     assert requester.available_balance == 100
+
+
+# ── atomicity: state change + recorded outcome (C4/C5) ───────────────────────
+
+
+def _count_commits(session, monkeypatch) -> list[int]:
+    """Wrap session.commit so a test can assert how many commits happened."""
+    calls: list[int] = []
+    original = session.commit
+
+    async def counting_commit() -> None:
+        calls.append(1)
+        await original()
+
+    monkeypatch.setattr(session, "commit", counting_commit)
+    return calls
+
+
+async def test_release_and_task_result_commit_once(session, published, monkeypatch):
+    service, reservation_id = await _setup(session)
+    commits = _count_commits(session, monkeypatch)
+
+    await service.handle_release_requested(_release_event(reservation_id=reservation_id))
+
+    # The balance change and its task result are one transaction, not two.
+    assert len(commits) == 1
+    requester = await service.get_balances("requester")
+    assert requester.available_balance == 100
+    assert published[0].event_type == "CreditReleased"
+
+
+async def test_amend_and_task_result_commit_once(session, published, monkeypatch):
+    service, reservation_id = await _setup(session)
+    commits = _count_commits(session, monkeypatch)
+
+    await service.handle_update_requested(_update_event(reservation_id=reservation_id, reward=70))
+
+    assert len(commits) == 1
+    requester = await service.get_balances("requester")
+    assert requester.available_balance == 30
+    assert published[0].event_type == "CreditAmended"
+
+
+async def test_publish_failure_keeps_the_release_and_replays_it(session, monkeypatch):
+    service, reservation_id = await _setup(session)
+    event = _release_event(reservation_id=reservation_id)
+    calls = []
+
+    async def _flaky(reply) -> None:
+        calls.append(reply)
+        if len(calls) == 1:
+            raise RuntimeError("broker unavailable")
+
+    monkeypatch.setattr(publisher, "publish_credit_event", _flaky)
+
+    with pytest.raises(RuntimeError):
+        await service.handle_release_requested(event)
+
+    # The release and its outcome are committed even though the reply failed.
+    requester = await service.get_balances("requester")
+    assert requester.available_balance == 100
+    assert await service._task_results.get(event.task_id) is not None
+
+    # The retry replays the recorded success, not a failure.
+    await service.handle_release_requested(event)
+    assert calls[-1].event_type == "CreditReleased"
+
+
+# ── retry budget exhaustion (C2) ─────────────────────────────────────────────
+
+
+async def test_release_exhaustion_replays_the_recorded_success(session, published):
+    service, reservation_id = await _setup(session)
+    event = _release_event(reservation_id=reservation_id)
+    await service.handle_release_requested(event)
+    published.clear()
+
+    await service.report_release_retries_exhausted(event, RuntimeError("broker down"))
+
+    assert [reply.event_type for reply in published] == ["CreditReleased"]
+
+
+async def test_release_exhaustion_reports_failure_when_nothing_was_recorded(session, published):
+    service, reservation_id = await _setup(session)
+    event = _release_event(reservation_id=reservation_id)
+
+    await service.report_release_retries_exhausted(event, RuntimeError("database down"))
+
+    reply = published[0]
+    assert reply.event_type == "CreditReleaseFailed"
+    assert reply.reason.startswith("Retry limit exceeded")
+    # Review C1: the reply is a valid strict model (timestamp included).
+    CreditReleaseResult.model_validate_json(reply.model_dump_json())
+    requester = await service.get_balances("requester")
+    assert requester.reserved_balance == 40
+
+
+async def test_update_exhaustion_replays_the_recorded_result(session, published):
+    service, reservation_id = await _setup(session)
+    event = _update_event(reservation_id=reservation_id, reward=70)
+    await service.handle_update_requested(event)
+    published.clear()
+
+    await service.report_amend_retries_exhausted(event, RuntimeError("broker down"))
+
+    reply = published[0]
+    assert reply.event_type == "CreditAmended"
+    assert reply.amount == 70
+
+
+async def test_update_exhaustion_reports_failure_when_nothing_was_recorded(session, published):
+    service, reservation_id = await _setup(session)
+    event = _update_event(reservation_id=reservation_id, reward=70)
+
+    await service.report_amend_retries_exhausted(event, RuntimeError("database down"))
+
+    reply = published[0]
+    assert reply.event_type == "CreditAmendRejected"
+    assert reply.amount == 70
+    assert reply.reason.startswith("Retry limit exceeded")
+    # Review C1: the reply is a valid strict model (timestamp included).
+    CreditAmendResult.model_validate_json(reply.model_dump_json())
