@@ -3,6 +3,12 @@
 
 from app.repositories.account_repo import AccountRepository
 from app.repositories.reservation_repo import ReservationRepository
+from app.repositories.task_result_repo import TaskResultRepository
 from app.repositories.transaction_repo import TransactionRepository
 
-__all__ = ["AccountRepository", "ReservationRepository", "TransactionRepository"]
+__all__ = [
+    "AccountRepository",
+    "ReservationRepository",
+    "TaskResultRepository",
+    "TransactionRepository",
+]

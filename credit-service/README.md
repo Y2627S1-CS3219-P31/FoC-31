@@ -43,8 +43,9 @@ app/
 │   ├── credit_service.py # all credit business logic
 │   ├── publisher.py      # publishes reservation events (best-effort)
 │   └── consumer.py       # consumes order + user-registered events
-├── models/               # CreditAccount, CreditReservation, CreditTransaction
-├── schemas/              # Pydantic DTOs
+├── models/               # CreditAccount, CreditReservation, CreditTransaction,
+│                         # CreditTaskResult (task-id idempotency)
+├── schemas/              # Pydantic DTOs + interop event copies
 └── repositories/         # persistence (row-locking reads)
 ```
 
@@ -79,13 +80,29 @@ Consumes (idempotent redelivery handling):
 | -------- | ---- | ------------------- | ------ |
 | `foc.user.events` | fanout | `UserRegistered` | provision account with initial allocation (F1.1) |
 | `foc.order.events` | topic | `OrderCompleted` | transfer to courier (F3.2), idempotent (F3.2.1) |
-| `foc.order.events` | topic | `OrderCancelled` | release (F4.1.1) |
-| `foc.order.events` | topic | `OrderExpired` | release (F4.2.1) |
 | `foc.order.events` | topic | `CourierWithdrawn` | **no-op** — credits stay reserved (F4.1.2) |
+| `foc.order.events` | topic | `OrderExpired` | release (F4.2.1); legacy event, no reply |
+| `foc.order.events` | topic | `OrderDeletionRequested` | release + reply `CreditReleased` / `CreditReleaseFailed` (F4.1.1) |
+| `foc.order.events` | topic | `OrderCancellationRequested` | release + reply `CreditReleased` / `CreditReleaseFailed` (F4.1.1) |
+| `foc.order.events` | topic | `OrderUpdateRequested` | amend to the new reward + reply `CreditAmended` / `CreditAmendRejected` (F2.3) |
 
 Publishes to `foc.credit.events` (topic, routing key = event type):
-`CreditReservationAccepted` (F2.1.4) and `CreditReservationRejected` (F2.1.5).
-Publishing is best-effort: it never rolls back the committed reservation.
+
+- `CreditReservationAccepted` (F2.1.4) / `CreditReservationRejected` (F2.1.5) —
+  best-effort: a publish failure never rolls back the committed reservation.
+- `CreditReleased` / `CreditReleaseFailed` and `CreditAmended` /
+  `CreditAmendRejected` — the definitive answer to an Order Service task. The
+  publish is **not** best-effort: a failure makes the consumer retry, so the
+  saga always receives exactly one answer per `task_id`.
+
+Task requests are idempotent by `task_id` (recorded in `credit_task_results`):
+redelivery republishes the stored outcome instead of applying the release or
+amendment twice. Transient failures are retried by republishing the message
+with an incremented `x-retry-count` header; after `EVENT_RETRY_LIMIT` attempts
+a definitive failure reply is published instead of looping forever. The
+transport schemas for these request/reply events are currently duplicated in
+`app/schemas/interop.py` and will move to `shared/` once the Order Service
+lands them.
 
 ## Invariant notes
 
