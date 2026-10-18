@@ -41,9 +41,11 @@ from app.services.errors import (
     OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
+    OrderPickupError,
     OrderRetrievalError,
     OrderStateConflictError,
     OrderUpdatePendingError,
+    OrderWithdrawalError,
 )
 from foc_shared.errors import ErrorEnvelope
 
@@ -68,6 +70,16 @@ ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "order_delivery_failed",
         "The order could not be marked as delivered because the database operation failed.",
+    ),
+    OrderPickupError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_pickup_failed",
+        "The order could not be marked as picked up because the database operation failed.",
+    ),
+    OrderWithdrawalError: ErrorMapping(
+        HTTPStatus.INTERNAL_SERVER_ERROR,
+        "order_withdrawal_failed",
+        "The courier withdrawal could not be saved because the database operation failed.",
     ),
     OrderApprovalError: ErrorMapping(
         HTTPStatus.INTERNAL_SERVER_ERROR,

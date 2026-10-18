@@ -10,6 +10,7 @@ from app.api.error_handlers import register_exception_handlers
 from app.api.routes import health, orders
 from app.db import engine, init_db
 from app.services.approval_consumer import run_approval_consumer
+from app.services.auto_approval_worker import run_auto_approval_sweeper
 from app.services.client_manager import (
     _start_remote_clients,
     close_remote_clients,
@@ -29,6 +30,7 @@ async def lifespan(_: FastAPI):
     approval_consumer_task = asyncio.create_task(run_approval_consumer())
     event_worker_task = asyncio.create_task(run_event_worker())
     expiry_sweeper_task = asyncio.create_task(run_expiry_sweeper())
+    auto_approval_task = asyncio.create_task(run_auto_approval_sweeper())
     try:
         yield
     finally:
@@ -37,6 +39,7 @@ async def lifespan(_: FastAPI):
         approval_consumer_task.cancel()
         event_worker_task.cancel()
         expiry_sweeper_task.cancel()
+        auto_approval_task.cancel()
         with suppress(asyncio.CancelledError):
             await release_consumer_task
         with suppress(asyncio.CancelledError):
@@ -47,6 +50,8 @@ async def lifespan(_: FastAPI):
             await event_worker_task
         with suppress(asyncio.CancelledError):
             await expiry_sweeper_task
+        with suppress(asyncio.CancelledError):
+            await auto_approval_task
         await close_remote_clients()
         await engine.dispose()
 

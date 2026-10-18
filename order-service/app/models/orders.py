@@ -58,6 +58,13 @@ class OrderTable(Base):
             postgresql_where=text("status = 'OPEN'"),
             sqlite_where=text("status = 'OPEN'"),
         ),
+        Index(
+            "ix_orders_awaiting_approval_at",
+            "awaiting_approval_at",
+            "order_id",
+            postgresql_where=text("status = 'AWAITING_APPROVAL'"),
+            sqlite_where=text("status = 'AWAITING_APPROVAL'"),
+        ),
     )
 
     order_id: Mapped[str] = mapped_column(
@@ -105,6 +112,10 @@ class OrderTable(Base):
     status: Mapped[OrderStatus] = mapped_column(
         SqlEnum(OrderStatus, name="order_status"),
         nullable=False,
+    )
+
+    awaiting_approval_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(

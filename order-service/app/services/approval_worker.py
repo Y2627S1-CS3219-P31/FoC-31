@@ -38,7 +38,7 @@ async def _record_order_approval_failed(
 
 
 async def process_transfer_result(session: AsyncSession, event: CreditTransferResult) -> bool:
-    """Apply a credit-transfer fact to its matching pending approval."""
+    """Apply a credit-transfer fact without reversing timed approvals."""
     async with session.begin():
         task = await approval_tasks.get_task_for_update(session, event.task_id)
         if task is None or task.status != PENDING:
@@ -51,6 +51,20 @@ async def process_transfer_result(session: AsyncSession, event: CreditTransferRe
         )
         if order is None:
             await _record_order_approval_failed(session, task, "The order no longer exists.")
+            return True
+        if order.status == OrderStatus.COMPLETED:
+            # Timed approval is final even if its credit transfer later fails.
+            if (
+                order.reservation_id != task.reservation_id
+                or order.requester_id != task.requester_id
+                or order.courier_id != task.courier_id
+            ):
+                _record_failure(task, "The completed order no longer matches the transfer.")
+            elif event.event_type == "CreditTransferFailed":
+                _record_failure(task, event.reason or "Credit Service rejected the transfer.")
+            else:
+                task.status = COMPLETED
+                task.last_error = None
             return True
         if (
             order.reservation_id != task.reservation_id

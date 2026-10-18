@@ -59,6 +59,7 @@ async def test_delivery_transitions_order_and_records_event(delivery):
         "courier-1",
     )
     assert event.timestamp.tzinfo == UTC
+    assert delivery.order.awaiting_approval_at == event.timestamp
 
 
 async def test_delivery_requires_existing_order(delivery):

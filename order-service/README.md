@@ -24,7 +24,24 @@ and expiry (backlog: Order Service; project M4).
 ## Events
 
 Publishes order-lifecycle events to RabbitMQ (`app/services/events.py`) using
-the shared schemas in `foc_shared.events`. Consumed by Credit + Notification.
+the shared schemas in `foc_shared.events` and Order-owned event schemas.
+Withdrawal publishes the shared `CourierWithdrawn` fact, which matches the
+existing Credit Service binding. Credit keeps the reservation held.
+
+## Courier pickup and withdrawal
+
+`POST /orders/{order_id}/pickup` requires the assigned courier and moves an
+`ACCEPTED` order to `PICKED_UP`. `POST /orders/{order_id}/withdraw` requires the
+assigned courier plus an `Idempotency-Key` header of 1–128 characters and moves
+an `ACCEPTED` order back to `OPEN`. Both actions lock the order row, reject a
+pending terminal action, and commit their lifecycle fact to the outbox with the
+state change. Withdrawal leaves the credit reservation unchanged.
+
+Successful withdrawal requests are saved in `order_requests`. Retrying with the
+same key, order, and courier returns the original response without another
+state change or event, even if the order has since been accepted again. Reusing
+the key for a different request returns a conflict. The outbox worker retries
+broker publication.
 
 ## Layout
 
@@ -165,7 +182,8 @@ F2.4.1).
 moves it from `PICKED_UP` to `AWAITING_APPROVAL`. It accepts gateway-injected
 `client` and `admin` roles, but the caller's `X-User-Id` must match the
 assigned courier. The order update and `OrderDelivered` outbox record commit
-in one transaction; the event worker publishes the event after commit. The
+in one transaction with `awaiting_approval_at`, which starts the 24-hour
+approval clock. The event worker publishes the event after commit. The
 endpoint returns the updated `OrderResponse` and makes no external service
 calls.
 
@@ -183,6 +201,21 @@ Each result is correlated to its pending task and applied in one transaction
 with the resulting `OrderApproved` or `OrderApprovalFailed` outbox event.
 Failed transfers leave the order awaiting approval. Run `alembic upgrade head`
 to create the approval-task table in an existing database.
+
+An auto-approval sweeper checks due orders every minute in batches of 100. It
+locks each order and commits `COMPLETED` with an `OrderApproved` outbox event
+without waiting for Credit. If no transfer task is pending, it also records a
+task and `OrderApprovalRequested` event; an existing pending task is reused to
+avoid a second transfer request. Credit results for these already completed
+orders update only the transfer task, even when the transfer fails. Requester
+approval still waits for a successful transfer before completing the order.
+This allows an automatically approved order to remain `COMPLETED` while its
+credit transfer needs separate recovery. The Credit Service must subscribe to
+`OrderApprovalRequested` and publish transfer outcomes for that integration.
+Apply the latest migration to add the indexed `awaiting_approval_at` column.
+Existing awaiting orders recover their delivery time from retained
+`OrderDelivered` outbox events where possible; otherwise their 24-hour clock
+starts at migration time.
 
 > Status: `POST /orders`, `GET /orders`, `GET /orders/assigned`,
 > `GET /orders/{order_id}`,

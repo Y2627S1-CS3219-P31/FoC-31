@@ -86,6 +86,39 @@ def test_accept_uses_gateway_identity(client, fake_session, monkeypatch):
     accept.assert_awaited_once_with(fake_session, "order-1", "courier-1")
 
 
+def test_withdraw_requires_and_forwards_idempotency_key(client, fake_session, monkeypatch):
+    order = _stored_order()
+    withdraw = AsyncMock(return_value=order)
+    monkeypatch.setattr(order_routes.order_service, "withdraw_order", withdraw)
+    headers = {"X-User-Id": "courier-1", "X-User-Role": "client"}
+
+    missing = client.post("/orders/order-1/withdraw", headers=headers)
+    assert missing.status_code == 422
+    withdraw.assert_not_awaited()
+
+    response = client.post(
+        "/orders/order-1/withdraw",
+        headers={**headers, "Idempotency-Key": "withdrawal-1"},
+    )
+    assert response.status_code == 200
+    withdraw.assert_awaited_once_with(fake_session, "order-1", "courier-1", "withdrawal-1")
+
+
+def test_pickup_uses_gateway_courier_identity(client, fake_session, monkeypatch):
+    order = _stored_order()
+    order.courier_id = "courier-1"
+    order.status = OrderStatus.PICKED_UP
+    pickup = AsyncMock(return_value=order)
+    monkeypatch.setattr(order_routes.order_service, "pickup_order", pickup)
+
+    response = client.post(
+        "/orders/order-1/pickup",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
+    )
+    assert response.status_code == 200
+    pickup.assert_awaited_once_with(fake_session, "order-1", "courier-1")
+
+
 @pytest.mark.parametrize("role", ["client", "admin"])
 def test_deliver_accepts_both_gateway_roles(client, fake_session, monkeypatch, role):
     order = _stored_order(requester_id="requester-1")

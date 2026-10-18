@@ -148,6 +148,24 @@ async def get_due_orders_for_expiry(session: AsyncSession, limit: int) -> list[O
     return list(result.all())
 
 
+async def get_due_orders_for_auto_approval(
+    session: AsyncSession, cutoff: datetime, limit: int
+) -> list[OrderTable]:
+    statement = (
+        select(OrderTable)
+        .where(
+            OrderTable.status == OrderStatus.AWAITING_APPROVAL,
+            OrderTable.awaiting_approval_at <= cutoff,
+            OrderTable.courier_id.is_not(None),
+        )
+        .order_by(OrderTable.awaiting_approval_at.asc(), OrderTable.order_id.asc())
+        .limit(limit)
+        .with_for_update(skip_locked=True)
+        .execution_options(populate_existing=True)
+    )
+    return list((await session.scalars(statement)).all())
+
+
 async def get_oldest_due_order(
     session: AsyncSession,
 ) -> tuple[str, datetime, datetime] | None:
@@ -200,6 +218,12 @@ async def count_ongoing_for_courier(session: AsyncSession, courier_id: str) -> i
 async def assign_courier(session: AsyncSession, order: OrderTable, courier_id: str) -> None:
     order.courier_id = courier_id
     order.status = OrderStatus.ACCEPTED
+    await session.flush()
+
+
+async def unassign_courier(session: AsyncSession, order: OrderTable) -> None:
+    order.courier_id = None
+    order.status = OrderStatus.OPEN
     await session.flush()
 
 

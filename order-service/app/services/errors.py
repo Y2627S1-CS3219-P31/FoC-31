@@ -17,6 +17,18 @@ class OrderDeliveryError(OrderServiceError):
         self.order_id = order_id
 
 
+class OrderPickupError(OrderServiceError):
+    def __init__(self, order_id: str) -> None:
+        super().__init__(f"Failed to mark order '{order_id}' as picked up.")
+        self.order_id = order_id
+
+
+class OrderWithdrawalError(OrderServiceError):
+    def __init__(self, order_id: str) -> None:
+        super().__init__(f"Failed to withdraw from order '{order_id}'.")
+        self.order_id = order_id
+
+
 class OrderApprovalError(OrderServiceError):
     def __init__(self, order_id: str) -> None:
         super().__init__(f"Failed to start approval of order '{order_id}'.")

@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict
 
 
 class OrderApprovalRequestedEvent(BaseModel):
-    """Fact that Order Service has recorded a pending approval."""
+    """Fact that Order Service has recorded an approval transfer request."""
 
     model_config = ConfigDict(extra="forbid")
 

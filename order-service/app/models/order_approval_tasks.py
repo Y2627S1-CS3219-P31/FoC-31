@@ -15,7 +15,7 @@ FAILED = "failed"
 
 
 class OrderApprovalTask(Base):
-    """Order Service's local state for a pending requester approval."""
+    """Order Service's local state for approval and its credit transfer."""
 
     __tablename__ = "order_approval_tasks"
     __table_args__ = (

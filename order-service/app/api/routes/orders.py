@@ -38,6 +38,37 @@ async def accept_order(
     return await order_service.accept_order(session, order_id, courier_id)
 
 
+@router.post("/{order_id}/pickup", response_model=OrderResponse)
+async def pickup_order(
+    order_id: str,
+    courier_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    role: Annotated[str, Header(alias=HEADER_USER_ROLE)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrderResponse:
+    """Marks an accepted order as picked up by its courier."""
+
+    if role != Role.CLIENT.value:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only clients can pick up orders.")
+    return await order_service.pickup_order(session, order_id, courier_id)
+
+
+@router.post("/{order_id}/withdraw", response_model=OrderResponse)
+async def withdraw_order(
+    order_id: str,
+    courier_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    role: Annotated[str, Header(alias=HEADER_USER_ROLE)],
+    request_id: Annotated[
+        str, Header(alias="Idempotency-Key", min_length=1, max_length=128, pattern=r"\S")
+    ],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> OrderResponse:
+    """Reopens an accepted order while keeping its credit reservation."""
+
+    if role != Role.CLIENT.value:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Only clients can withdraw as couriers.")
+    return await order_service.withdraw_order(session, order_id, courier_id, request_id)
+
+
 @router.post("/{order_id}/deliver", response_model=OrderResponse)
 async def deliver_order(
     order_id: str,

@@ -153,3 +153,70 @@ with its reason and recording `OrderUpdateFailed` also commit atomically. The
 existing event worker validates and publishes both outcomes with broker
 confirmation and retry. Tests cover success, rejection, duplicate handling,
 parsing, and rollback of both the task result and outcome event.
+
+## 2026-10-18 — Courier withdrawal with durable request idempotency
+
+User request: add an Order Service request table, implement courier withdrawal
+with `OrderWithdrawn`, preserve the credit reservation, serialize withdrawal
+against pickup, and limit edits to Order Service and its AI log.
+
+Codex added `order_requests` with a globally unique request key and stored
+successful response, a migration, and an `Idempotency-Key` header on the
+withdrawal route. Withdrawal locks the request key and order row, verifies
+assignment and `ACCEPTED` state, reopens the order, clears the courier, and
+commits the result plus `OrderWithdrawn` outbox fact atomically. Replays return
+the saved result without a second event; conflicting key reuse fails. Pickup
+now uses the same order-row lock before `ACCEPTED` to `PICKED_UP`. Existing
+outbox publication handles retries. Credit and Notification consumers still
+bind to `CourierWithdrawn`; this rename requires consumer updates outside the
+permitted edit scope. Focused unit and API tests passed; optional PostgreSQL
+integration tests are skipped without a PostgreSQL URL.
+
+## 2026-10-18 — Use the shared courier-withdrawal event name
+
+User request: change the withdrawal fact from `OrderWithdrawn` to
+`CourierWithdrawn`. Codex switched the outbox event to the existing shared
+`OrderEvent` contract, removed the local `OrderWithdrawn` schema, and updated
+the withdrawal tests and README. The request table and local state transition
+are unchanged. The existing Credit Service binds to `CourierWithdrawn` and
+keeps the reservation held.
+
+## 2026-10-18 — Verify courier pickup requirements
+
+User request: implement assigned-courier pickup with an order-row lock,
+`ACCEPTED` state and pending-cancellation guards, an atomic `PICKED_UP`
+transition and `OrderPickedUp` outbox fact, and retried publication.
+
+Codex confirmed the existing pickup route and service already implement this
+flow. Added focused tests for cancelled, already-picked-up, pending-cancellation,
+and missing orders, including checks that rejected pickups produce no event.
+The focused Order Service tests and Ruff checks passed.
+
+## 2026-10-18 — Auto-approve orders after 24 hours awaiting approval
+
+User request: share the existing approval-task creation logic between requester
+approval and a scheduled 24-hour auto-approval workflow, without calling the
+HTTP endpoint from inside Order Service.
+
+Codex added `awaiting_approval_at` to the order model and a migration with an
+index and conservative backfill. Delivery saves the timestamp with the status
+and `OrderDelivered` outbox fact. The new sweeper selects due orders with row
+locks, skips orders with previous approval tasks, and calls the same internal
+`start_approval` service function used by requester approval. Existing outbox
+publication and Credit transfer-result handling remain the single path to
+`COMPLETED` and `OrderApproved`. Focused tests cover due selection, deduplication,
+reuse by manual approval, and rollback on outbox failure.
+
+## 2026-10-18 — Complete timed approvals without waiting for Credit
+
+User request: make 24-hour auto-approval final in Order Service regardless of
+the Credit transfer result, publish `OrderApprovalRequested` and `OrderApproved`,
+and restore the requester approval flow as its own credit-confirmed workflow.
+
+Codex moved requester approval-task creation back into the requester service
+method. The sweeper now locks due orders and commits `COMPLETED` with an
+`OrderApproved` outbox fact; it also records `OrderApprovalRequested` when it
+starts a new transfer task. It reuses a pending requester task to avoid asking
+Credit to transfer the same reservation twice. Later Credit results update the
+task only for already completed orders and never undo timed approval. Existing
+auto-approval checks were updated to reflect the independent paths.

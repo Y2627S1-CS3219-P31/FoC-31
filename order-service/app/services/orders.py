@@ -14,12 +14,19 @@ from app.models.orders import OrderTable
 from app.repositories import order_approval_tasks as approval_tasks
 from app.repositories import order_event_outbox as event_outbox_repository
 from app.repositories import order_release_tasks as release_tasks
+from app.repositories import order_requests as request_repository
 from app.repositories import order_update_tasks as update_tasks
 from app.repositories import orders as order_repository
 from app.schemas.order_action_events import OrderActionEvent, OrderActionEventType
 from app.schemas.order_approval_events import OrderApprovalRequestedEvent
 from app.schemas.order_update_events import OrderUpdateRequestedEvent
-from app.schemas.orders import OrderCreate, OrderSortField, OrderUpdate, SortDirection
+from app.schemas.orders import (
+    OrderCreate,
+    OrderResponse,
+    OrderSortField,
+    OrderUpdate,
+    SortDirection,
+)
 from app.services.client_manager import get_credit_client, get_supplier_client
 from app.services.clients.supplier.error import SupplierInactiveError
 from app.services.clients.supplier.get_supplier import get_supplier
@@ -33,8 +40,10 @@ from app.services.errors import (
     OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
+    OrderPickupError,
     OrderRetrievalError,
     OrderStateConflictError,
+    OrderWithdrawalError,
 )
 from app.services.lifecycle import OrderStatus, assert_transition
 from foc_shared.events import OrderEvent, OrderEventType
@@ -100,6 +109,92 @@ async def accept_order(session: AsyncSession, order_id: str, courier_id: str) ->
         raise OrderAcceptanceError(order_id) from exc
 
 
+async def pickup_order(session: AsyncSession, order_id: str, courier_id: str) -> OrderTable:
+    try:
+        async with session.begin():
+            order = await order_repository.get_order_for_update(session, order_id)
+            if order is None:
+                raise OrderNotFoundError(order_id)
+            if order.courier_id != courier_id:
+                raise OrderAccessDeniedError(order_id)
+            if order.status != OrderStatus.ACCEPTED:
+                raise OrderStateConflictError(order_id, "Only an accepted order can be picked up.")
+            if await release_tasks.get_for_order(session, order_id):
+                raise OrderStateConflictError(order_id, "A terminal action is pending.")
+
+            assert_transition(OrderStatus(order.status), OrderStatus.PICKED_UP)
+            await order_repository.set_status(session, order, OrderStatus.PICKED_UP)
+            await event_outbox_repository.create_event(
+                session,
+                OrderEvent(
+                    event_type=OrderEventType.ORDER_PICKED_UP,
+                    order_id=order.order_id,
+                    requester_id=order.requester_id,
+                    courier_id=courier_id,
+                    timestamp=datetime.now(UTC),
+                ),
+            )
+        return order
+    except SQLAlchemyError as exc:
+        raise OrderPickupError(order_id) from exc
+
+
+async def withdraw_order(
+    session: AsyncSession, order_id: str, courier_id: str, request_id: str
+) -> OrderResponse:
+    try:
+        async with session.begin():
+            await request_repository.lock_request_id(session, request_id)
+            existing = await request_repository.get_request(session, request_id)
+            if existing is not None:
+                if (
+                    existing.action != "withdraw"
+                    or existing.order_id != order_id
+                    or existing.actor_id != courier_id
+                ):
+                    raise OrderStateConflictError(
+                        order_id, "Idempotency key was used for another request."
+                    )
+                return OrderResponse.model_validate(existing.response)
+
+            order = await order_repository.get_order_for_update(session, order_id)
+            if order is None:
+                raise OrderNotFoundError(order_id)
+            if order.courier_id != courier_id:
+                raise OrderAccessDeniedError(order_id)
+            if order.status != OrderStatus.ACCEPTED:
+                raise OrderStateConflictError(
+                    order_id, "Only an accepted order can be withdrawn from."
+                )
+            if await release_tasks.get_for_order(session, order_id):
+                raise OrderStateConflictError(order_id, "A terminal action is pending.")
+
+            assert_transition(OrderStatus(order.status), OrderStatus.OPEN)
+            await order_repository.unassign_courier(session, order)
+            response = OrderResponse.model_validate(order)
+            await request_repository.save_request(
+                session,
+                request_id=request_id,
+                action="withdraw",
+                order_id=order_id,
+                actor_id=courier_id,
+                response=response.model_dump(mode="json"),
+            )
+            await event_outbox_repository.create_event(
+                session,
+                OrderEvent(
+                    event_type=OrderEventType.COURIER_WITHDRAWN,
+                    order_id=order_id,
+                    requester_id=order.requester_id,
+                    courier_id=courier_id,
+                    timestamp=datetime.now(UTC),
+                ),
+            )
+        return response
+    except SQLAlchemyError as exc:
+        raise OrderWithdrawalError(order_id) from exc
+
+
 async def deliver_order(session: AsyncSession, order_id: str, courier_id: str) -> OrderTable:
     try:
         async with session.begin():
@@ -116,6 +211,8 @@ async def deliver_order(session: AsyncSession, order_id: str, courier_id: str) -
                 )
 
             assert_transition(current_status, OrderStatus.AWAITING_APPROVAL)
+            delivered_at = datetime.now(UTC)
+            order.awaiting_approval_at = delivered_at
             await order_repository.set_status(session, order, OrderStatus.AWAITING_APPROVAL)
             await event_outbox_repository.create_event(
                 session,
@@ -124,7 +221,7 @@ async def deliver_order(session: AsyncSession, order_id: str, courier_id: str) -
                     order_id=order.order_id,
                     requester_id=order.requester_id,
                     courier_id=order.courier_id,
-                    timestamp=datetime.now(UTC),
+                    timestamp=delivered_at,
                 ),
             )
         return order
