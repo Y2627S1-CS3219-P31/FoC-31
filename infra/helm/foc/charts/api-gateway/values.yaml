@@ -1,0 +1,41 @@
+namespace: foc-gateway
+replicas: 1
+port: 8000
+healthPath: /health
+
+image:
+  repository: foc/api-gateway
+  tag: dev
+
+env:
+  LOG_LEVEL: info
+  USER_SERVICE_URL: http://user-service.foc-user.svc.cluster.local:8000
+  SUPPLIER_SERVICE_URL: http://supplier-service.foc-supplier.svc.cluster.local:8000
+  ORDER_SERVICE_URL: http://order-service.foc-order.svc.cluster.local:8000
+  CREDIT_SERVICE_URL: http://credit-service.foc-credit.svc.cluster.local:8000
+  NOTIFICATION_SERVICE_URL: http://notification-service.foc-notification.svc.cluster.local:8000
+  CORS_ALLOWED_ORIGINS: http://foc.localhost
+
+secretEnv:
+  - name: JWT_SECRET
+    secret: gateway-secrets
+    key: JWT_SECRET
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+ingress:
+  enabled: true
+  host: foc.localhost
+  path: /api
+  pathType: Prefix
+  serviceName: api-gateway
+  servicePort: 8000
+  tls:
+    enabled: false
+    issuer: letsencrypt-prod

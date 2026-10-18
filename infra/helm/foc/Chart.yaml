@@ -27,3 +27,9 @@ dependencies:
   - name: rabbitmq
     version: 0.1.0
     repository: "file://charts/rabbitmq"
+  - name: api-gateway
+    version: 0.1.0
+    repository: "file://charts/api-gateway"
+  - name: frontend
+    version: 0.1.0
+    repository: "file://charts/frontend"

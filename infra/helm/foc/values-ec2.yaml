@@ -1,9 +1,37 @@
-# EC2 (k3s): images pulled from GHCR. Override tags at upgrade time.
+# EC2 (k3s): images from GHCR, TLS via cert-manager. The nip.io host and the
+# matching CORS/API origins depend on the runtime public IP; cluster-up.sh sets
+# them with --set-string at deploy (placeholders below).
 global:
   imageRegistry: ghcr.io/y2627s1-cs3219-p31
   imagePullPolicy: IfNotPresent
 
 supplier-service:
-  image:
-    repository: supplier-service
-    tag: latest
+  image: { repository: supplier-service, tag: latest }
+user-service:
+  image: { repository: user-service, tag: latest }
+credit-service:
+  image: { repository: credit-service, tag: latest }
+order-service:
+  image: { repository: order-service, tag: latest }
+notification-service:
+  image: { repository: notification-service, tag: latest }
+
+api-gateway:
+  image: { repository: api-gateway, tag: latest }
+  env:
+    CORS_ALLOWED_ORIGINS: https://REPLACE_ME.nip.io
+  ingress:
+    host: REPLACE_ME.nip.io
+    tls:
+      enabled: true
+      issuer: letsencrypt-prod
+
+frontend:
+  image: { repository: frontend, tag: latest }
+  env:
+    API_BASE_URL: https://REPLACE_ME.nip.io
+  ingress:
+    host: REPLACE_ME.nip.io
+    tls:
+      enabled: true
+      issuer: letsencrypt-prod

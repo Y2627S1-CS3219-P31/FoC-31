@@ -25,7 +25,7 @@ apply_secret() {
 }
 db_url() { echo "postgresql+asyncpg://${PG_USER}:$2@$1:5432/$3"; }
 
-for ns in foc-supplier foc-user foc-credit foc-order foc-notification foc-messaging; do require_ns "$ns"; done
+for ns in foc-supplier foc-user foc-credit foc-order foc-notification foc-messaging foc-gateway; do require_ns "$ns"; done
 
 # Shared across namespaces, so they must resolve to one value on every run.
 JWT_SECRET="${JWT_SECRET:-$(existing foc-user user-secrets JWT_SECRET)}"
@@ -72,6 +72,8 @@ apply_secret foc-notification notification-secrets \
   --from-literal=POSTGRES_PASSWORD="$NOTIF_PW" \
   --from-literal=DATABASE_URL="$(db_url notification-db "$NOTIF_PW" notification_db)"
 
-# foc-gateway (gateway-secrets: JWT_SECRET) is added in the gateway step.
+# foc-gateway shares the JWT secret with user-service (gateway validates, user issues).
+apply_secret foc-gateway gateway-secrets \
+  --from-literal=JWT_SECRET="$JWT_SECRET"
 
 echo "Secrets applied."
