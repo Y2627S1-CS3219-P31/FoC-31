@@ -1,5 +1,11 @@
 # Deployment
 
+## Cluster infrastructure (Kubernetes on EC2)
+
+![Campus Errand cluster infrastructure](cluster-infrastructure.png)
+
+Editable source: [`cluster-infrastructure.drawio`](cluster-infrastructure.drawio), also exported as [SVG](cluster-infrastructure.svg). The Helm charts and Terraform live in [`infra/`](../infra).
+
 ## Local (mandatory — project M7)
 
 The whole system runs locally via Docker Compose:
