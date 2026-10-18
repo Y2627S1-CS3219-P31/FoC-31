@@ -36,33 +36,5 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   }
 }
 
-# Write-only to this bucket; restores use an operator's admin credentials.
-resource "aws_iam_user" "backup" {
-  name = "${var.project}-backup"
-}
-
-resource "aws_iam_access_key" "backup" {
-  user = aws_iam_user.backup.name
-}
-
-resource "aws_iam_user_policy" "backup" {
-  name = "${var.project}-backup-s3-put"
-  user = aws_iam_user.backup.name
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "PutBackups"
-        Effect   = "Allow"
-        Action   = ["s3:PutObject"]
-        Resource = "${aws_s3_bucket.backups.arn}/*"
-      },
-      {
-        Sid      = "ListBucket"
-        Effect   = "Allow"
-        Action   = ["s3:ListBucket"]
-        Resource = aws_s3_bucket.backups.arn
-      }
-    ]
-  })
-}
+# S3 write access is granted to the EC2 instance role (Phase E); iam:CreateUser
+# is denied on this account, so there is no dedicated backup user.
