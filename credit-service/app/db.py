@@ -25,3 +25,22 @@ async def init_db() -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+
+def pool_stats() -> dict[str, int]:
+    """Current SQLAlchemy pool occupancy (saturation shows up here first)."""
+    pool = getattr(engine.sync_engine, "pool", None)
+    if pool is None:
+        return {"in_use": 0, "size": 0, "overflow": 0}
+    try:
+        return {
+            "in_use": pool.checkedout(),
+            "size": pool.size(),
+            # QueuePool keeps a signed overflow counter (negative while the pool
+            # is under-utilised); clamp it so the gauge reads as "extra
+            # connections in use", never negative.
+            "overflow": max(pool.overflow(), 0),
+        }
+    except (AttributeError, NotImplementedError):
+        # Non-pooled/static pool implementations do not expose these counters.
+        return {"in_use": 0, "size": 0, "overflow": 0}

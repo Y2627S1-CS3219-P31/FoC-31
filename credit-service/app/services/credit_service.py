@@ -39,6 +39,7 @@ from app.models.account import CreditAccount
 from app.models.reservation import CreditReservation, ReservationStatus
 from app.models.task_result import CreditTaskResult, TaskResultKind, TaskResultOutcome
 from app.models.transaction import CreditTransaction, TransactionKind
+from app.observability import metrics
 from app.repositories.account_repo import AccountRepository
 from app.repositories.reservation_repo import ReservationRepository
 from app.repositories.task_result_repo import TaskResultRepository
@@ -115,6 +116,10 @@ class CreditService:
             raise NotFoundError(f"No credit account exists for user '{user_id}'.")
         return account
 
+    async def balance_totals(self) -> dict[str, int]:
+        """Aggregate balances across all accounts (observability summary)."""
+        return await self._accounts.totals()
+
     # ── F2: reservations ─────────────────────────────────────────────────────
 
     async def reserve(self, *, user_id: str, order_id: str, amount: int) -> CreditReservation:
@@ -130,11 +135,14 @@ class CreditService:
             # Idempotent retry: order-service may re-attempt a reserve call
             # after a timeout. An identical reservation succeeds as-is.
             if existing.user_id == user_id and existing.amount == amount:
+                metrics.record_duplicate_suppressed("reservation")
                 return existing
+            metrics.record_reservation("conflict")
             raise ConflictError(f"Credits for order '{order_id}' are already reserved.")
 
         if amount > account.available_balance:
             available = account.available_balance
+            metrics.record_reservation("rejected_insufficient_credits")
             # Release the row lock before doing network I/O.
             await self._session.rollback()
             await publisher.publish_reservation_event(
@@ -179,9 +187,13 @@ class CreditService:
             await self._session.rollback()
             existing = await self._reservations.get_by_order_id(order_id)
             if existing is not None and existing.user_id == user_id and existing.amount == amount:
+                metrics.record_duplicate_suppressed("reservation")
+                metrics.record_reservation("accepted")
                 return existing
+            metrics.record_reservation("conflict")
             raise ConflictError(f"Credits for order '{order_id}' are already reserved.") from None
         await self._session.refresh(reservation)
+        metrics.record_reservation("accepted")
         await publisher.publish_reservation_event(
             ReservationEvent(
                 event_type=CreditEventType.CREDIT_RESERVATION_ACCEPTED,
@@ -217,6 +229,7 @@ class CreditService:
         """Amend the reservation; ``commit=False`` leaves the transaction open so
         the caller can record the task outcome in the same transaction."""
         if reservation.status != ReservationStatus.RESERVED.value:
+            metrics.record_amendment("conflict")
             raise ConflictError(
                 f"Reservation '{reservation.id}' is {reservation.status} and cannot be amended."
             )
@@ -224,6 +237,7 @@ class CreditService:
         account = await self._accounts.get_for_update(reservation.user_id)
         delta = new_amount - reservation.amount
         if delta > account.available_balance:
+            metrics.record_amendment("rejected_insufficient_credits")
             raise InsufficientCreditsError(
                 f"User '{reservation.user_id}' has only {account.available_balance} available "
                 f"credit(s); cannot increase the reservation by {delta}."
@@ -245,6 +259,7 @@ class CreditService:
         if commit:
             await self._session.commit()
             await self._session.refresh(reservation)
+        metrics.record_amendment("unchanged" if delta == 0 else "amended")
         return reservation
 
     # ── F3: transfers ────────────────────────────────────────────────────────
@@ -275,8 +290,11 @@ class CreditService:
         # Idempotent (F3.2.1): a repeated order-completion leaves the already
         # transferred reservation and all balances untouched.
         if reservation.status == ReservationStatus.TRANSFERRED.value:
+            metrics.record_duplicate_suppressed("transfer")
+            metrics.record_transfer("already_transferred")
             return reservation
         if reservation.status != ReservationStatus.RESERVED.value:
+            metrics.record_transfer("conflict")
             raise ConflictError(
                 f"Reservation '{reservation.id}' is {reservation.status} and cannot be transferred."
             )
@@ -290,6 +308,7 @@ class CreditService:
 
         courier = locked.get(courier_id)
         if courier is None:
+            metrics.record_transfer("rejected_no_courier_account")
             raise NotFoundError(f"No credit account exists for courier '{courier_id}'.")
         requester = locked[reservation.user_id]
 
@@ -320,6 +339,7 @@ class CreditService:
         )
         await self._session.commit()
         await self._session.refresh(reservation)
+        metrics.record_transfer("ok")
         return reservation
 
     # ── F4: releases ─────────────────────────────────────────────────────────
@@ -353,8 +373,11 @@ class CreditService:
         """Release the reservation; ``commit=False`` leaves the transaction open
         so the caller can record the task outcome in the same transaction."""
         if reservation.status == ReservationStatus.RELEASED.value:
+            metrics.record_duplicate_suppressed("release")
+            metrics.record_release("already_released")
             return reservation  # idempotent
         if reservation.status == ReservationStatus.TRANSFERRED.value:
+            metrics.record_release("conflict")
             raise ConflictError(
                 f"Reservation '{reservation.id}' is already transferred and cannot be released."
             )
@@ -377,6 +400,7 @@ class CreditService:
         if commit:
             await self._session.commit()
             await self._session.refresh(reservation)
+        metrics.record_release("ok")
         return reservation
 
     # ── Event handling ───────────────────────────────────────────────────────
@@ -410,6 +434,7 @@ class CreditService:
         saga always receives exactly one answer per ``task_id``."""
         recorded = await self._task_results.get(event.task_id)
         if recorded is not None:
+            metrics.record_duplicate_suppressed("release_task")
             await self._publish_release_outcome(recorded)
             return
 
@@ -438,6 +463,7 @@ class CreditService:
         ``CreditAmended`` or ``CreditAmendRejected``."""
         recorded = await self._task_results.get(event.task_id)
         if recorded is not None:
+            metrics.record_duplicate_suppressed("amend_task")
             await self._publish_amend_outcome(recorded)
             return
 
@@ -475,6 +501,7 @@ class CreditService:
         if recorded is not None:
             await self._publish_release_outcome(recorded)
             return
+        metrics.record_saga_retries_exhausted("release")
         await publisher.publish_credit_event(
             CreditReleaseResult(
                 event_type="CreditReleaseFailed",
@@ -492,8 +519,10 @@ class CreditService:
         """Amend counterpart of :meth:`report_release_retries_exhausted`."""
         recorded = await self._task_results.get(event.task_id)
         if recorded is not None:
+            metrics.record_duplicate_suppressed("amend_task")
             await self._publish_amend_outcome(recorded)
             return
+        metrics.record_saga_retries_exhausted("amend")
         await publisher.publish_credit_event(
             CreditAmendResult(
                 event_type="CreditAmendRejected",
@@ -540,6 +569,7 @@ class CreditService:
                 reason=reason,
             )
         )
+        metrics.record_saga_task("release", outcome.value)
         await self._publish_release_outcome(result)
 
     async def _record_amend_outcome(
@@ -560,6 +590,7 @@ class CreditService:
                 reason=reason,
             )
         )
+        metrics.record_saga_task("amend", outcome.value)
         await self._publish_amend_outcome(result)
 
     async def _save_task_result(self, result: CreditTaskResult) -> CreditTaskResult:
@@ -575,6 +606,7 @@ class CreditService:
             existing = await self._task_results.get(result.task_id)
             if existing is None:
                 raise
+            metrics.record_duplicate_suppressed("task_result")
             return existing
         return result
 

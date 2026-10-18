@@ -1,0 +1,13 @@
+# AI-influenced: implemented with AI assistance; see ai/usage-log.md.
+apiVersion: 1
+
+providers:
+  - name: foc-credit-service
+    orgId: 1
+    folder: FoC
+    type: file
+    disableDeletion: false
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

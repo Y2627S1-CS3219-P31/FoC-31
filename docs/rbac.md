@@ -61,6 +61,9 @@ reached). `403` = authenticated but wrong role (rejected in the service).
 | `POST /api/orders` *(planned, PR #5)* | 401 | allowed | allowed | order-service (planned) |
 | `POST /api/orders/{id}/accept` *(planned, PR #5)* | 401 | allowed (courier) | allowed | order-service (planned) |
 | `POST /api/orders/{id}/cancel` *(planned, PR #5)* | 401 | allowed (own) | allowed | order-service (planned) |
+| `GET /api/credits/{user_id}/balance` · `/transactions` | 401 | allowed (own only) | allowed | `credits.py::_require_self_or_admin` |
+| `POST /api/credits/reservations` (`/amend`, `/transfer`, `/release`) | 401 | allowed (own only) | allowed | `credits.py` + `CreditService._require_owner_or_admin` |
+| `GET /api/credits/observability/summary` (N2H) | 401 | 403 | allowed | `deps.py::require_admin` |
 
 ¹ Admin-only, with additional business guards that return `400` (not `403`):
 an admin cannot suspend or demote **itself**, an admin account cannot be

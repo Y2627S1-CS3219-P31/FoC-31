@@ -1,0 +1,74 @@
+# AI-influenced: implemented with AI assistance; see ai/usage-log.md.
+# Alert rules for credit-service. Prometheus evaluates them; Grafana (or
+# Alertmanager, later) consumes `ALERTS` from the same datasource.
+#
+# The three stories in docs/observability.md map onto these rules:
+#   credit consumer silently stalled / event publishing broken / latency or
+#   error budget burning.
+groups:
+  - name: credit-service-availability
+    rules:
+      - alert: CreditHttpServerErrors
+        expr: |
+          sum(rate(credit_http_requests_total{status=~"5.."}[5m]))
+            /
+          sum(rate(credit_http_requests_total[5m])) > 0.01
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "credit-service 5xx rate above 1% for 5 minutes"
+          runbook: "docs/observability.md#story-3"
+
+      - alert: CreditRouteLatencyHigh
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, route) (rate(credit_http_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 10m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "credit-service p95 latency above 500ms on {{ $labels.route }}"
+          runbook: "docs/observability.md#story-2"
+
+      - alert: CreditDbPoolSaturated
+        expr: credit_db_pool_in_use >= credit_db_pool_size
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "credit-service DB pool fully checked out"
+          runbook: "docs/observability.md#story-2"
+
+  - name: credit-service-async
+    rules:
+      - alert: CreditConsumerStalled
+        # A connected-but-idle consumer is the classic silent failure: the
+        # broker thinks it has a consumer, the application consumes nothing.
+        expr: time() - max(credit_consumer_last_message_unixtime) > 300
+        for: 5m
+        labels:
+          severity: page
+        annotations:
+          summary: "credit-service consumer has handled no message for 5 minutes"
+          runbook: "docs/observability.md#story-1"
+
+      - alert: CreditEventPublishFailing
+        expr: increase(credit_event_publish_total{result="failed"}[5m]) > 0
+        for: 1m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "credit-service cannot publish to foc.credit.events"
+          runbook: "docs/observability.md#story-1"
+
+      - alert: CreditSagaRetriesExhausted
+        expr: increase(credit_saga_retries_exhausted_total[10m]) > 0
+        for: 1m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "an Order Service task gave up after the retry budget"
+          runbook: "docs/observability.md#story-3"

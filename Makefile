@@ -76,6 +76,21 @@ config: env ## Validate the compose file
 seed: ## Run the supplier data seeder against the running stack
 	$(COMPOSE) exec supplier-service python -c "import asyncio; from app.services.seeder import seed_suppliers; asyncio.run(seed_suppliers())"
 
+# ---- Observability (N2H: metrics -> analytics) --------------
+.PHONY: obs-up
+obs-up: env ## Start Prometheus + Grafana (opt-in observability profile)
+	$(COMPOSE) --profile observability up -d prometheus grafana
+	@echo "Grafana    http://localhost:$${GRAFANA_PORT:-3000}  (dashboard: Credit Service - Observability)"
+	@echo "Prometheus http://localhost:$${PROMETHEUS_PORT:-9090}"
+
+.PHONY: obs-down
+obs-down: ## Stop the observability stack (keeps collected data)
+	$(COMPOSE) --profile observability stop prometheus grafana
+
+.PHONY: obs-load
+obs-load: ## Generate credit-service traffic (needs FOC_TOKEN and FOC_USER_ID)
+	@bash scripts/load-credit.sh
+
 .PHONY: clean
 clean: ## Stop stack + remove volumes and local venvs
 	$(COMPOSE) down -v
