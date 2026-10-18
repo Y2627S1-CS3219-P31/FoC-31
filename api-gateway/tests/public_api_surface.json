@@ -1,0 +1,16 @@
+{
+  "proxied_prefixes": [
+    "/api/credits",
+    "/api/notifications",
+    "/api/orders",
+    "/api/suppliers",
+    "/api/users"
+  ],
+  "unauthenticated_prefixes": [
+    "/api/users/login",
+    "/api/users/otp/resend",
+    "/api/users/otp/verify",
+    "/api/users/register",
+    "/health"
+  ]
+}
