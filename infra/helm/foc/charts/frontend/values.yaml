@@ -1,0 +1,30 @@
+namespace: foc-frontend
+replicas: 1
+port: 80
+healthPath: /healthz
+
+image:
+  repository: foc/frontend
+  tag: dev
+
+env:
+  API_BASE_URL: http://foc.localhost
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+ingress:
+  enabled: true
+  host: foc.localhost
+  path: /
+  pathType: Prefix
+  serviceName: frontend
+  servicePort: 80
+  tls:
+    enabled: false
+    issuer: letsencrypt-prod

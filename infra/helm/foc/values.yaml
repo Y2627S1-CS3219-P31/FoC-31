@@ -9,3 +9,5 @@ namespaces:
   - foc-order
   - foc-notification
   - foc-messaging
+  - foc-gateway
+  - foc-frontend
