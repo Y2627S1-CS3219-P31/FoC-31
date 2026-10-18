@@ -8,7 +8,9 @@ metadata:
     app.kubernetes.io/name: {{ .Chart.Name }}
     {{- include "foc-lib.labels" . | nindent 4 }}
 spec:
+  {{- if not (and .Values.hpa .Values.hpa.enabled) }}
   replicas: {{ .Values.replicas | default 1 }}
+  {{- end }}
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ .Chart.Name }}

@@ -39,3 +39,9 @@ ingress:
   tls:
     enabled: false
     issuer: letsencrypt-prod
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 60
