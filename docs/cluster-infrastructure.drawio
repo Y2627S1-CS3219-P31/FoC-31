@@ -1,0 +1,112 @@
+<mxfile host="app.diagrams.net">
+  <diagram name="Cluster Infrastructure" id="cluster-infra">
+    <mxGraphModel dx="1200" dy="800" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" math="0" shadow="0" adaptiveColors="auto">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="Campus Errand - Cluster Infrastructure (k3s on EC2)" style="text;html=1;fontSize=20;fontStyle=1;verticalAlign=middle;" vertex="1" parent="1">
+          <mxGeometry x="40" y="0" width="760" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="users" value="Users / Browser" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="40" y="60" width="140" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="admin" value="Admin&#10;(SSM Session Manager)" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="1">
+          <mxGeometry x="1080" y="60" width="170" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="region" value="AWS  ·  ap-southeast-1" style="swimlane;startSize=30;html=1;fontSize=16;fontStyle=1;fillColor=#f5f5f5;strokeColor=#999999;verticalAlign=top;" vertex="1" parent="1">
+          <mxGeometry x="40" y="140" width="1210" height="700" as="geometry"/>
+        </mxCell>
+        <mxCell id="vpc" value="VPC 10.42.0.0/16  ·  public subnet  ·  SG 80/443" style="swimlane;startSize=28;html=1;fontSize=16;fontStyle=1;fillColor=#e8f4f8;strokeColor=#6c8ebf;verticalAlign=top;" vertex="1" parent="region">
+          <mxGeometry x="20" y="40" width="1070" height="470" as="geometry"/>
+        </mxCell>
+        <mxCell id="ec2" value="EC2 t3.large  ·  k3s (namespace per service)" style="swimlane;startSize=28;html=1;fontSize=16;fontStyle=1;fillColor=#f5f5f5;strokeColor=#82b366;verticalAlign=top;" vertex="1" parent="vpc">
+          <mxGeometry x="20" y="40" width="1030" height="410" as="geometry"/>
+        </mxCell>
+        <mxCell id="traefik" value="Traefik Ingress (k3s)  ·  80/443  ·  nip.io TLS" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="ec2">
+          <mxGeometry x="20" y="40" width="990" height="40" as="geometry"/>
+        </mxCell>
+        <mxCell id="frontend" value="frontend&lt;br&gt;&lt;small&gt;foc-frontend · nginx&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="20" y="96" width="180" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="gw" value="api-gateway&lt;br&gt;&lt;small&gt;foc-gateway · JWT · HPA 1-4&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="220" y="96" width="260" height="56" as="geometry"/>
+        </mxCell>
+        <mxCell id="nsUser" value="user-service · HPA&lt;br&gt;&lt;small&gt;foc-user + user-db (PVC)&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="20" y="180" width="190" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="nsSup" value="supplier-service · HPA&lt;br&gt;&lt;small&gt;foc-supplier + supplier-db&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="220" y="180" width="190" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="nsCred" value="credit-service · HPA&lt;br&gt;&lt;small&gt;foc-credit + credit-db&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="420" y="180" width="190" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="nsOrder" value="order-service&lt;br&gt;&lt;small&gt;foc-order + order-db&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="620" y="180" width="185" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="nsNotif" value="notification-service&lt;br&gt;&lt;small&gt;foc-notification + notif-db&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="ec2">
+          <mxGeometry x="815" y="180" width="195" height="74" as="geometry"/>
+        </mxCell>
+        <mxCell id="rmq" value="RabbitMQ&lt;br&gt;&lt;small&gt;foc-messaging&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="ec2">
+          <mxGeometry x="20" y="310" width="590" height="52" as="geometry"/>
+        </mxCell>
+        <mxCell id="cw" value="CloudWatch&lt;br&gt;&lt;small&gt;idle CPU alarm&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="region">
+          <mxGeometry x="20" y="540" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="eb" value="EventBridge&lt;br&gt;&lt;small&gt;nightly stop 02:00 SGT&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="region">
+          <mxGeometry x="290" y="540" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="bud" value="AWS Budgets&lt;br&gt;&lt;small&gt;USD 30 → stop&lt;/small&gt;" style="rounded=1;whiteSpace=wrap;html=1;fontSize=16;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="region">
+          <mxGeometry x="560" y="540" width="250" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3" value="S3 backups&lt;br&gt;&lt;small&gt;pg_dump nightly&lt;/small&gt;" style="shape=cylinder3;whiteSpace=wrap;html=1;fontSize=16;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="region">
+          <mxGeometry x="840" y="530" width="230" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="e1" value="HTTPS" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="1" source="users" target="traefik">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e2" value="SSM" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;" edge="1" parent="1" source="admin" target="ec2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e3" value="/" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="traefik" target="frontend">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e4" value="/api" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="traefik" target="gw">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="gw" target="nsUser">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="gw" target="nsSup">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="gw" target="nsCred">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="gw" target="nsOrder">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;" edge="1" parent="ec2" source="gw" target="nsNotif">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e10" value="publishes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;" edge="1" parent="ec2" source="nsUser" target="rmq">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e11" value="consumes" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;" edge="1" parent="ec2" source="rmq" target="nsCred">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e12" value="stop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;strokeColor=#b85450;fontColor=#b20000;" edge="1" parent="region" source="cw" target="ec2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e13" value="stop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;strokeColor=#b85450;fontColor=#b20000;" edge="1" parent="region" source="eb" target="ec2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e14" value="stop" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;strokeColor=#b85450;fontColor=#b20000;" edge="1" parent="region" source="bud" target="ec2">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="e15" value="backup" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;fontSize=14;dashed=1;" edge="1" parent="region" source="ec2" target="s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
