@@ -1,0 +1,9 @@
+# EC2 (k3s): images pulled from GHCR. Override tags at upgrade time.
+global:
+  imageRegistry: ghcr.io/y2627s1-cs3219-p31
+  imagePullPolicy: IfNotPresent
+
+supplier-service:
+  image:
+    repository: supplier-service
+    tag: latest

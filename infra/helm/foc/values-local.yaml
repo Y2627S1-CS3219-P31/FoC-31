@@ -1,0 +1,4 @@
+# Local k3d: images built and imported, no registry prefix.
+global:
+  imageRegistry: ""
+  imagePullPolicy: IfNotPresent
