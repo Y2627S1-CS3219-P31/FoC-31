@@ -1,4 +1,7 @@
-# Local k3d: images built and imported, no registry prefix.
+# Local k3d: images built and imported, no registry prefix. No S3 locally, so
+# the backup CronJobs are off.
 global:
   imageRegistry: ""
   imagePullPolicy: IfNotPresent
+  backup:
+    enabled: false

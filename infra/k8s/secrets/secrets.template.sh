@@ -76,4 +76,16 @@ apply_secret foc-notification notification-secrets \
 apply_secret foc-gateway gateway-secrets \
   --from-literal=JWT_SECRET="$JWT_SECRET"
 
+# Backup S3 credentials (per DB namespace), only when a bucket is configured.
+# For AWS leave S3_ENDPOINT_URL unset; for a local MinIO test set the endpoint
+# in the chart and point these at MinIO.
+if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+  for ns in foc-supplier foc-user foc-credit foc-order foc-notification; do
+    apply_secret "$ns" backup-s3 \
+      --from-literal=S3_BUCKET="$BACKUP_S3_BUCKET" \
+      --from-literal=AWS_ACCESS_KEY_ID="${BACKUP_AWS_ACCESS_KEY_ID:-}" \
+      --from-literal=AWS_SECRET_ACCESS_KEY="${BACKUP_AWS_SECRET_ACCESS_KEY:-}"
+  done
+fi
+
 echo "Secrets applied."
