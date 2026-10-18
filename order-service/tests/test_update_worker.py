@@ -137,7 +137,7 @@ async def test_rejection_keeps_order_and_clears_pending_task(maker):
         assert (await session.get(OrderTable, "order-1")).reward == 5
         task = await session.get(OrderUpdateTask, task_id)
         assert task.status == REJECTED
-        assert task.rejection_code == "insufficient_credits"
+        assert task.last_error == "insufficient_credits"
         outcome = (await session.scalars(select(OrderEventOutbox))).one()
         assert outcome.payload == {
             "event_type": "OrderUpdateFailed",
@@ -165,7 +165,7 @@ async def test_failed_rejection_commit_keeps_reply_retryable(maker):
     async with maker() as session:
         task = await session.get(OrderUpdateTask, task_id)
         assert task.status == PENDING
-        assert task.rejection_code is None
+        assert task.last_error is None
         assert list(await session.scalars(select(OrderEventOutbox))) == []
 
 
@@ -220,7 +220,7 @@ async def test_order_reservation_must_match_update_task(maker):
     async with maker() as session:
         task = await session.get(OrderUpdateTask, task_id)
         assert task.status == REJECTED
-        assert task.rejection_code == "reservation_mismatch"
+        assert task.last_error == "The order reservation does not match the update task."
         assert (await session.get(OrderTable, "order-1")).reward == 5
         outcome = (await session.scalars(select(OrderEventOutbox))).one()
         assert outcome.payload["event_type"] == "OrderUpdateFailed"

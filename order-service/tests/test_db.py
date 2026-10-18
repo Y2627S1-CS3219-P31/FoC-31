@@ -102,6 +102,51 @@ def test_only_one_pending_release_action_can_exist_per_reservation() -> None:
     engine.dispose()
 
 
+def test_remove_update_rejection_code_migration_preserves_task_data() -> None:
+    versions = Path(__file__).parents[1] / "migrations" / "versions"
+    path = versions / "20261018_remove_update_rejection_code.py"
+    spec = importlib.util.spec_from_file_location("remove_update_rejection_code_migration", path)
+    assert spec is not None and spec.loader is not None
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+
+    engine = create_engine("sqlite://")
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "CREATE TABLE order_update_tasks ("
+                "task_id VARCHAR(36) PRIMARY KEY, "
+                "status VARCHAR(16) NOT NULL, "
+                "last_error VARCHAR(500), "
+                "rejection_code VARCHAR(60))"
+            )
+        )
+        connection.execute(
+            text(
+                "INSERT INTO order_update_tasks "
+                "(task_id, status, last_error, rejection_code) VALUES "
+                "('task-1', 'rejected', 'Insufficient credits', 'insufficient_credits')"
+            )
+        )
+        migration.op = Operations(MigrationContext.configure(connection))
+        migration.upgrade()
+
+        columns = {
+            column["name"] for column in inspect(connection).get_columns("order_update_tasks")
+        }
+        assert "rejection_code" not in columns
+        assert connection.execute(
+            text("SELECT status, last_error FROM order_update_tasks WHERE task_id = 'task-1'")
+        ).one() == ("rejected", "Insufficient credits")
+
+        migration.downgrade()
+        columns = {
+            column["name"] for column in inspect(connection).get_columns("order_update_tasks")
+        }
+        assert "rejection_code" in columns
+    engine.dispose()
+
+
 def test_event_outbox_migration_can_upgrade_existing_database_and_downgrade():
     path = Path(__file__).parents[1] / "migrations/versions/20261016_order_event_outbox.py"
     spec = importlib.util.spec_from_file_location("event_outbox_migration", path)

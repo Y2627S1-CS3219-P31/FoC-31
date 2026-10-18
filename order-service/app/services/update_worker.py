@@ -31,7 +31,6 @@ async def process_amendment_result(session: AsyncSession, event: CreditAmendResu
             raise ValueError(f"Credit amendment result does not match task '{event.task_id}'.")
         if event.event_type == "CreditAmendRejected":
             task.status = REJECTED
-            task.rejection_code = event.reason or "credit_rejected"
             task.last_error = event.reason or "Credit Service rejected the amendment."
             await event_outbox_repository.create_event(
                 session,
@@ -51,7 +50,6 @@ async def process_amendment_result(session: AsyncSession, event: CreditAmendResu
             raise RuntimeError(f"Order '{task.order_id}' changed after its credit amendment.")
         if order.reservation_id != task.reservation_id:
             task.status = REJECTED
-            task.rejection_code = "reservation_mismatch"
             task.last_error = "The order reservation does not match the update task."
             await event_outbox_repository.create_event(
                 session,

@@ -15,6 +15,21 @@ Format for each entry:
 - Author review: <how you validated/edited/tested the output>
 ```
 
+## 18/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Removed the unused `OrderUpdateTask.rejection_code` field and its
+  assignments. Added a new Order Service migration to drop the database column
+  and updated the affected tests. No other service was changed.
+- Prompt(s): “Remove `OrderUpdateTask.rejection_code` and its assignments while
+  retaining `status` and `last_error`. Add a new migration to drop the column;
+  do not edit old migrations. Update and run relevant order-service tests. Add
+  required AI attribution headers and record the exchange in `ai/usage-log.md`.
+  Change no files outside `order-service/` except that log.”
+- Author review: 87 focused tests passed. Ruff lint and format checks passed,
+  and `git diff --check` passed. One existing Starlette `httpx` deprecation
+  warning remains.
+
 ## 17/10/2026 — Alexander Gerald
 
 - Tool: Codex (model: GPT-6)

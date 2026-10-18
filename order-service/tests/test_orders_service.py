@@ -108,7 +108,6 @@ def _pending_task(update: OrderUpdate) -> SimpleNamespace:
         proposed_order=update.model_dump(mode="json"),
         status=PENDING,
         last_error=None,
-        rejection_code=None,
     )
 
 

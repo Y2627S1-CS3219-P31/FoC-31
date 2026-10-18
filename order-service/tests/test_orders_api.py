@@ -448,7 +448,6 @@ def test_patch_returns_pending_task_and_can_be_polled(client, fake_session, monk
         task_id="task-1",
         order_id="order-1",
         status="pending",
-        rejection_code=None,
         last_error=None,
     )
 
