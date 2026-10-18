@@ -4,6 +4,11 @@
 global:
   imageRegistry: ghcr.io/y2627s1-cs3219-p31
   imagePullPolicy: IfNotPresent
+  backup:
+    image:
+      repository: pg-backup
+      tag: latest
+    s3EndpointUrl: ""
 
 supplier-service:
   image: { repository: supplier-service, tag: latest }
