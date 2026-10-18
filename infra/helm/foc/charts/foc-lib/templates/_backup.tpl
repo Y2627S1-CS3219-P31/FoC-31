@@ -37,24 +37,23 @@ spec:
                 - name: DB_NAME
                   value: {{ .Values.postgres.dbName | quote }}
                 - name: S3_BUCKET
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ $b.s3Secret }}
-                      key: S3_BUCKET
-                - name: AWS_ACCESS_KEY_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ $b.s3Secret }}
-                      key: AWS_ACCESS_KEY_ID
-                - name: AWS_SECRET_ACCESS_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: {{ $b.s3Secret }}
-                      key: AWS_SECRET_ACCESS_KEY
+                  value: {{ $b.bucket | quote }}
                 - name: AWS_DEFAULT_REGION
                   value: {{ $b.region | default "ap-southeast-1" | quote }}
                 - name: S3_ENDPOINT_URL
                   value: {{ $b.s3EndpointUrl | default "" | quote }}
+                {{- with $b.staticCredentialsSecret }}
+                - name: AWS_ACCESS_KEY_ID
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ . }}
+                      key: AWS_ACCESS_KEY_ID
+                - name: AWS_SECRET_ACCESS_KEY
+                  valueFrom:
+                    secretKeyRef:
+                      name: {{ . }}
+                      key: AWS_SECRET_ACCESS_KEY
+                {{- end }}
               resources:
                 requests:
                   cpu: 25m

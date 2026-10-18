@@ -9,24 +9,22 @@ The in-cluster CronJobs use a least-privilege IAM user (write-only to the
 bucket, from `infra/terraform`). Restores below use an operator's own admin AWS
 credentials, not that user.
 
-## Provision the bucket and credentials (one time)
+## Provision the bucket (one time)
 
 ```
 cd infra/terraform
 terraform init
-terraform apply          # creates the bucket + backup IAM user
+terraform apply          # creates the backups bucket (Phase E adds the instance role with S3 write)
 BUCKET=$(terraform output -raw backup_bucket)
-AKID=$(terraform output -raw backup_access_key_id)
-SECRET=$(terraform output -raw backup_secret_access_key)
 ```
 
-Create the in-cluster secret from those outputs, then deploy:
+The EC2 instance role (Phase E) grants `s3:PutObject` to this bucket, and the
+backup pods pick it up via IMDS. Deploy with just the bucket name, no AWS keys
+in the cluster:
 
 ```
-BACKUP_S3_BUCKET="$BUCKET" \
-BACKUP_AWS_ACCESS_KEY_ID="$AKID" \
-BACKUP_AWS_SECRET_ACCESS_KEY="$SECRET" \
-  bash infra/k8s/secrets/secrets.template.sh
+helm upgrade foc infra/helm/foc -f infra/helm/foc/values-ec2.yaml \
+  --set global.backup.bucket="$BUCKET" -n foc-system
 ```
 
 ## Trigger a backup now
@@ -59,5 +57,11 @@ recreate the live DB, restore into it, then scale back up.
 
 ## Local test against MinIO
 
-Set `global.backup.s3EndpointUrl` to a MinIO service URL and point the
-`backup-s3` secret at MinIO credentials. Everything else is identical.
+Set `global.backup.bucket`, point `global.backup.s3EndpointUrl` at the MinIO
+service URL, and set `global.backup.staticCredentialsSecret=backup-s3`. Create
+that secret with MinIO creds:
+
+```
+BACKUP_AWS_ACCESS_KEY_ID=minioadmin BACKUP_AWS_SECRET_ACCESS_KEY=minioadmin \
+  bash infra/k8s/secrets/secrets.template.sh
+```

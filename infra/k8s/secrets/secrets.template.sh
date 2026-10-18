@@ -73,12 +73,12 @@ apply_secret foc-notification notification-secrets \
 apply_secret foc-gateway gateway-secrets \
   --from-literal=JWT_SECRET="$JWT_SECRET"
 
-# Backup credentials (per DB namespace), only when a bucket is configured.
-if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
+# Static backup creds (per DB namespace), only for non-IMDS use (e.g. local
+# MinIO). On AWS the backup pods use the instance role via IMDS; no secret.
+if [ -n "${BACKUP_AWS_ACCESS_KEY_ID:-}" ]; then
   for ns in foc-supplier foc-user foc-credit foc-order foc-notification; do
     apply_secret "$ns" backup-s3 \
-      --from-literal=S3_BUCKET="$BACKUP_S3_BUCKET" \
-      --from-literal=AWS_ACCESS_KEY_ID="${BACKUP_AWS_ACCESS_KEY_ID:-}" \
+      --from-literal=AWS_ACCESS_KEY_ID="$BACKUP_AWS_ACCESS_KEY_ID" \
       --from-literal=AWS_SECRET_ACCESS_KEY="${BACKUP_AWS_SECRET_ACCESS_KEY:-}"
   done
 fi
