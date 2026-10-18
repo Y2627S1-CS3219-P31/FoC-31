@@ -1,0 +1,41 @@
+namespace: foc-order
+replicas: 1
+port: 8000
+healthPath: /health
+
+image:
+  repository: foc/order-service
+  tag: dev
+
+env:
+  LOG_LEVEL: info
+
+secretEnv:
+  - name: DATABASE_URL
+    secret: order-secrets
+    key: DATABASE_URL
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+postgres:
+  name: order-db
+  dbName: order_db
+  secret: order-secrets
+  image: postgres:16-alpine
+  sharedBuffers: 128MB
+  maxConnections: 50
+  storage: 1Gi
+  storageClass: local-path
+  resources:
+    requests:
+      cpu: 50m
+      memory: 160Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi

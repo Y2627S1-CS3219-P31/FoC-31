@@ -1,0 +1,12 @@
+namespace: foc-messaging
+secret: rabbitmq-secrets
+image: rabbitmq:3.13-management-alpine
+storage: 1Gi
+storageClass: local-path
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi

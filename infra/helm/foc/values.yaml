@@ -1,0 +1,11 @@
+global:
+  imageRegistry: ""
+  imagePullPolicy: IfNotPresent
+
+namespaces:
+  - foc-supplier
+  - foc-user
+  - foc-credit
+  - foc-order
+  - foc-notification
+  - foc-messaging

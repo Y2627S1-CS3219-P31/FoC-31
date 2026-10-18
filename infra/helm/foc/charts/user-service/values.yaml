@@ -1,0 +1,48 @@
+namespace: foc-user
+replicas: 1
+port: 8000
+healthPath: /health
+
+image:
+  repository: foc/user-service
+  tag: dev
+
+env:
+  LOG_LEVEL: info
+  OTP_DEV_MODE: "true"
+
+secretEnv:
+  - name: DATABASE_URL
+    secret: user-secrets
+    key: DATABASE_URL
+  - name: JWT_SECRET
+    secret: user-secrets
+    key: JWT_SECRET
+  - name: RABBITMQ_URL
+    secret: user-secrets
+    key: RABBITMQ_URL
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 160Mi
+  limits:
+    cpu: 500m
+    memory: 320Mi
+
+postgres:
+  name: user-db
+  dbName: user_db
+  secret: user-secrets
+  image: postgres:16-alpine
+  sharedBuffers: 128MB
+  maxConnections: 50
+  storage: 1Gi
+  storageClass: local-path
+  resources:
+    requests:
+      cpu: 50m
+      memory: 160Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
