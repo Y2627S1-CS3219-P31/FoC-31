@@ -1,6 +1,4 @@
-# EC2 (k3s): images from GHCR, TLS via cert-manager. The nip.io host and the
-# matching CORS/API origins depend on the runtime public IP; cluster-up.sh sets
-# them with --set-string at deploy (placeholders below).
+# REPLACE_ME hosts and origins are set by cluster-up.sh at deploy time.
 global:
   imageRegistry: ghcr.io/y2627s1-cs3219-p31
   imagePullPolicy: IfNotPresent
