@@ -39,3 +39,9 @@ postgres:
     limits:
       cpu: 500m
       memory: 256Mi
+
+hpa:
+  enabled: true
+  minReplicas: 1
+  maxReplicas: 4
+  targetCPUUtilizationPercentage: 60
