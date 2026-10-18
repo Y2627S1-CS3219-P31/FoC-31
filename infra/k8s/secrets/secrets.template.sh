@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Creates the per-namespace Kubernetes Secrets for Campus Errand. Never commit
-# real values; override via environment variables (see secrets.env.example).
-# Run AFTER `helm install/upgrade` has created the namespaces.
-# Idempotent: reuses a password already in the cluster (or an env-supplied one)
-# so re-running never breaks a live database or the shared JWT/broker creds.
+# Per-namespace Secrets for Campus Errand. Never commit real values; override
+# via env (see secrets.env.example). Run after helm creates the namespaces.
+# Idempotent: reuses an existing password so re-running never breaks a live DB.
 
 PG_USER="${PG_USER:-foc}"
 RABBITMQ_USER="${RABBITMQ_USER:-foc}"
@@ -27,7 +25,7 @@ db_url() { echo "postgresql+asyncpg://${PG_USER}:$2@$1:5432/$3"; }
 
 for ns in foc-supplier foc-user foc-credit foc-order foc-notification foc-messaging foc-gateway; do require_ns "$ns"; done
 
-# Shared across namespaces, so they must resolve to one value on every run.
+# Shared across namespaces: resolve to one value every run.
 JWT_SECRET="${JWT_SECRET:-$(existing foc-user user-secrets JWT_SECRET)}"
 JWT_SECRET="${JWT_SECRET:-$(existing foc-gateway gateway-secrets JWT_SECRET)}"
 JWT_SECRET="${JWT_SECRET:-$(gen)}"
@@ -72,13 +70,10 @@ apply_secret foc-notification notification-secrets \
   --from-literal=POSTGRES_PASSWORD="$NOTIF_PW" \
   --from-literal=DATABASE_URL="$(db_url notification-db "$NOTIF_PW" notification_db)"
 
-# foc-gateway shares the JWT secret with user-service (gateway validates, user issues).
 apply_secret foc-gateway gateway-secrets \
   --from-literal=JWT_SECRET="$JWT_SECRET"
 
-# Backup S3 credentials (per DB namespace), only when a bucket is configured.
-# For AWS leave S3_ENDPOINT_URL unset; for a local MinIO test set the endpoint
-# in the chart and point these at MinIO.
+# Backup credentials (per DB namespace), only when a bucket is configured.
 if [ -n "${BACKUP_S3_BUCKET:-}" ]; then
   for ns in foc-supplier foc-user foc-credit foc-order foc-notification; do
     apply_secret "$ns" backup-s3 \

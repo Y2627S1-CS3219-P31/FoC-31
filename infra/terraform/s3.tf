@@ -36,8 +36,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "backups" {
   }
 }
 
-# Least-privilege user for the in-cluster backup CronJobs: write-only to this
-# bucket. Restores use an operator's own admin credentials, not this user.
+# Write-only to this bucket; restores use an operator's admin credentials.
 resource "aws_iam_user" "backup" {
   name = "${var.project}-backup"
 }

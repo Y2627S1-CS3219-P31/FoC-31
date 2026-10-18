@@ -1,6 +1,4 @@
 # syntax=docker/dockerfile:1
-# Production image for Kubernetes: build the SPA, serve static output via nginx.
-# The dev Dockerfile (Vite dev server) is kept for local Compose.
 FROM node:20-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json* ./

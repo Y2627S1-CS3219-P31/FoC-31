@@ -1,15 +1,9 @@
-# Terraform working files and state. Chart/Terraform SOURCE is tracked; state
-# and real secrets are not.
 .terraform/
 *.tfstate
 *.tfstate.*
 crash.log
 crash.*.log
-
-# Variable files may hold real values; keep only the example.
 *.tfvars
 *.tfvars.json
 !*.tfvars.example
-
-# Local secret env for the secret template script.
 secrets.env
