@@ -412,42 +412,37 @@ Format for each entry:
 ## 19/10/2026 — Zhou Shiyao
 
 - Tool: GitHub Copilot Chat (model: DeepSeek V4.1 Flash)
-- Scope: Added Playwright end-to-end regression tests for the frontend auth
-  area (login, registration, OTP verification, session hydration/expiry,
-  logout, and client/admin route guards), a shared API-gateway mock helper, and
-  a dev-server warm-up global setup. Test tooling config only; no application
-  behavior, endpoint contracts, or architecture decisions were changed.
-- Prompt(s): "Help me to write regression tests for frontend/auth."
-- Author review: Pending contributor review. Tests run against a mocked gateway
-  (no real backend), assert request payloads and persisted tokens, and pass in
-  Chromium, Firefox, and WebKit.
-
-## 19/10/2026 — Zhou Shiyao
-
-- Tool: GitHub Copilot Chat (model: DeepSeek V4.1 Flash)
-- Scope: Added Playwright end-to-end regression tests for the supplier area
-  (browse/search/filter/sort/pagination, detail with optional-field fallbacks
-  and 404s, and admin create/edit/deactivate/reactivate flows). Extended the
-  shared gateway mock to expose query parameters and added supplier fixtures.
-  Test-only changes; no application behavior, endpoint contracts, or
-  architecture decisions were changed.
-- Prompt(s): "Now generate the regression tests for supplier pages."
-- Author review: Pending contributor review. Tests run against a mocked gateway
-  (no real backend), assert request payloads and query parameters, and pass in
-  Chromium, Firefox, and WebKit.
-
-## 19/10/2026 — Zhou Shiyao
-
-- Tool: GitHub Copilot Chat (model: DeepSeek V4.1 Flash)
-- Scope: Added Playwright end-to-end regression tests for the admin client
-  accounts screen (list/self-row behaviour, search + status filters,
+- Scope: Added Playwright end-to-end regression tests for the frontend:
+  (a) **auth** — login, registration, OTP verification, session
+  hydration/expiry, logout, and client/admin route guards; (b) **suppliers** —
+  browse with search/category/zone/sort/pagination, detail with optional-field
+  fallbacks and 404s, plus admin create/edit/deactivate/reactivate; (c) **admin
+  client accounts** — list/self-row behaviour, search + status filters,
   suspend/reinstate, promote/demote, create-admin validation and gateway
-  rejection) and the profile screen (read-only account fields, editable
-  name/contact, client-side validation, error handling). Test-only changes; no
+  rejection; and (d) **profile** — read-only account fields, editable
+  name/contact, client-side validation and error handling. Also added the shared
+  API-gateway mock helper (with query-parameter capture and request recording),
+  supplier/admin fixtures, a Vite warm-up global setup, Playwright config
+  updates, and the frontend test documentation. Test tooling only; no
   application behavior, endpoint contracts, or architecture decisions were
   changed.
-- Prompt(s): "commit the changes then continue to generate tests for admin and
-  profile following the same instruction."
-- Author review: Pending contributor review. Tests run against a mocked gateway
-  (no real backend), assert request payloads and query parameters, and pass in
-  Chromium, Firefox, and WebKit.
+- Prompt(s):
+  1. "Help me to write regression tests for frontend/auth."
+  2. "Now generate the regression tests for supplier pages. …" (detailed
+     instruction: inspect the code/contracts first; cover positive, negative,
+     edge and state-transition scenarios; avoid redundant or fragile tests;
+     then implement, run, and summarize), followed by "commit the changes".
+  3. "commit the changes then continue to generate tests for admin and profile
+     following the same instruction."
+- Author review: Reviewed every spec against the code it exercises —
+  `src/pages/{auth,suppliers,admin}`, `src/pages/Profile.tsx`,
+  `src/components/RouteGuards.tsx`, and the client logic in `src/lib/api.ts` /
+  `src/lib/auth.tsx` — so each assertion matches actual behavior. Cross-checked
+  request payloads and query parameters against
+  `docs/supplier-service-api.md` and `user-service/docs/api-contract.md`.
+  Ran `npx tsc --noEmit -p tsconfig.json` (clean; tests are part of the
+  TypeScript project) and
+  `cd frontend && npx playwright test tests/auth tests/suppliers tests/admin tests/profile`
+  — **162 passed** (54 tests × Chromium/Firefox/WebKit) with a cold Vite cache.
+  Tests use a mocked gateway (no backend/DB required); no production code was
+  modified.
