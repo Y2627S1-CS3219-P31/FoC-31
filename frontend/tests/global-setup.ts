@@ -1,6 +1,7 @@
-// AI-assisted (OpenCode + Claude): warms the Vite dev server once before the
-// suite runs so first-visit dependency pre-bundling cannot force page reloads
-// in the middle of a regression test. Reviewed by authors.
+// AI-assisted (GitHub Copilot Chat, DeepSeek V4.1 Flash): warms the Vite dev
+// server once before the suite runs so first-visit dependency pre-bundling
+// cannot force page reloads in the middle of a regression test.
+// Reviewed by authors.
 import { chromium, type FullConfig } from "@playwright/test";
 
 export default async function globalSetup(config: FullConfig): Promise<void> {

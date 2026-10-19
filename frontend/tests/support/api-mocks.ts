@@ -1,5 +1,6 @@
-// AI-assisted (OpenCode + Claude): shared Playwright helpers that fake the API
-// gateway for frontend auth regression tests. Reviewed by authors.
+// AI-assisted (GitHub Copilot Chat, DeepSeek V4.1 Flash): shared Playwright
+// helpers that fake the API gateway for frontend auth regression tests.
+// Reviewed by authors.
 import type { Page, Request, Route } from "@playwright/test";
 
 export const TOKEN_KEY = "foc.token";

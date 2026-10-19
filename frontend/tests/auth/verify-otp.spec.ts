@@ -1,5 +1,5 @@
-// AI-assisted (OpenCode + Claude): regression tests for the OTP verification
-// screen. Reviewed by authors.
+// AI-assisted (GitHub Copilot Chat, DeepSeek V4.1 Flash): regression tests for
+// the OTP verification screen. Reviewed by authors.
 import { expect, test, type Page } from "@playwright/test";
 import { mockApi } from "../support/api-mocks";
 

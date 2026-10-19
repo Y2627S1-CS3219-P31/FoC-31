@@ -1,5 +1,6 @@
-// AI-assisted (OpenCode + Claude): regression tests for session handling and
-// the authenticated/admin route guards. Reviewed by authors.
+// AI-assisted (GitHub Copilot Chat, DeepSeek V4.1 Flash): regression tests for
+// session handling and the authenticated/admin route guards.
+// Reviewed by authors.
 import { expect, test } from "@playwright/test";
 import {
   ADMIN_PROFILE,

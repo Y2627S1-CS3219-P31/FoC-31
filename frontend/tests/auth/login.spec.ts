@@ -1,5 +1,5 @@
-// AI-assisted (OpenCode + Claude): regression tests for the login screen.
-// Reviewed by authors.
+// AI-assisted (GitHub Copilot Chat, DeepSeek V4.1 Flash): regression tests for
+// the login screen. Reviewed by authors.
 import { expect, test } from "@playwright/test";
 import {
   CLIENT_PROFILE,
