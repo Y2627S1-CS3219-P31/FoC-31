@@ -1,3 +1,5 @@
+# AI-influenced: forgot-password changes made with Claude (Opus 5.5);
+# see ai/usage-log.md.
 from __future__ import annotations
 
 from enum import Enum
@@ -11,6 +13,8 @@ PUBLIC_ROUTE_PREFIXES: tuple[str, ...] = (
     "/api/users/login",
     "/api/users/otp/verify",
     "/api/users/otp/resend",
+    "/api/users/password/forgot",
+    "/api/users/password/reset",
 )
 
 

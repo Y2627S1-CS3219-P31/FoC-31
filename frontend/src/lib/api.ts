@@ -137,6 +137,18 @@ export const authApi = {
       password,
     });
   },
+  forgotPassword(email: string) {
+    return request<{ message: string }>("POST", "/api/users/password/forgot", {
+      email,
+    });
+  },
+  resetPassword(email: string, code: string, newPassword: string) {
+    return request<{ message: string }>("POST", "/api/users/password/reset", {
+      email,
+      code,
+      new_password: newPassword,
+    });
+  },
   me() {
     return request<ProfileResponse>("GET", "/api/users/me");
   },
