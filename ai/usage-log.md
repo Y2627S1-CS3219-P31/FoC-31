@@ -408,3 +408,35 @@ Format for each entry:
 - Author review: Pending contributor review. Codex restored the Alembic
   scaffold and dependency, removed only the two tracked revision files, kept
   the versions directory, and did not modify a live database.
+
+---
+
+## 17/10/2026 — Frank Yu / Zhou Shiyao
+
+- Tool: GitHub Copilot (model: DeepSeek V4.1 Flash)
+- Scope: credit-service side of the Order Service delete/cancel/update task
+  contract (follow-up to PR #7). Generated: local copies of the interop
+  schemas (`app/schemas/interop.py`), `CreditTaskResult` model + repository
+  for `task_id` idempotency, `handle_release_requested` /
+  `handle_update_requested` service logic with definitive outcome publishing,
+  a raising `publish_credit_event`, consumer routing by routing key with an
+  `x-retry-count` retry budget and failure replies, plus tests, README,
+  `docs/event-catalog.md` and `.env.example` updates.
+  The event contract itself (event names, payload fields, reply semantics,
+  retry behaviour, and the decision to duplicate the schemas locally until
+  they move to `shared/`) was defined by the Order Service owner and
+  confirmed with the author; the tool only implemented it.
+- Prompt(s):
+  1. "第三点，你先复制一份，然后实现掉，后面他啥时候推了shared的版本我们再改。"
+     ("Copy [the schemas] first and implement it; when he pushes the shared
+     version later we will switch to it.")
+  2. (Same thread, on the confirmed contract) "OrderExpiryRequested 是死代码，
+     可以删掉；明确的业务错误和超过重试上限的临时错误都要回复
+     CreditReleaseFailed / CreditAmendRejected。"
+- Author review: Verified the local schemas field-by-field against
+  `order-service/app/schemas/{order_action_events,order_update_events,credit_events}.py`
+  on `implementation/order-service`, and checked the confirmed answers on
+  `OrderExpiryRequested`, definitive replies and schema ownership. Verified
+  with `pytest` (73 tests passing) and `ruff check`/`ruff format` (clean).
+  PR #11.
+

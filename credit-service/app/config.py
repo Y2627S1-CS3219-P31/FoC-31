@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     order_events_queue: str = "credit-service.order-events"
     user_events_queue: str = "credit-service.user-events"
     initial_credit_allocation: int = 100
+    # How many times a transiently failing order event is redelivered before the
+    # consumer publishes a definitive failure reply (request/reply events only).
+    event_retry_limit: int = 5
 
 
 settings = Settings()
