@@ -39,6 +39,7 @@ from app.errors import ServiceError
 from app.schemas.interop import (
     RELEASE_REQUEST_EVENT_TYPES,
     OrderActionEvent,
+    OrderApprovalRequestedEvent,
     OrderUpdateRequestedEvent,
 )
 from app.services.credit_service import CreditService
@@ -52,6 +53,7 @@ _ORDER_EVENT_BINDINGS: tuple[str, ...] = (
     OrderEventType.ORDER_EXPIRED.value,
     *RELEASE_REQUEST_EVENT_TYPES,
     "OrderUpdateRequested",
+    "OrderApprovalRequested",
 )
 
 
@@ -71,6 +73,11 @@ async def handle_update_requested(event: OrderUpdateRequestedEvent) -> None:
         await CreditService(session).handle_update_requested(event)
 
 
+async def handle_approval_requested(event: OrderApprovalRequestedEvent) -> None:
+    async with SessionLocal() as session:
+        await CreditService(session).handle_approval_requested(event)
+
+
 async def handle_user_registered_event(event: UserRegisteredEvent) -> None:
     async with SessionLocal() as session:
         await CreditService(session).handle_user_registered_event(event)
@@ -86,6 +93,12 @@ async def _amend_retries_exhausted(event: OrderUpdateRequestedEvent, error: Exce
     """Answer an amendment task we could not process within the retry budget."""
     async with SessionLocal() as session:
         await CreditService(session).report_amend_retries_exhausted(event, error)
+
+
+async def _transfer_retries_exhausted(event: OrderApprovalRequestedEvent, error: Exception) -> None:
+    """Answer an approval-transfer task we could not process within the budget."""
+    async with SessionLocal() as session:
+        await CreditService(session).report_transfer_retries_exhausted(event, error)
 
 
 class CreditEventConsumer:
@@ -161,6 +174,15 @@ class CreditEventConsumer:
                 handler=handle_update_requested,
                 retry_exchange=exchange,
                 on_exhausted=_amend_retries_exhausted,
+                verify_routing_key=True,
+            )
+        elif event_type == "OrderApprovalRequested":
+            await self._dispatch(
+                message,
+                model=OrderApprovalRequestedEvent,
+                handler=handle_approval_requested,
+                retry_exchange=exchange,
+                on_exhausted=_transfer_retries_exhausted,
                 verify_routing_key=True,
             )
         else:

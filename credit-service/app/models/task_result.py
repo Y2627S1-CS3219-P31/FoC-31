@@ -14,6 +14,7 @@ from app.models._util import _utcnow
 class TaskResultKind(str, enum.Enum):
     RELEASE = "release"
     AMEND = "amend"
+    TRANSFER = "transfer"
 
 
 class TaskResultOutcome(str, enum.Enum):
@@ -21,6 +22,8 @@ class TaskResultOutcome(str, enum.Enum):
     RELEASE_FAILED = "release_failed"
     AMENDED = "amended"
     AMEND_REJECTED = "amend_rejected"
+    TRANSFERRED = "transferred"
+    TRANSFER_FAILED = "transfer_failed"
 
 
 class CreditTaskResult(Base):
@@ -29,7 +32,7 @@ class CreditTaskResult(Base):
     Order Service retries events and correlates the reply by `task_id`. Storing
     the outcome lets a repeated delivery re-publish *the same* reply instead of
     re-executing the credit operation, so a duplicate or stale task can never
-    apply a second release/amendment.
+    apply a second release/amendment/transfer.
     """
 
     __tablename__ = "credit_task_results"
