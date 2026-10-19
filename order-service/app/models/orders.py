@@ -108,6 +108,7 @@ class OrderTable(Base):
 
     pickup_location: Mapped[str] = mapped_column(String(255), nullable=False)
     delivery_location: Mapped[str] = mapped_column(String(255), nullable=False)
+    proof_of_delivery_photo_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     status: Mapped[OrderStatus] = mapped_column(
         SqlEnum(OrderStatus, name="order_status"),

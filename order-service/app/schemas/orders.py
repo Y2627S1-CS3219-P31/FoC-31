@@ -68,6 +68,10 @@ class OrderResponse(BaseModel):
     created_at: datetime
 
 
+class OrderDetailResponse(OrderResponse):
+    proof_of_delivery_photo: str | None = None
+
+
 class OrderActionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

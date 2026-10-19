@@ -1,3 +1,4 @@
+<!-- AI-INFLUENCED: Record Order Service photo implementation with Codex. -->
 # AI Usage Log
 
 Per the CS3219 AI Usage Policy (Project Document, Appendix 2). Record every
@@ -682,6 +683,34 @@ Format for each entry:
 - Author review: The focused Order Service API and service tests passed. Ruff
   lint and format checks passed, and `git diff --check` passed.
   One pre-existing Starlette `httpx` deprecation warning remains.
+
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented proof-of-delivery photo upload in the Order Service's
+  existing deliver endpoint, saved a private S3 object key on the order, and
+  returned the image as a data URI in the existing order-detail response for
+  the requester or assigned courier. Added validation, S3 failure handling,
+  a migration, configuration documentation, and focused tests. No other
+  service, shared code, or infrastructure source file was changed.
+- Prompt(s): “So make two endpoint updates: 1. Update the existing courier
+  `POST /orders/{order_id}/deliver` endpoint to accept the photo. This marks
+  the order `AWAITING_APPROVAL`; the courier does not submit the requester’s
+  approval. 2. Update the existing GET order id endpoint so that it returns
+  the order information alongside a photo proof of delivery right? This GET
+  will not have a picture in the open orders listing, but in completed orders
+  page of the requester/courier it will have a picture, because now the
+  picture is there. Also update the orders table so that it has a photo key
+  field. Make sure the code is neat, simple to understand, and add clear
+  comments where appropriate but don't overdo the comments either. Make sure
+  it follows the project's architecture.” Earlier exchange specified that the
+  deliver endpoint must reject missing, oversized, or invalid photo types
+  without publishing; requester and assigned courier may view order detail;
+  and the photo should appear in the same detail response rather than from a
+  separate photo endpoint.
+- Author review: 199 Order Service tests passed; 14 PostgreSQL tests were
+  skipped because no test database URL was supplied. Ruff lint/format and
+  `git diff --check` passed.
 
 ## 17/10/2026 — Alexander Gerald
 

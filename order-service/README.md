@@ -181,11 +181,29 @@ F2.4.1).
 `POST /orders/{order_id}/deliver` marks an assigned order as delivered and
 moves it from `PICKED_UP` to `AWAITING_APPROVAL`. It accepts gateway-injected
 `client` and `admin` roles, but the caller's `X-User-Id` must match the
-assigned courier. The order update and `OrderDelivered` outbox record commit
-in one transaction with `awaiting_approval_at`, which starts the 24-hour
-approval clock. The event worker publishes the event after commit. The
-endpoint returns the updated `OrderResponse` and makes no external service
-calls.
+assigned courier. The request must include a multipart `photo` file: JPEG,
+PNG, or WebP, no larger than 5 MiB or 20 million pixels. The service checks
+the actual image format and decodes it before upload. It stores the private
+S3 object key with the order update and `OrderDelivered` outbox record in one
+database transaction. `awaiting_approval_at` starts the 24-hour approval
+clock. The event worker publishes only after commit. Missing or invalid
+photos, and S3 failures, leave the order unchanged and publish no event.
+If the database commit fails after upload, the service attempts to delete
+the unreferenced S3 object.
+
+Set `ORDER_PHOTO_BUCKET` to a private bucket and `ORDER_PHOTO_REGION` to its
+region. The workload's AWS identity needs `s3:PutObject`, `s3:GetObject`, and
+`s3:DeleteObject` for delivery photos. The database backup bucket in the
+separate infrastructure archive is not configured for this purpose. Run
+`alembic upgrade head` before deploying to add the nullable photo-key column.
+
+`GET /orders/{order_id}` allows the requester or the assigned courier and
+returns the normal order fields plus `proof_of_delivery_photo`. This field is
+`null` before delivery and otherwise contains a `data:image/...;base64,...`
+URI that the frontend can display directly. The S3 key itself is never
+returned. The response uses `Cache-Control: private, no-store`. The open-order
+listing still contains no photo. Order detail downloads the photo on each
+request, so its response is larger and depends on S3 being available.
 
 At runtime, FastAPI also serves the live specification at `/openapi.json` and
 interactive documentation at `/docs`.

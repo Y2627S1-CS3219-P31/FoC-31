@@ -17,6 +17,8 @@ class Settings(BaseSettings):
     release_results_queue: str = "order-service.credit-release-results"
     amendment_results_queue: str = "order-service.credit-amend-results"
     approval_results_queue: str = "order-service.credit-approval-results"
+    order_photo_bucket: str = ""
+    order_photo_region: str = "ap-southeast-1"
 
 
 settings = Settings()

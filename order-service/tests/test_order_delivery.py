@@ -8,11 +8,12 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.services import orders
+from app.services import orders, proof_photo
 from app.services.errors import (
     OrderAccessDeniedError,
     OrderDeliveryError,
     OrderNotFoundError,
+    OrderPhotoStorageError,
     OrderStateConflictError,
 )
 from app.services.lifecycle import OrderStatus
@@ -31,20 +32,29 @@ def delivery(monkeypatch):
     get_order = AsyncMock(return_value=order)
     set_status = AsyncMock()
     create_event = AsyncMock()
+    upload = AsyncMock(return_value="proof-of-delivery/order-1/photo.jpg")
+    delete = AsyncMock()
     monkeypatch.setattr(orders.order_repository, "get_order_for_update", get_order)
     monkeypatch.setattr(orders.order_repository, "set_status", set_status)
     monkeypatch.setattr(orders.event_outbox_repository, "create_event", create_event)
+    monkeypatch.setattr(proof_photo, "upload", upload)
+    monkeypatch.setattr(proof_photo, "delete", delete)
     return SimpleNamespace(
         order=order,
         session=session,
         get_order=get_order,
         set_status=set_status,
         create_event=create_event,
+        upload=upload,
+        delete=delete,
     )
 
 
+PHOTO = proof_photo.Photo(b"photo", "image/jpeg")
+
+
 async def test_delivery_transitions_order_and_records_event(delivery):
-    result = await orders.deliver_order(delivery.session, "order-1", "courier-1")
+    result = await orders.deliver_order(delivery.session, "order-1", "courier-1", PHOTO)
 
     assert result is delivery.order
     delivery.get_order.assert_awaited_once_with(delivery.session, "order-1")
@@ -60,22 +70,27 @@ async def test_delivery_transitions_order_and_records_event(delivery):
     )
     assert event.timestamp.tzinfo == UTC
     assert delivery.order.awaiting_approval_at == event.timestamp
+    assert delivery.order.proof_of_delivery_photo_key == "proof-of-delivery/order-1/photo.jpg"
+    delivery.upload.assert_awaited_once_with("order-1", PHOTO)
+    delivery.delete.assert_not_awaited()
 
 
 async def test_delivery_requires_existing_order(delivery):
     delivery.get_order.return_value = None
 
     with pytest.raises(OrderNotFoundError):
-        await orders.deliver_order(delivery.session, "missing", "courier-1")
+        await orders.deliver_order(delivery.session, "missing", "courier-1", PHOTO)
 
+    delivery.upload.assert_not_awaited()
     delivery.set_status.assert_not_awaited()
     delivery.create_event.assert_not_awaited()
 
 
 async def test_delivery_requires_assigned_courier(delivery):
     with pytest.raises(OrderAccessDeniedError):
-        await orders.deliver_order(delivery.session, "order-1", "another-courier")
+        await orders.deliver_order(delivery.session, "order-1", "another-courier", PHOTO)
 
+    delivery.upload.assert_not_awaited()
     delivery.set_status.assert_not_awaited()
     delivery.create_event.assert_not_awaited()
 
@@ -95,8 +110,9 @@ async def test_delivery_requires_picked_up_status(delivery, status):
     delivery.order.status = status
 
     with pytest.raises(OrderStateConflictError, match="Only a picked-up order"):
-        await orders.deliver_order(delivery.session, "order-1", "courier-1")
+        await orders.deliver_order(delivery.session, "order-1", "courier-1", PHOTO)
 
+    delivery.upload.assert_not_awaited()
     delivery.set_status.assert_not_awaited()
     delivery.create_event.assert_not_awaited()
 
@@ -110,4 +126,17 @@ async def test_delivery_database_failures_are_translated(delivery, failure_point
         delivery.session.begin.return_value.__aexit__.side_effect = failure
 
     with pytest.raises(OrderDeliveryError):
-        await orders.deliver_order(delivery.session, "order-1", "courier-1")
+        await orders.deliver_order(delivery.session, "order-1", "courier-1", PHOTO)
+
+    delivery.delete.assert_awaited_once_with("proof-of-delivery/order-1/photo.jpg")
+
+
+async def test_delivery_storage_failure_does_not_record_event(delivery):
+    delivery.upload.side_effect = OrderPhotoStorageError()
+
+    with pytest.raises(OrderPhotoStorageError):
+        await orders.deliver_order(delivery.session, "order-1", "courier-1", PHOTO)
+
+    delivery.set_status.assert_not_awaited()
+    delivery.create_event.assert_not_awaited()
+    delivery.delete.assert_not_awaited()
