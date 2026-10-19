@@ -24,7 +24,7 @@ Services with an error envelope additionally call
 | --- | --- | --- |
 | credit-service | ✅ metrics + readiness + JSON summary + all business/saga/consumer counters | `credit` |
 | supplier-service | ✅ metrics + readiness + envelope `code` counters | `supplier` |
-| user-service | ✅ metrics + readiness (no `code` label yet — it returns `{"detail"}`) | `user` |
+| user-service | ✅ metrics + readiness + envelope `code` counters | `user` |
 | api-gateway | ⏳ edge-level audit not implemented (would duplicate service numbers) | — |
 | order-service | ⏳ pending PR #10 (its routes are still changing) | — |
 | notification-service | ⏳ scaffold (501 stubs, no Rabbit consumer yet) | — |

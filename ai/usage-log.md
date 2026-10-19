@@ -544,3 +544,26 @@ Format for each entry:
   sets are declared in each service's `requirements.txt`. Not covered: a live
   Prometheus/Grafana run (no Docker) and the gateway/order/notification
   onboarding.
+
+## 19/10/2026 - credit-service owner (fill in name)
+
+- Tool: DeepSeek Harness (model: deepseek-flash)
+- Scope: aligned user-service with the shared error envelope so its errors carry
+  a business `code`. Generated: `user-service/app/errors.py` (handlers for
+  `StarletteHTTPException`, `RequestValidationError` and unhandled exceptions;
+  message-prefix + status mapping to codes; `OBS.record_error_code` from each
+  handler), `register_exception_handlers(app)` in `app/main.py`, two onboarding
+  tests (`test_errors_use_the_shared_envelope_and_record_their_code`,
+  `test_validation_errors_use_the_shared_envelope`), and updated the three
+  existing assertions that read `resp.json()["detail"]`. Response shape change
+  (breaking for clients that read `detail`) requested by the author; the
+  frontend already accepts both shapes (`frontend/src/lib/api.ts` `extractError`).
+- Prompt(s):
+  1. "user service 错误码怎么了？格式不对吗？" - explained the envelope
+     inconsistency and the audit impact.
+  2. "你直接把user-service改掉，功能跑通就行，直接交到pr#18的commit里面去，
+     让他们审就行了" - implement and push to PR #18.
+- Author review: `pytest` 33 (user) + 111 (credit) + 89 (supplier) passing;
+  `ruff check` / `ruff format --check` clean. Codes asserted in tests for
+  `otp_locked`, `admin_guard`, `last_admin_guard`, `unauthorized` and
+  `validation_error`; the 422/401/400 bodies no longer contain `detail`.

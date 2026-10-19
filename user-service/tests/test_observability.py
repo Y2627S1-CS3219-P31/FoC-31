@@ -45,3 +45,28 @@ def test_request_id_is_echoed():
     # code (this fixture has no matching user row, so it is a 4xx).
     rows = OBS.table(OBS.http_requests)
     assert any(row.get("route") == "/users/me" for row in rows)
+
+
+def test_errors_use_the_shared_envelope_and_record_their_code():
+    client = _client()
+    before = OBS.value(OBS.http_errors, code="unauthorized")
+
+    resp = client.get("/users/me")  # no gateway identity headers
+
+    assert resp.status_code == 401
+    body = resp.json()
+    assert body["code"] == "unauthorized"
+    assert body["message"]
+    assert "detail" not in body
+    assert OBS.value(OBS.http_errors, code="unauthorized") == before + 1
+
+
+def test_validation_errors_use_the_shared_envelope():
+    client = _client()
+
+    resp = client.post("/users/otp/verify", json={})
+
+    assert resp.status_code == 422
+    body = resp.json()
+    assert body["code"] == "validation_error"
+    assert isinstance(body["message"], str) and body["message"]
