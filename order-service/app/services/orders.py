@@ -376,6 +376,33 @@ async def list_assigned_orders(session: AsyncSession, courier_id: str) -> list[O
         raise OrderRetrievalError() from exc
 
 
+async def list_requested_ongoing_orders(
+    session: AsyncSession, requester_id: str
+) -> list[OrderTable]:
+    try:
+        return await order_repository.list_requested_ongoing_orders(session, requester_id)
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError() from exc
+
+
+async def list_requested_completed_orders(
+    session: AsyncSession, requester_id: str
+) -> list[OrderTable]:
+    try:
+        return await order_repository.list_requested_completed_orders(session, requester_id)
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError() from exc
+
+
+async def list_assigned_completed_orders(
+    session: AsyncSession, courier_id: str
+) -> list[OrderTable]:
+    try:
+        return await order_repository.list_assigned_completed_orders(session, courier_id)
+    except SQLAlchemyError as exc:
+        raise OrderRetrievalError() from exc
+
+
 async def get_order_for_participant(
     session: AsyncSession,
     order_id: str,

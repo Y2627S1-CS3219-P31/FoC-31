@@ -197,6 +197,41 @@ async def list_assigned_orders(
     return await order_service.list_assigned_orders(session, courier_id)
 
 
+@router.get("/requested/ongoing", response_model=list[OrderResponse])
+async def list_requested_ongoing_orders(
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OrderResponse]:
+    """Lists the requester's orders that are still in progress."""
+
+    return await order_service.list_requested_ongoing_orders(session, requester_id)
+
+
+@router.get("/requested/completed", response_model=list[OrderResponse])
+async def list_requested_completed_orders(
+    requester_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OrderResponse]:
+    """Lists the requester's completed orders."""
+
+    return await order_service.list_requested_completed_orders(session, requester_id)
+
+
+@router.get("/assigned/completed", response_model=list[OrderResponse])
+async def list_assigned_completed_orders(
+    courier_id: Annotated[str, Header(alias=HEADER_USER_ID, min_length=1)],
+    role: Annotated[str, Header(alias=HEADER_USER_ROLE)],
+    session: Annotated[AsyncSession, Depends(get_session)],
+) -> list[OrderResponse]:
+    """Lists orders completed by the authenticated courier."""
+
+    if role != Role.CLIENT.value:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN, "Only clients can view assigned courier orders."
+        )
+    return await order_service.list_assigned_completed_orders(session, courier_id)
+
+
 @router.get("/{order_id}", response_model=OrderDetailResponse)
 async def get_order(
     order_id: str,

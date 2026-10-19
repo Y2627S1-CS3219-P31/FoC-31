@@ -171,6 +171,19 @@ The response is an array of `OrderResponse` objects for orders in `ACCEPTED`,
 ID. An empty list returns `200` with `[]`. The endpoint reads only the
 Order Service database and publishes no event.
 
+### Participant order lists
+
+`GET /orders/requested/ongoing` lists orders created by the authenticated
+requester in `OPEN`, `ACCEPTED`, `PICKED_UP`, or `AWAITING_APPROVAL` status,
+ordered by deadline and then order ID. `GET /orders/requested/completed`
+lists that requester's `COMPLETED` orders. `GET /orders/assigned/completed`
+lists `COMPLETED` orders assigned to the authenticated courier and, like
+`GET /orders/assigned`, requires `X-User-Role: client`. Completed lists are
+ordered by creation time, newest first, then order ID. All three endpoints
+filter by the gateway-injected `X-User-Id`, return `OrderResponse` summaries
+without photo data or the private S3 key, return `[]` when empty, and publish
+no events. Use `GET /orders/{order_id}` to view an order's details and photo.
+
 Available-order discovery (`GET /orders`) excludes orders whose deadline is
 at or before the database's current time. This keeps overdue orders out of
 the listing even before the expiry sweeper marks them `EXPIRED` (F2.4,
@@ -236,6 +249,8 @@ Existing awaiting orders recover their delivery time from retained
 starts at migration time.
 
 > Status: `POST /orders`, `GET /orders`, `GET /orders/assigned`,
+> `GET /orders/requested/ongoing`, `GET /orders/requested/completed`,
+> `GET /orders/assigned/completed`,
 > `GET /orders/{order_id}`,
 > `PATCH /orders/{order_id}`, `DELETE /orders/{order_id}`,
 > `POST /orders/{order_id}/cancel`, and

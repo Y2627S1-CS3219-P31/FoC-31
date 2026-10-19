@@ -362,6 +362,86 @@ def test_list_assigned_orders_requires_client_identity(
 
 
 @pytest.mark.parametrize(
+    ("path", "service_method", "role"),
+    [
+        ("/orders/requested/ongoing", "list_requested_ongoing_orders", None),
+        ("/orders/requested/completed", "list_requested_completed_orders", None),
+        ("/orders/assigned/completed", "list_assigned_completed_orders", "client"),
+    ],
+)
+def test_participant_lists_use_gateway_identity_and_return_summaries(
+    client: TestClient,
+    fake_session: object,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    service_method: str,
+    role: str | None,
+) -> None:
+    order = _stored_order(requester_id="requester-1")
+    order.courier_id = "courier-1"
+    order.status = OrderStatus.COMPLETED
+    order.proof_of_delivery_photo_key = "private/photo.png"
+    listing = AsyncMock(return_value=[order])
+    monkeypatch.setattr(order_routes.order_service, service_method, listing)
+    headers = {"X-User-Id": "user-1"}
+    if role:
+        headers["X-User-Role"] = role
+
+    response = client.get(
+        path,
+        headers=headers,
+        params={"requester_id": "other-user", "courier_id": "other-user"},
+    )
+
+    assert response.status_code == 200
+    assert [item["order_id"] for item in response.json()] == ["order-1"]
+    assert "proof_of_delivery_photo" not in response.json()[0]
+    assert "proof_of_delivery_photo_key" not in response.json()[0]
+    listing.assert_awaited_once_with(fake_session, "user-1")
+
+
+@pytest.mark.parametrize(
+    ("path", "service_method"),
+    [
+        ("/orders/requested/ongoing", "list_requested_ongoing_orders"),
+        ("/orders/requested/completed", "list_requested_completed_orders"),
+        ("/orders/assigned/completed", "list_assigned_completed_orders"),
+    ],
+)
+def test_participant_lists_require_user_id_and_return_empty_list(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    service_method: str,
+) -> None:
+    listing = AsyncMock(return_value=[])
+    monkeypatch.setattr(order_routes.order_service, service_method, listing)
+    headers = {"X-User-Role": "client"}
+
+    assert client.get(path, headers=headers).status_code == 422
+    listing.assert_not_awaited()
+
+    response = client.get(path, headers={**headers, "X-User-Id": "user-1"})
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_completed_assigned_list_requires_client_role(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    listing = AsyncMock()
+    monkeypatch.setattr(order_routes.order_service, "list_assigned_completed_orders", listing)
+
+    response = client.get(
+        "/orders/assigned/completed",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "admin"},
+    )
+
+    assert response.status_code == 403
+    listing.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
     ("error", "status_code", "code"),
     [
         (OrderNotFoundError("order-1"), 404, "order_not_found"),

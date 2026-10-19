@@ -112,6 +112,58 @@ async def list_assigned_orders(session: AsyncSession, courier_id: str) -> list[O
     return list(result.all())
 
 
+async def list_requested_ongoing_orders(
+    session: AsyncSession, requester_id: str
+) -> list[OrderTable]:
+    statement = (
+        select(OrderTable)
+        .where(
+            OrderTable.requester_id == requester_id,
+            OrderTable.status.in_(
+                (
+                    OrderStatus.OPEN,
+                    OrderStatus.ACCEPTED,
+                    OrderStatus.PICKED_UP,
+                    OrderStatus.AWAITING_APPROVAL,
+                )
+            ),
+        )
+        .order_by(OrderTable.deadline.asc(), OrderTable.order_id.asc())
+    )
+    result = await session.scalars(statement)
+    return list(result.all())
+
+
+async def list_requested_completed_orders(
+    session: AsyncSession, requester_id: str
+) -> list[OrderTable]:
+    statement = (
+        select(OrderTable)
+        .where(
+            OrderTable.requester_id == requester_id,
+            OrderTable.status == OrderStatus.COMPLETED,
+        )
+        .order_by(OrderTable.created_at.desc(), OrderTable.order_id.desc())
+    )
+    result = await session.scalars(statement)
+    return list(result.all())
+
+
+async def list_assigned_completed_orders(
+    session: AsyncSession, courier_id: str
+) -> list[OrderTable]:
+    statement = (
+        select(OrderTable)
+        .where(
+            OrderTable.courier_id == courier_id,
+            OrderTable.status == OrderStatus.COMPLETED,
+        )
+        .order_by(OrderTable.created_at.desc(), OrderTable.order_id.desc())
+    )
+    result = await session.scalars(statement)
+    return list(result.all())
+
+
 async def get_order(
     session: AsyncSession,
     order_id: str,

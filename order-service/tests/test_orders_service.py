@@ -151,6 +151,27 @@ async def test_list_assigned_orders_translates_database_failure(
         await order_service.list_assigned_orders(_Session(), "courier-1")
 
 
+@pytest.mark.parametrize(
+    "method_name",
+    [
+        "list_requested_ongoing_orders",
+        "list_requested_completed_orders",
+        "list_assigned_completed_orders",
+    ],
+)
+async def test_participant_lists_translate_database_failure(
+    monkeypatch: pytest.MonkeyPatch, method_name: str
+) -> None:
+    monkeypatch.setattr(
+        order_service.order_repository,
+        method_name,
+        AsyncMock(side_effect=SQLAlchemyError("database unavailable")),
+    )
+
+    with pytest.raises(OrderRetrievalError):
+        await getattr(order_service, method_name)(_Session(), "user-1")
+
+
 async def test_get_order_enforces_participant_ownership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

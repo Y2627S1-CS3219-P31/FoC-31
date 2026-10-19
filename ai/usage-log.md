@@ -794,3 +794,28 @@ Format for each entry:
 - Author review: Focused delivery service, API, and error-mapping tests
   passed. Ruff lint and format checks passed, and `git diff --check` passed.
   One pre-existing Starlette `httpx` deprecation warning remains.
+
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added three read-only Order Service listing endpoints for requester
+  ongoing orders, requester completed orders, and courier completed orders.
+  Queries filter by gateway-provided identity and status, return existing order
+  summaries without photo data, and publish no events. Updated Order Service
+  documentation and focused API, service, and repository tests. Changed no
+  other service.
+- Prompt(s): “Implement three Order Service listing endpoints:
+  `GET /orders/requested/ongoing` for the authenticated requester's `OPEN`,
+  `ACCEPTED`, `PICKED_UP`, or `AWAITING_APPROVAL` orders;
+  `GET /orders/requested/completed` for their `COMPLETED` orders; and
+  `GET /orders/assigned/completed` for the authenticated courier's `COMPLETED`
+  orders. Filter by gateway-provided `X-User-Id`, never a client-provided user
+  ID. Return summaries without photo bytes; retain `GET /orders/{order_id}`
+  for details and photo. Follow the route/service/repository architecture,
+  place static routes before `/{order_id}`, add meaningful tests and Order
+  Service documentation, publish no events, and modify only `order-service/`
+  and `ai/usage-log.md`. Keep code neat and comments clear but sparing.”
+- Author review: 210 Order Service tests passed; 14 optional PostgreSQL tests
+  were skipped because no test database URL was supplied. Ruff lint/format and
+  `git diff --check` passed. One pre-existing Starlette `httpx` deprecation
+  warning remains.
