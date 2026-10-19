@@ -1,12 +1,14 @@
-// AI-assisted (OpenCode + Claude): profile view/edit. Role, email and account
-// status are read-only (server rejects changes); only display name and contact
-// number are editable. Reviewed by authors.
+// AI-assisted (OpenCode + Claude): profile view/edit and credits balance/history.
+// Role, email and account status are read-only (server rejects changes); only
+// display name and contact number are editable. Reviewed by authors.
 import {
   Badge,
   Button,
   Card,
   Group,
+  Loader,
   Stack,
+  Table,
   Text,
   TextInput,
   Title,
@@ -14,7 +16,13 @@ import {
 import { useForm } from "@mantine/form";
 import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
-import { ApiError, authApi } from "../lib/api";
+import {
+  ApiError,
+  BalanceResponse,
+  TransactionResponse,
+  authApi,
+  creditsApi,
+} from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 function ReadonlyField({ label, value }: { label: string; value: React.ReactNode }) {
@@ -31,6 +39,9 @@ function ReadonlyField({ label, value }: { label: string; value: React.ReactNode
 export default function Profile() {
   const { user, refresh } = useAuth();
   const [saving, setSaving] = useState(false);
+  const [balance, setBalance] = useState<BalanceResponse | null>(null);
+  const [transactions, setTransactions] = useState<TransactionResponse[]>([]);
+  const [creditsLoading, setCreditsLoading] = useState(true);
 
   const form = useForm({
     initialValues: {
@@ -52,6 +63,32 @@ export default function Profile() {
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setCreditsLoading(true);
+    Promise.all([
+      creditsApi.getBalance(user.id),
+      creditsApi.getTransactions(user.id),
+    ])
+      .then(([bal, txns]) => {
+        if (cancelled) return;
+        setBalance(bal);
+        setTransactions(txns);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        notifications.show({
+          color: "red",
+          message: err instanceof ApiError ? err.message : "Failed to load credits",
+        });
+      })
+      .finally(() => {
+        if (!cancelled) setCreditsLoading(false);
+      });
+    return () => { cancelled = true; };
   }, [user]);
 
   const handleSubmit = form.onSubmit(async (values) => {
@@ -123,6 +160,60 @@ export default function Profile() {
               </Group>
             </Stack>
           </form>
+        </Stack>
+      </Card>
+
+      <Card withBorder radius="md" padding="lg">
+        <Stack gap="md">
+          <Title order={4}>Credits</Title>
+          {creditsLoading ? (
+            <Loader size="sm" />
+          ) : (
+            <>
+              <Group>
+                <div>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Available</Text>
+                  <Text fw={600}>{balance?.available_balance ?? "—"}</Text>
+                </div>
+                <div>
+                  <Text size="xs" c="dimmed" tt="uppercase" fw={600}>Reserved</Text>
+                  <Text>{balance?.reserved_balance ?? "—"}</Text>
+                </div>
+              </Group>
+              <Table striped highlightOnHover withTableBorder>
+                <Table.Thead>
+                  <Table.Tr>
+                    <Table.Th>Kind</Table.Th>
+                    <Table.Th>Amount</Table.Th>
+                    <Table.Th>Order ID</Table.Th>
+                    <Table.Th>Time</Table.Th>
+                  </Table.Tr>
+                </Table.Thead>
+                <Table.Tbody>
+                  {transactions.length === 0 ? (
+                    <Table.Tr>
+                      <Table.Td colSpan={4}>
+                        <Text c="dimmed" size="sm" ta="center">No transactions yet</Text>
+                      </Table.Td>
+                    </Table.Tr>
+                  ) : (
+                    transactions.map((tx) => (
+                      <Table.Tr key={tx.id}>
+                        <Table.Td>{tx.kind}</Table.Td>
+                        <Table.Td>
+                          <Text c={tx.amount >= 0 ? "green" : "red"}>
+                            {tx.amount >= 0 ? "+" : ""}{tx.amount}
+                          </Text>
+                        </Table.Td>
+                        <Table.Td>{tx.order_id ?? "—"}</Table.Td>
+                        <Table.Td>{new Date(tx.created_at).toLocaleString()}</Table.Td>
+                      </Table.Tr>
+                    ))
+                  )}
+                </Table.Tbody>
+              </Table>
+            </>
+          )}
         </Stack>
       </Card>
     </Stack>

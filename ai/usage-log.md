@@ -1054,3 +1054,17 @@ Format for each entry:
   1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-5-brief.md`.
 - Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
   Build output: 498.77 kB JS, 202.52 kB CSS.
+
+## 2026-10-20 — frontend: Profile credits balance and transaction history (Task 10)
+
+- Task: Task 10 on branch fix/d3-cancel-release-and-courier-view. Added a Credits
+  Card below the existing profile Card in `Profile.tsx`. On mount, calls
+  `creditsApi.getBalance` and `creditsApi.getTransactions` concurrently. Shows
+  available/reserved balance and a Mantine Table with Kind, Amount (signed),
+  Order ID, and Time columns. Loader shown while fetching; errors surface via
+  `ApiError.message`.
+- Files changed: `frontend/src/pages/Profile.tsx`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-10-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
+  Build output: 501.45 kB JS, 202.52 kB CSS.
