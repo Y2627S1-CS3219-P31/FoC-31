@@ -482,6 +482,7 @@ class CreditService:
             await self._publish_transfer_outcome(recorded)
             return
 
+        await self.ensure_account(event.courier_id)
         reservation = await self._reservations.get_for_update(event.reservation_id)
         reason = self._request_mismatch(
             reservation, order_id=event.order_id, requester_id=event.requester_id
