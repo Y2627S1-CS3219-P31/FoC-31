@@ -6,8 +6,9 @@ role-based authorization at the edge (backlog: API Gateway).
 
 ## Responsibilities (from backlog)
 
-- **F1 Routing** — route by path to the right backend (`app/routing.py`);
-  reject unknown routes with `404` (F1.1.1); backends are never exposed
+- **F1 Routing** — forward only the routes listed in `app/exposed_routes.py`
+  (default deny; matching in `app/services/routing.py`); reject everything
+  else with `404` (F1.1.1); backends are never exposed
   directly (only the gateway is published).
 - **F2 Authentication** — validate the caller's session credential on every
   protected route before routing (F2.1); reject missing/malformed/expired

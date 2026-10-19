@@ -28,7 +28,7 @@ kept in sync — endpoint set, field names, enums, and error codes are identical
 The API Gateway is the **only** public entry point. It strips any
 client-supplied identity headers, authenticates the caller, and injects the
 trusted headers below before proxying `/api/suppliers/*` to the service
-(`ROUTE_TABLE` in `api-gateway/app/services/routing.py`). Backend services are never
+(`ROUTE_TABLE` / `EXPOSED_ROUTES` in `api-gateway/app/exposed_routes.py`). Backend services are never
 exposed to clients directly.
 
 ---
