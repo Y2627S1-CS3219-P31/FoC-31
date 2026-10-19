@@ -180,3 +180,29 @@ async def test_legacy_event_keeps_requeueing_after_the_limit():
     )
     await consumer._dispatch(message, model=OrderEvent, handler=handler, verify_routing_key=True)
     assert message.requeued is True
+
+
+async def test_approval_request_is_routed_to_the_transfer_handler(monkeypatch):
+    from app.schemas.interop import OrderApprovalRequestedEvent
+    from app.services import consumer as consumer_module
+
+    handled: list[OrderApprovalRequestedEvent] = []
+
+    async def handler(event):
+        handled.append(event)
+
+    monkeypatch.setattr(consumer_module, "handle_approval_requested", handler)
+    event = OrderApprovalRequestedEvent(
+        task_id="task-1",
+        order_id="order-1",
+        reservation_id="reservation-1",
+        requester_id="requester",
+        courier_id="courier",
+        timestamp=datetime.now(UTC),
+    )
+    message = FakeMessage(event.model_dump_json().encode(), routing_key="OrderApprovalRequested")
+
+    await CreditEventConsumer()._on_order_message(message, exchange=FakeExchange())
+
+    assert message.acked is True
+    assert [e.task_id for e in handled] == ["task-1"]
