@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from app.config import settings
 
-
 ROUTE_TABLE: dict[str, str] = {
     "/api/users": settings.user_service_url,
     "/api/suppliers": settings.supplier_service_url,
