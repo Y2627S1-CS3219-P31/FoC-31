@@ -1037,3 +1037,20 @@ Format for each entry:
   1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-1-brief.md`.
 - Author review: `pytest` (99 tests passing, 5 new) and `ruff check` /
   `ruff format` clean. TDD: RED confirmed (2 failures) before implementing.
+
+## 2026-10-19 — frontend: BrowseErrands page (Task 5)
+
+- Task: Task 5 on branch fix/d3-cancel-release-and-courier-view. Replaced the
+  stub `BrowseErrands.tsx` with a full implementation: filter state
+  (`minReward`, `maxReward`, `sortBy`, `sortOrder`), `useEffect` with
+  cancelled-flag calling `ordersApi.list`, and a `SimpleGrid` of Mantine
+  `Card`s showing name, reward badge, deadline, pickup→delivery route,
+  `OrderStatusBadge`, and an Accept button. Accept calls `ordersApi.accept`
+  and navigates to `/orders/mine` on success; errors surface via
+  `notifications.show`.
+- Files changed: `frontend/src/pages/errands/BrowseErrands.tsx`,
+  `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-5-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
+  Build output: 498.77 kB JS, 202.52 kB CSS.
