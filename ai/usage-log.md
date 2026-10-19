@@ -514,3 +514,33 @@ Format for each entry:
   failure paths, and the order-side `approval_consumer` / `approval_worker` were
   read to confirm the routing keys and field expectations. Not validated in
   this environment: an end-to-end run against a live RabbitMQ/Order Service.
+
+## 19/10/2026 - credit-service owner (fill in name)
+
+- Tool: DeepSeek Harness (model: deepseek-flash)
+- Scope: system-wide API observability. Moved the credit-service observability
+  layer into `shared/foc_shared/observability.py` (per-service registry, HTTP
+  metrics with a `service` label, error-envelope `code` counters,
+  `/metrics` + `/health/ready` routes, `X-Request-Id` propagation, JSON logging,
+  broker state) with an `Observability(...).install(app, ...)` on-ramp.
+  credit-service now consumes the shared layer (local `middleware.py`,
+  `logging.py`, `context.py`, `health.py` and `routes/observability.py` reduced
+  to shims/removed; metric names unchanged). Onboarded user-service and
+  supplier-service (HTTP metrics + readiness; supplier also records envelope
+  codes), added Prometheus scrape targets and per-service tests, and documented
+  the onboarding steps in `docs/observability.md` / `shared/README.md`.
+  The decision to build a shared library rather than an edge-only gateway
+  audit was made by the author; the tool implemented it.
+- Prompt(s):
+  1. "我之前的 api metric 审计是只针对 credit service 的吗？我需要对整个系统的
+     所有服务的 api 都要做一个审计。请问我们可不可以做到？" - scope check and
+     feasibility analysis (shared library vs gateway-level audit).
+  2. "直接做 P2 共享库 + 逐服务接入" - implement the shared library and onboard
+     the services.
+- Author review: `pytest` 111 (credit) + 89 (supplier) + 31 (user) passing and
+  `ruff check` / `ruff format --check` clean across the four trees. Some suites
+  were run against the credit-service venv with `PYTHONPATH=shared` because
+  only credit-service has a local venv in this environment; the same dependency
+  sets are declared in each service's `requirements.txt`. Not covered: a live
+  Prometheus/Grafana run (no Docker) and the gateway/order/notification
+  onboarding.

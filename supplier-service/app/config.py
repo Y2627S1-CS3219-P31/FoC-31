@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     service_name: str = "supplier-service"
     log_level: str = "info"
+    # One JSON object per log line (containers); false for readable local output.
+    log_json: bool = False
     database_url: str = "postgresql+asyncpg://foc:foc@supplier-db:5432/supplier_db"
     rabbitmq_url: str = "amqp://guest:guest@rabbitmq:5672/"
     order_events_exchange: str = "foc.order.events"

@@ -1,13 +1,37 @@
-# Observability (credit-service N2H)
+# Observability (system-wide N2H)
 
 Goal: use **measurement** to answer "what would make this service more
-available", instead of guessing. Scope: `credit-service` only, plus the broker
-metrics it depends on. No frontend work — everything below is reachable with
-`curl`, Postman, Prometheus and Grafana.
+available", instead of guessing. The implementation is shared — one library,
+one set of conventions — and today it is installed in **credit-service,
+user-service and supplier-service**; the broker metrics they depend on are
+scraped too. No frontend work: everything below is reachable with `curl`,
+Postman, Prometheus and Grafana.
 
-> Status: implemented (metrics, structured logs, readiness, JSON summary,
-> opt-in Prometheus/Grafana profile). Tracing is deliberately out of scope, see
-> [§7 Known gaps](#7-known-gaps).
+```python
+# onboarding a service (see shared/foc_shared/observability.py)
+from foc_shared.observability import Observability
+
+OBS = Observability("supplier-service", prefix="supplier")
+OBS.install(app, readiness_session_dep=get_session)
+```
+
+That single call adds `/metrics`, `/health/ready`, the HTTP middleware
+(route-template labels + `X-Request-Id`), and the request/log correlation.
+Services with an error envelope additionally call
+`OBS.record_error_code(route, code)` from their exception handlers.
+
+| Service | Status | Prefix |
+| --- | --- | --- |
+| credit-service | ✅ metrics + readiness + JSON summary + all business/saga/consumer counters | `credit` |
+| supplier-service | ✅ metrics + readiness + envelope `code` counters | `supplier` |
+| user-service | ✅ metrics + readiness (no `code` label yet — it returns `{"detail"}`) | `user` |
+| api-gateway | ⏳ edge-level audit not implemented (would duplicate service numbers) | — |
+| order-service | ⏳ pending PR #10 (its routes are still changing) | — |
+| notification-service | ⏳ scaffold (501 stubs, no Rabbit consumer yet) | — |
+
+> Status: implemented for the three services above (metrics, structured logs,
+> readiness, credit JSON summary, opt-in Prometheus/Grafana profile). Tracing is
+> deliberately out of scope, see [§7 Known gaps](#7-known-gaps).
 
 ---
 
@@ -15,13 +39,13 @@ metrics it depends on. No frontend work — everything below is reachable with
 
 | Layer | Signal | Where |
 | --- | --- | --- |
-| HTTP | request count, latency histogram, status | `app/observability/middleware.py` |
-| HTTP errors | error-envelope `code` (`insufficient_credits`, `conflict`, ...) | `app/errors.py` (the only layer that knows the code) |
-| Business | reserve/amend/transfer/release outcomes, duplicate suppression | `app/services/credit_service.py` |
+| HTTP | request count, latency histogram, status, `service` label | `foc_shared/observability.py` (shared middleware) |
+| HTTP errors | error-envelope `code` (`insufficient_credits`, `conflict`, ...) | service `errors.py` (the only layer that knows the code) |
+| Business | reserve/amend/transfer/release outcomes, duplicate suppression | credit `app/services/credit_service.py` |
 | Saga | Order Service task outcomes, retries exhausted | same (task happy/failure paths) |
-| Events | publish count/latency per routing key, success vs failure | `app/services/publisher.py` |
-| Consumer | messages by queue+result, requeue reasons, last-message timestamp, connection state | `app/services/consumer.py` |
-| Resources | DB pool in-use/size/overflow, reserved & available credit totals, account count | `app/db.py`, summary endpoint |
+| Events | publish count/latency per routing key, success vs failure | credit `app/services/publisher.py` |
+| Consumer | messages by queue+result, requeue reasons, last-message timestamp, connection state | credit `app/services/consumer.py` |
+| Resources | DB pool in-use/size/overflow, reserved & available credit totals, account count | credit `app/db.py`, summary endpoint |
 
 Two design decisions worth knowing:
 

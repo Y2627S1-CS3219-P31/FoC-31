@@ -1,3 +1,4 @@
+# AI-influenced: implemented with AI assistance; see ai/usage-log.md.
 from __future__ import annotations
 
 import asyncio
@@ -7,12 +8,16 @@ from fastapi import FastAPI
 
 from app.api.routes import health, users
 from app.bootstrap import seed_bootstrap_admin
-from app.db import engine, init_db
+from app.config import settings
+from app.db import engine, get_session, init_db
+from app.observability import OBS
 from app.services.events import outbox_worker
+from foc_shared.observability import configure_logging
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_logging(level=settings.log_level, json_output=settings.log_json)
     await init_db()
     await seed_bootstrap_admin()
     worker = asyncio.create_task(outbox_worker())
@@ -25,5 +30,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="FoC User Service", version="0.1.0", lifespan=lifespan)
+# Shared observability: /metrics, /health/ready, HTTP metrics, request ids.
+OBS.install(app, readiness_session_dep=get_session)
 app.include_router(health.router)
 app.include_router(users.router)

@@ -1,10 +1,10 @@
 # AI-influenced: implemented with AI assistance; see ai/usage-log.md.
-# Prometheus for the credit-service observability demo.
+# Prometheus for the FoC observability stack.
 #
 #   docker compose --profile observability up -d prometheus grafana
 #
-# Everything here is internal to the compose network; nothing is exposed to the
-# browser except the two published ports (Prometheus 9090, Grafana 3000).
+# Every instrumented service exposes /metrics **inside** the compose network
+# (the API gateway is the only public entry point and does not proxy it).
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
@@ -13,14 +13,26 @@ rule_files:
   - /etc/prometheus/alerts.yml
 
 scrape_configs:
-  # The service never publishes /metrics through the API gateway: Prometheus
-  # talks to it over foc-net, so the endpoint stays internal.
   - job_name: credit-service
     metrics_path: /metrics
     static_configs:
       - targets: ["credit-service:8000"]
         labels:
           service: credit-service
+
+  - job_name: user-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["user-service:8000"]
+        labels:
+          service: user-service
+
+  - job_name: supplier-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["supplier-service:8000"]
+        labels:
+          service: supplier-service
 
   # Broker-side metrics (queue depth, unacked, consumer count). RabbitMQ does
   # not produce application traces; this is the broker's own view of the async

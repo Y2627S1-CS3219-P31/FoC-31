@@ -4,10 +4,16 @@
 [project]
 name = "foc-shared"
 version = "0.1.0"
-description = "Shared contracts (events, auth headers, error envelope) for FoC services."
+description = "Shared contracts (events, auth headers, error envelope, observability) for FoC services."
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7",
+    # observability module: FastAPI/Starlette middleware, SQL readiness ping,
+    # Prometheus exposition. Services already depend on these; declaring them
+    # keeps `pip install -e ../shared` self-sufficient.
+    "fastapi>=0.111",
+    "sqlalchemy>=2.0",
+    "prometheus-client>=0.20",
 ]
 
 [build-system]
