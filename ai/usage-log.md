@@ -990,6 +990,22 @@ Format for each entry:
 
 
 
+## 2026-10-19 — frontend: ordersApi + creditsApi API layer (Task 3)
+
+- Task: Task 3 on branch fix/d3-cancel-release-and-courier-view. Extended
+  `request<T>` to accept an optional `extraHeaders` parameter. Added
+  TypeScript types (`OrderStatus`, `OrderResponse`, `OrderCreate`,
+  `OrderUpdate`, `OrderCancellationRequest`, `OrderActionResponse`,
+  `BalanceResponse`, `TransactionResponse`) and the `ordersApi` and
+  `creditsApi` objects. `withdraw` passes an `Idempotency-Key` header via
+  the new `extraHeaders` parameter. All methods use existing `request<T>`
+  and `buildQuery` helpers.
+- Files changed: `frontend/src/lib/api.ts`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-3-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript
+  errors. Build output: 493.63 kB JS, 202.52 kB CSS.
+
 ## 2026-10-19 — credit-service: bind and handle OrderCancelled (Fix 1)
 
 - Task: PR A of fix/d3-cancel-release-and-courier-view. Bind `OrderCancelled`
