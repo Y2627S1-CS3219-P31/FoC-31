@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
     service_name: str = "user-service"
     log_level: str = "info"
+    # One JSON object per log line (containers); false for readable local output.
+    log_json: bool = False
     environment: str = "development"
     database_url: str = "postgresql+asyncpg://foc:foc@user-db:5432/user_db"
     jwt_secret: str = ""

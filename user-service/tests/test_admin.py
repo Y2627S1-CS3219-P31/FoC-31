@@ -25,9 +25,7 @@ def _register_verified(monkeypatch, email: str, display_name: str) -> str:
     )
     assert response.status_code == 201
     user_id = response.json()["id"]
-    verify = client.post(
-        "/users/otp/verify", json={"email": email, "code": captured["code"]}
-    )
+    verify = client.post("/users/otp/verify", json={"email": email, "code": captured["code"]})
     assert verify.status_code == 200
     return user_id
 
@@ -163,7 +161,9 @@ def test_role_self_demotion_blocked(monkeypatch):
         f"/users/admin/{self_admin_id}/role", headers=self_headers, json={"role": "client"}
     )
     assert resp.status_code == 400
-    assert "themselves" in resp.json()["detail"]
+    body = resp.json()
+    assert "themselves" in body["message"]
+    assert body["code"] == "admin_guard"
 
 
 def test_last_admin_cannot_be_demoted(monkeypatch):
@@ -179,15 +179,15 @@ def test_last_admin_cannot_be_demoted(monkeypatch):
         json={"role": "client"},
     )
     assert resp.status_code == 400
-    assert "last administrator" in resp.json()["detail"]
+    body = resp.json()
+    assert "last administrator" in body["message"]
+    assert body["code"] == "last_admin_guard"
 
 
 def test_role_update_missing_user_404(monkeypatch):
     actor_id = _register_verified(monkeypatch, "actor@u.nus.edu", "Actor")
     headers = {"X-User-Id": actor_id, "X-User-Role": "admin"}
-    resp = client.patch(
-        "/users/admin/does-not-exist/role", headers=headers, json={"role": "admin"}
-    )
+    resp = client.patch("/users/admin/does-not-exist/role", headers=headers, json={"role": "admin"})
     assert resp.status_code == 404
 
 

@@ -70,7 +70,9 @@ def test_otp_wrong_attempts_are_limited(monkeypatch):
         json={"email": NUS_EMAIL, "code": "000000"},
     )
     assert locked.status_code == 400
-    assert "too many attempts" in locked.json()["detail"]
+    body = locked.json()
+    assert "too many attempts" in body["message"]
+    assert body["code"] == "otp_locked"
 
 
 def test_full_register_verify_login_flow(monkeypatch):

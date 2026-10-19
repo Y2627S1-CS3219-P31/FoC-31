@@ -9,6 +9,8 @@ asyncpg>=0.29
 passlib[bcrypt]>=1.7
 python-jose[cryptography]>=3.3
 aio-pika>=9.4
+# observability: shared /metrics endpoint (foc_shared.observability)
+prometheus-client>=0.20
 
 # shared contracts library is installed separately (see Dockerfile / make install)
 # because its path differs between local venv (../shared) and Docker (/shared).
