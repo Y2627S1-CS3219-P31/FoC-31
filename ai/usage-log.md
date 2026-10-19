@@ -435,3 +435,19 @@ Format for each entry:
 - Author review: Pending contributor review. Tests run against a mocked gateway
   (no real backend), assert request payloads and query parameters, and pass in
   Chromium, Firefox, and WebKit.
+
+## 19/10/2026 — Zhou Shiyao
+
+- Tool: GitHub Copilot Chat (model: DeepSeek V4.1 Flash)
+- Scope: Added Playwright end-to-end regression tests for the admin client
+  accounts screen (list/self-row behaviour, search + status filters,
+  suspend/reinstate, promote/demote, create-admin validation and gateway
+  rejection) and the profile screen (read-only account fields, editable
+  name/contact, client-side validation, error handling). Test-only changes; no
+  application behavior, endpoint contracts, or architecture decisions were
+  changed.
+- Prompt(s): "commit the changes then continue to generate tests for admin and
+  profile following the same instruction."
+- Author review: Pending contributor review. Tests run against a mocked gateway
+  (no real backend), assert request payloads and query parameters, and pass in
+  Chromium, Firefox, and WebKit.

@@ -60,27 +60,14 @@ specs mock the API Gateway with Playwright routes, so **no backend, database, or
 cd frontend
 
 # one-time setup
-npm install
-npx playwright install          # download Chromium, Firefox and WebKit
+npm install && npx playwright install
 
-# auth regression suite (login, register, OTP, session + route guards)
-npx playwright test tests/auth
-
-# supplier regression suite (browse, detail, admin create/edit/deactivate)
-npx playwright test tests/suppliers
-
-# everything under tests/
+# run every spec, or a single suite (example: profile)
 npx playwright test
-```
+npx playwright test tests/profile
 
-Useful variants:
-
-```bash
-npx playwright test tests/auth --project=chromium   # one browser
-npx playwright test tests/auth/login.spec.ts        # one file
-npx playwright test tests/auth --headed             # watch it run
-npx playwright test tests/auth --ui                 # interactive UI mode
-npx playwright show-report                          # open the HTML report
+# open the last HTML report
+npx playwright show-report
 ```
 
 If a dev server is already running on port 5173 it is reused; only CI always
