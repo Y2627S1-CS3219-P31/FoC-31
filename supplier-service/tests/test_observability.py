@@ -54,16 +54,15 @@ def test_error_envelope_code_is_counted(client):
     assert OBS.value(OBS.http_errors, code="not_found") == before + 1
 
 
-def test_readiness_reports_database_and_broker(client):
+def test_readiness_checks_the_database_only(client):
     resp = client.get("/health/ready")
     body = resp.json()
 
-    # The broker is not connected in unit tests, so readiness is degraded but
-    # the database check still runs.
-    assert resp.status_code == 503
-    assert body["status"] == "degraded"
-    assert body["checks"]["database"] == "ok"
-    assert body["checks"]["broker"] == "unavailable"
+    # supplier-service does not use the broker, so readiness is DB-only
+    # instead of permanently degraded.
+    assert resp.status_code == 200
+    assert body["status"] == "ready"
+    assert body["checks"] == {"database": "ok"}
 
 
 def test_request_id_is_echoed(client):

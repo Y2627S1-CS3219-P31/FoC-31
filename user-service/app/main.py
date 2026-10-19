@@ -31,6 +31,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="FoC User Service", version="0.1.0", lifespan=lifespan)
 # Shared observability: /metrics, /health/ready, HTTP metrics, request ids.
-OBS.install(app, readiness_session_dep=get_session)
+# check_broker=False: this service publishes through an outbox and keeps no
+# consumer connection, so broker state would always read "unavailable".
+OBS.install(app, readiness_session_dep=get_session, check_broker=False)
 app.include_router(health.router)
 app.include_router(users.router)

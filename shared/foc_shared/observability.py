@@ -442,11 +442,20 @@ class Observability:
         *,
         readiness_session_dep: Callable | None = None,
         readiness_extra: Callable[[], dict[str, str]] | None = None,
+        check_broker: bool = True,
     ) -> None:
-        """Mount ``/metrics`` and ``/health/ready`` and add the middleware."""
+        """Mount ``/metrics`` and ``/health/ready`` and add the middleware.
+
+        ``check_broker`` should stay ``True`` only for a service that keeps
+        :func:`set_broker_state` up to date (a long-lived consumer). Services
+        that merely publish through an outbox, or do not use the broker at all,
+        would otherwise report ``degraded`` forever.
+        """
         app.add_middleware(ObservabilityMiddleware, observability=self)
         app.include_router(self._metrics_router())
-        app.include_router(self._readiness_router(readiness_session_dep, readiness_extra))
+        app.include_router(
+            self._readiness_router(readiness_session_dep, readiness_extra, check_broker)
+        )
 
     def _metrics_router(self) -> APIRouter:
         router = APIRouter(tags=["observability"])
@@ -461,6 +470,7 @@ class Observability:
         self,
         session_dep: Callable | None,
         extra: Callable[[], dict[str, str]] | None,
+        check_broker: bool,
     ) -> APIRouter:
         router = APIRouter(tags=["observability"])
 
@@ -479,14 +489,15 @@ class Observability:
                 except Exception:
                     logging.getLogger("app").exception("Readiness: extra check failed.")
             broker = broker_state()
-            checks["broker"] = "ok" if broker["connected"] else "unavailable"
+            if check_broker:
+                checks["broker"] = "ok" if broker["connected"] else "unavailable"
             ready = all(value == "ok" for value in checks.values())
             return (
                 200 if ready else 503,
                 {
                     "status": "ready" if ready else "degraded",
                     "checks": checks,
-                    "broker_error": broker["error"],
+                    "broker_error": broker["error"] if check_broker else None,
                     "uptime_seconds": round(time.time() - self.started_at, 3),
                 },
             )

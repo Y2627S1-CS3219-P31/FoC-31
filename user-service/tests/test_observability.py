@@ -25,15 +25,16 @@ def test_metrics_endpoint_exposes_prefixed_families():
     assert 'route="/users/me"' in body
 
 
-def test_readiness_reports_database_and_broker():
+def test_readiness_checks_the_database_only():
     client = _client()
     resp = client.get("/health/ready")
     body = resp.json()
 
-    assert resp.status_code == 503  # broker not connected in unit tests
-    assert body["status"] == "degraded"
-    assert body["checks"]["database"] == "ok"
-    assert body["checks"]["broker"] == "unavailable"
+    # user-service publishes through an outbox and holds no consumer
+    # connection, so readiness is DB-only instead of permanently degraded.
+    assert resp.status_code == 200
+    assert body["status"] == "ready"
+    assert body["checks"] == {"database": "ok"}
 
 
 def test_request_id_is_echoed():

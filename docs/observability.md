@@ -64,8 +64,14 @@ Two design decisions worth knowing:
 | --- | --- | --- | --- |
 | `GET` | `/metrics` | none — internal only, scraped over `foc-net` | Prometheus exposition |
 | `GET` | `/health` | none | unchanged: `{"status": "ok"}` (compose healthcheck) |
-| `GET` | `/health/ready` | none | DB + broker readiness; `503` when degraded |
+| `GET` | `/health/ready` | none | readiness; `503` when degraded (DB, plus broker for services that maintain broker state) |
 | `GET` | `/credits/observability/summary` | **admin** (via gateway: `/api/credits/observability/summary`) | the JSON "data display" block |
+
+The broker check is **opt-in** (`install(..., check_broker=False)`): only a
+service with a long-lived consumer keeps `set_broker_state()` up to date.
+credit-service checks broker + DB; user-service (outbox publisher) and
+supplier-service (no broker use) check the DB only, so they do not report
+`degraded` forever.
 
 `/metrics` is not published through the API gateway on purpose: the gateway is
 the only public entry point, and metrics are an internal operational surface.
@@ -272,8 +278,9 @@ saturation, consumer stalled (`time() - last_message > 300`), publish failures,
 saga retries exhausted.
 
 > Note: `docker compose` healthchecks still use `GET /health`. `GET
-> /health/ready` is for humans and for orchestration that can tolerate a 503
-> (it reports DB *and* broker).
+> /health/ready` is for humans and for orchestration that can tolerate a 503:
+> it reports the database, plus the broker state for services that maintain it
+> (`check_broker=True`, currently credit-service only).
 
 ---
 

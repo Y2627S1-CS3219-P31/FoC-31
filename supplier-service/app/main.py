@@ -31,7 +31,8 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="FoC Supplier Service", version="0.1.0", lifespan=lifespan)
 # Shared observability: /metrics, /health/ready, HTTP + error-code metrics.
-OBS.install(app, readiness_session_dep=get_session)
+# check_broker=False: this service does not consume the broker at all.
+OBS.install(app, readiness_session_dep=get_session, check_broker=False)
 register_exception_handlers(app)
 app.include_router(health.router)
 app.include_router(suppliers.router)
