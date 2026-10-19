@@ -3,6 +3,7 @@
 import { expect, test } from "@playwright/test";
 import {
   ADMIN_PROFILE,
+  CLIENT_PROFILE,
   fakeJwt,
   mockApi,
   seedToken,
@@ -36,6 +37,30 @@ test.describe("auth session", () => {
     expect(api.lastCall("GET", "/api/users/me")?.authorization).toBe(
       `Bearer ${await storedToken(page)}`,
     );
+  });
+
+  test("keeps a protected page while the profile is still loading", async ({
+    page,
+  }) => {
+    await seedToken(page);
+    await mockApi(page, {
+      "GET /api/users/me": async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return { body: CLIENT_PROFILE };
+      },
+    });
+
+    await page.goto("/suppliers");
+
+    // A regression in the hydration state would bounce a refreshing user to
+    // /login before /me resolves.
+    await expect(page.locator(".mantine-Loader-root")).toBeVisible();
+    await expect(page).toHaveURL(/\/suppliers$/);
+
+    await expect(
+      page.getByRole("heading", { name: "Campus Suppliers" }),
+    ).toBeVisible();
+    await expect(page.getByText("Client", { exact: true })).toBeVisible();
   });
 
   test("clears an expired token and returns to login", async ({ page }) => {

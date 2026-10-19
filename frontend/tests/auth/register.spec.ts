@@ -1,7 +1,7 @@
 // AI-assisted (OpenCode + Claude): regression tests for the registration
 // screen. Reviewed by authors.
 import { expect, test } from "@playwright/test";
-import { mockApi } from "../support/api-mocks";
+import { mockApi, storedToken } from "../support/api-mocks";
 
 test.describe("register", () => {
   test("validates NUS email, password strength, name and SG mobile", async ({
@@ -35,7 +35,8 @@ test.describe("register", () => {
     await page.getByLabel("NUS Email").fill("  E0123456@U.NUS.EDU  ");
     await page.getByLabel("Display name").fill("  Ada Lovelace  ");
     await page.getByLabel("Contact number (optional)").fill("91234567");
-    await page.getByLabel("Password").fill("Password1");
+    // Exactly 8 characters (the lower bound) with a letter and a digit.
+    await page.getByLabel("Password").fill("Pass1234");
     await page.getByRole("button", { name: "Sign Up" }).click();
 
     await expect(page).toHaveURL(/\/verify-otp$/);
@@ -50,10 +51,12 @@ test.describe("register", () => {
 
     expect(api.lastCall("POST", "/api/users/register")?.body).toEqual({
       email: "e0123456@u.nus.edu",
-      password: "Password1",
+      password: "Pass1234",
       display_name: "Ada Lovelace",
       contact_number: "91234567",
     });
+    // Registration does not sign the user in; they must verify first.
+    expect(await storedToken(page)).toBeNull();
   });
 
   test("sends a null contact number when the optional field is blank", async ({

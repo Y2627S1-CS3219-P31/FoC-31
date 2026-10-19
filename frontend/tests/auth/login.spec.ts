@@ -3,6 +3,7 @@
 import { expect, test } from "@playwright/test";
 import {
   CLIENT_PROFILE,
+  fakeJwt,
   mockApi,
   storedToken,
 } from "../support/api-mocks";
@@ -50,6 +51,70 @@ test.describe("login", () => {
     expect(api.lastCall("GET", "/api/users/me")?.authorization).toBe(
       `Bearer ${token}`,
     );
+
+    // The session survives a full reload (token is persisted, not just state).
+    await page.reload();
+    await expect(page).toHaveURL(/\/profile$/);
+    await expect(page.getByText("Client", { exact: true })).toBeVisible();
+    expect(api.callsTo("POST", "/api/users/login")).toHaveLength(1);
+  });
+
+  test("disables the submit button while a login is in flight", async ({
+    page,
+  }) => {
+    const api = await mockApi(page, {
+      "POST /api/users/login": async () => {
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        return {
+          body: {
+            access_token: fakeJwt(),
+            token_type: "bearer",
+            expires_in: 3600,
+          },
+        };
+      },
+    });
+    await page.goto("/login");
+
+    await page.getByLabel("NUS Email").fill("e0123456@u.nus.edu");
+    await page.getByLabel("Password").fill("Password1");
+
+    const submit = page.getByRole("button", { name: "Log In" });
+    await submit.click();
+
+    // Loading state blocks duplicate submissions until navigation completes.
+    await expect(submit).toBeDisabled();
+    await expect(page).toHaveURL(/\/suppliers$/);
+    expect(api.callsTo("POST", "/api/users/login")).toHaveLength(1);
+  });
+
+  test("renders FastAPI-style validation details from the gateway", async ({
+    page,
+  }) => {
+    await mockApi(page, {
+      "POST /api/users/login": () => ({
+        status: 422,
+        body: {
+          detail: [
+            {
+              loc: ["body", "email"],
+              msg: "value is not a valid email address",
+              type: "value_error",
+            },
+          ],
+        },
+      }),
+    });
+    await page.goto("/login");
+
+    await page.getByLabel("NUS Email").fill("e0123456@u.nus.edu");
+    await page.getByLabel("Password").fill("Password1");
+    await page.getByRole("button", { name: "Log In" }).click();
+
+    await expect(
+      page.getByText("value is not a valid email address"),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/login$/);
   });
 
   test("defaults to the supplier list when no return path is set", async ({
