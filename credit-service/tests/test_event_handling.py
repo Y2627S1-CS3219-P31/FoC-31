@@ -74,7 +74,9 @@ async def test_order_completed_without_courier_keeps_reserved(session, monkeypat
     assert requester.reserved_balance == 40
 
 
-async def test_order_cancelled_releases_credits(session, monkeypatch):
+async def test_order_cancelled_event_is_ignored(session, monkeypatch):
+    """Cancellation now arrives as OrderCancellationRequested; the legacy
+    OrderCancelled event is no longer bound and must not release credits."""
     monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
     service = CreditService(session)
     await _setup(service)
@@ -82,10 +84,8 @@ async def test_order_cancelled_releases_credits(session, monkeypatch):
     await service.handle_order_event(_order_event(OrderEventType.ORDER_CANCELLED))
 
     requester = await service.get_balances("requester")
-    assert requester.available_balance == 100
-    assert requester.reserved_balance == 0
-    reservation = await service._reservations.get_by_order_id("order-1")
-    assert reservation.status == ReservationStatus.RELEASED.value
+    assert requester.available_balance == 60
+    assert requester.reserved_balance == 40
 
 
 async def test_order_expired_releases_credits(session, monkeypatch):
