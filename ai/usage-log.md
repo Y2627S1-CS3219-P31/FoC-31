@@ -480,3 +480,37 @@ Format for each entry:
   error codes exercised and 22/22 metric families covered. Not validated in this
   environment: `docker compose --profile observability up` (no Docker
   available), so the first real stack run still needs checking.
+
+## 19/10/2026 - credit-service owner (fill in name)
+
+- Tool: DeepSeek Harness (model: deepseek-flash)
+- Scope: credit-service participant side of the Order approval transfer task.
+  Generated: `OrderApprovalRequestedEvent` and `CreditTransferResult` in
+  `app/schemas/interop.py` (mirroring `order-service/app/schemas/
+  order_approval_events.py` and `credit_events.py`), `TaskResultKind.TRANSFER`
+  with `transferred` / `transfer_failed` outcomes, `_transfer_reservation(
+  commit=False)` so the settlement and its task result commit once,
+  `CreditService.handle_approval_requested` /
+  `report_transfer_retries_exhausted` / `_record_transfer_outcome` /
+  `_publish_transfer_outcome`, the consumer binding for
+  `OrderApprovalRequested`, `tests/test_approval_requests.py` (15 cases), the
+  event-catalog/README rows, and a hermetic-test change (the HTTP suites now
+  stub reservation publishing instead of waiting on a RabbitMQ connect).
+  The contract (event names, payload fields, reply fields, routing key) was
+  specified by the Order Service owner (Alexander) in the team thread; the tool
+  implemented it against the order-side schemas.
+- Prompt(s):
+  1. (Team thread, Alexander) "Event: OrderApprovalRequested ... Credit Service
+     actions: Find the reservation by reservation_id and verify it matches
+     order_id and requester_id. Transfer the reserved credits to the account
+     identified by courier_id. Process duplicate events idempotently; retry
+     transient errors, then report a definitive failure ... Credit Service
+     publishes CreditTransferSucceeded / CreditTransferFailed ... Set the
+     routing key to event_type."
+  2. "现在就实现（推荐）" - implement the contract.
+- Author review: `pytest` (111 tests passing, 15 new) and `ruff check` /
+  `ruff format` clean; the reply model round-trips through the strict
+  `CreditTransferResult` (extra=forbid, six fields) on both the success and
+  failure paths, and the order-side `approval_consumer` / `approval_worker` were
+  read to confirm the routing keys and field expectations. Not validated in
+  this environment: an end-to-end run against a live RabbitMQ/Order Service.
