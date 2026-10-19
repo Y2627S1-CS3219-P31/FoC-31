@@ -82,6 +82,7 @@ Consumes (idempotent redelivery handling):
 | `foc.order.events` | topic | `OrderCompleted` | transfer to courier (F3.2), idempotent (F3.2.1) |
 | `foc.order.events` | topic | `CourierWithdrawn` | **no-op** — credits stay reserved (F4.1.2) |
 | `foc.order.events` | topic | `OrderExpired` | release (F4.2.1); legacy event, no reply |
+| `foc.order.events` | topic | `OrderCancelled` | release (F4.1.3); legacy event, no reply |
 | `foc.order.events` | topic | `OrderDeletionRequested` | release + reply `CreditReleased` / `CreditReleaseFailed` (F4.1.1) |
 | `foc.order.events` | topic | `OrderCancellationRequested` | release + reply `CreditReleased` / `CreditReleaseFailed` (F4.1.1) |
 | `foc.order.events` | topic | `OrderUpdateRequested` | amend to the new reward + reply `CreditAmended` / `CreditAmendRejected` (F2.3) |

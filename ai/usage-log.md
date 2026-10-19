@@ -968,3 +968,19 @@ Format for each entry:
   failure paths, and the order-side `approval_consumer` / `approval_worker` were
   read to confirm the routing keys and field expectations. Not validated in
   this environment: an end-to-end run against a live RabbitMQ/Order Service.
+
+---
+
+## 2026-10-19 — credit-service: bind and handle OrderCancelled (Fix 1)
+
+- Task: PR A of fix/d3-cancel-release-and-courier-view. Bind `OrderCancelled`
+  to `_ORDER_EVENT_BINDINGS` in consumer.py and add an `ORDER_CANCELLED` branch
+  in `handle_order_event` that calls `release_for_order`. Root problem: after
+  supplier deactivation, `OrderCancelled` was published but no consumer was
+  bound, so the order outbox retried forever and credits stayed RESERVED.
+- Files changed: `app/services/consumer.py`, `app/services/credit_service.py`,
+  `tests/test_event_handling.py`, `tests/test_consumer.py`, `README.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-1-brief.md`.
+- Author review: `pytest` (99 tests passing, 5 new) and `ruff check` /
+  `ruff format` clean. TDD: RED confirmed (2 failures) before implementing.

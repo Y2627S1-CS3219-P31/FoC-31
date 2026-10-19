@@ -398,6 +398,8 @@ class CreditService:
             await self.transfer_for_order(event.order_id, event.courier_id)
         elif event.event_type == OrderEventType.ORDER_EXPIRED:
             await self.release_for_order(event.order_id)
+        elif event.event_type == OrderEventType.ORDER_CANCELLED:
+            await self.release_for_order(event.order_id)
         elif event.event_type == OrderEventType.COURIER_WITHDRAWN:
             # Credit F4.1.2: withdrawal keeps the credits reserved.
             logger.info(
