@@ -89,22 +89,27 @@ Consumes (idempotent redelivery handling):
 | `foc.order.events` | topic | `OrderDeletionRequested` | release + reply `CreditReleased` / `CreditReleaseFailed` (F4.1.1) |
 | `foc.order.events` | topic | `OrderCancellationRequested` | release + reply `CreditReleased` / `CreditReleaseFailed` (F4.1.1) |
 | `foc.order.events` | topic | `OrderUpdateRequested` | amend to the new reward + reply `CreditAmended` / `CreditAmendRejected` (F2.3) |
+| `foc.order.events` | topic | `OrderApprovalRequested` | transfer to `courier_id` + reply `CreditTransferSucceeded` / `CreditTransferFailed` |
 
 Publishes to `foc.credit.events` (topic, routing key = event type):
 
 - `CreditReservationAccepted` (F2.1.4) / `CreditReservationRejected` (F2.1.5) —
   best-effort: a publish failure never rolls back the committed reservation.
-- `CreditReleased` / `CreditReleaseFailed` and `CreditAmended` /
-  `CreditAmendRejected` — the definitive answer to an Order Service task. The
-  publish is **not** best-effort: a failure makes the consumer retry, so the
-  saga always receives exactly one answer per `task_id`.
+- `CreditReleased` / `CreditReleaseFailed`, `CreditAmended` /
+  `CreditAmendRejected` and `CreditTransferSucceeded` / `CreditTransferFailed` —
+  the definitive answer to an Order Service task. The publish is **not**
+  best-effort: a failure makes the consumer retry, so the saga always receives
+  exactly one answer per `task_id`. The transfer reply carries only
+  `event_type`, `task_id`, `order_id`, `reservation_id`, `timestamp`, `reason?`
+  (Order validates it with `extra="forbid"`).
 
 Task requests are idempotent by `task_id` (recorded in `credit_task_results`):
-redelivery republishes the stored outcome instead of applying the release or
-amendment twice. Transient failures are retried by republishing the message
-with an incremented `x-retry-count` header; after `EVENT_RETRY_LIMIT` attempts
-a definitive failure reply is published instead of looping forever. The
-transport schemas for these request/reply events are currently duplicated in
+redelivery republishes the stored outcome instead of applying the release,
+amendment or settlement twice. Transient failures are retried by republishing
+the message with an incremented `x-retry-count` header; after
+`EVENT_RETRY_LIMIT` attempts a definitive failure reply is published instead of
+looping forever. The transport schemas for these request/reply events are
+currently duplicated in
 `app/schemas/interop.py` and will move to `shared/` once the Order Service
 lands them.
 

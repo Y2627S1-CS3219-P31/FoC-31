@@ -3,9 +3,10 @@
 
 These mirror the schemas on the Order Service side
 (`order-service/app/schemas/order_action_events.py`,
-`order_update_events.py` and `credit_events.py`). They will move to
-`shared/foc_shared/events.py` (agreed with the Order Service owner); until then
-credit-service keeps this single local copy so the two sides cannot drift.
+`order_update_events.py`, `order_approval_events.py` and `credit_events.py`).
+They will move to `shared/foc_shared/events.py` (agreed with the Order Service
+owner); until then credit-service keeps this single local copy so the two sides
+cannot drift.
 
 Deviation: `OrderExpiryRequested` is left out of `OrderActionEvent`. The Order
 Service confirmed it is dead code (expiry is signalled by `OrderExpired`) and
@@ -50,6 +51,20 @@ class OrderUpdateRequestedEvent(BaseModel):
     timestamp: datetime
 
 
+class OrderApprovalRequestedEvent(BaseModel):
+    """Order -> Credit: transfer the reservation to the courier on approval."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["OrderApprovalRequested"] = "OrderApprovalRequested"
+    task_id: str
+    order_id: str
+    reservation_id: str
+    requester_id: str
+    courier_id: str
+    timestamp: datetime
+
+
 class CreditReleaseResult(BaseModel):
     """Credit -> Order: outcome of a release request."""
 
@@ -77,4 +92,23 @@ class CreditAmendResult(BaseModel):
     reason: str | None = None
 
 
-CreditResultEvent = CreditReleaseResult | CreditAmendResult
+class CreditTransferResult(BaseModel):
+    """Credit -> Order: outcome of an approval transfer request.
+
+    Mirrors ``order-service/app/schemas/credit_events.py::CreditTransferResult``
+    exactly: six fields and ``extra="forbid"``. In particular there is **no**
+    ``requester_id`` or ``amount`` here — adding one would make the Order
+    consumer reject the reply.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: Literal["CreditTransferSucceeded", "CreditTransferFailed"]
+    task_id: str
+    order_id: str
+    reservation_id: str
+    timestamp: datetime
+    reason: str | None = None
+
+
+CreditResultEvent = CreditReleaseResult | CreditAmendResult | CreditTransferResult

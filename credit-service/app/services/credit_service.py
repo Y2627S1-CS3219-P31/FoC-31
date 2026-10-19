@@ -47,7 +47,9 @@ from app.repositories.transaction_repo import TransactionRepository
 from app.schemas.interop import (
     CreditAmendResult,
     CreditReleaseResult,
+    CreditTransferResult,
     OrderActionEvent,
+    OrderApprovalRequestedEvent,
     OrderUpdateRequestedEvent,
 )
 from app.services import publisher
@@ -285,8 +287,10 @@ class CreditService:
         return await self._transfer_reservation(reservation, courier_id)
 
     async def _transfer_reservation(
-        self, reservation: CreditReservation, courier_id: str
+        self, reservation: CreditReservation, courier_id: str, *, commit: bool = True
     ) -> CreditReservation:
+        """Settle the reservation to the courier; ``commit=False`` leaves the
+        transaction open so the caller can record the task outcome with it."""
         # Idempotent (F3.2.1): a repeated order-completion leaves the already
         # transferred reservation and all balances untouched.
         if reservation.status == ReservationStatus.TRANSFERRED.value:
@@ -337,8 +341,9 @@ class CreditService:
                 order_id=reservation.order_id,
             )
         )
-        await self._session.commit()
-        await self._session.refresh(reservation)
+        if commit:
+            await self._session.commit()
+            await self._session.refresh(reservation)
         metrics.record_transfer("ok")
         return reservation
 
@@ -489,6 +494,37 @@ class CreditService:
     async def handle_user_registered_event(self, event: UserRegisteredEvent) -> None:
         await self.ensure_account(event.user_id)
 
+    async def handle_approval_requested(self, event: OrderApprovalRequestedEvent) -> None:
+        """Transfer the reservation to the courier for an approved order.
+
+        Idempotent by ``task_id``: a repeated delivery republishes the stored
+        outcome instead of settling twice. Definitive outcomes become
+        ``CreditTransferSucceeded`` or ``CreditTransferFailed``.
+        """
+        recorded = await self._task_results.get(event.task_id)
+        if recorded is not None:
+            metrics.record_duplicate_suppressed("transfer_task")
+            await self._publish_transfer_outcome(recorded)
+            return
+
+        reservation = await self._reservations.get_for_update(event.reservation_id)
+        reason = self._request_mismatch(
+            reservation, order_id=event.order_id, requester_id=event.requester_id
+        )
+        if reason is not None:
+            await self._record_transfer_outcome(event, TaskResultOutcome.TRANSFER_FAILED, reason)
+            return
+
+        try:
+            # commit=False: the settlement and its recorded outcome are committed
+            # together, so Order can never be told about a transfer that is not
+            # durable (or vice versa).
+            await self._transfer_reservation(reservation, event.courier_id, commit=False)
+        except ServiceError as exc:
+            await self._record_transfer_outcome(event, TaskResultOutcome.TRANSFER_FAILED, str(exc))
+            return
+        await self._record_transfer_outcome(event, TaskResultOutcome.TRANSFERRED)
+
     async def report_release_retries_exhausted(
         self, event: OrderActionEvent, error: Exception
     ) -> None:
@@ -531,6 +567,27 @@ class CreditService:
                 reservation_id=event.reservation_id,
                 requester_id=event.requester_id,
                 amount=event.reward,
+                reason=self._retry_limit_reason(error),
+            )
+        )
+
+    async def report_transfer_retries_exhausted(
+        self, event: OrderApprovalRequestedEvent, error: Exception
+    ) -> None:
+        """Transfer counterpart of :meth:`report_release_retries_exhausted`."""
+        recorded = await self._task_results.get(event.task_id)
+        if recorded is not None:
+            metrics.record_duplicate_suppressed("transfer_task")
+            await self._publish_transfer_outcome(recorded)
+            return
+        metrics.record_saga_retries_exhausted("transfer")
+        await publisher.publish_credit_event(
+            CreditTransferResult(
+                event_type="CreditTransferFailed",
+                task_id=event.task_id,
+                order_id=event.order_id,
+                reservation_id=event.reservation_id,
+                timestamp=_utcnow(),
                 reason=self._retry_limit_reason(error),
             )
         )
@@ -593,6 +650,26 @@ class CreditService:
         metrics.record_saga_task("amend", outcome.value)
         await self._publish_amend_outcome(result)
 
+    async def _record_transfer_outcome(
+        self,
+        event: OrderApprovalRequestedEvent,
+        outcome: TaskResultOutcome,
+        reason: str | None = None,
+    ) -> None:
+        result = await self._save_task_result(
+            CreditTaskResult(
+                task_id=event.task_id,
+                kind=TaskResultKind.TRANSFER.value,
+                reservation_id=event.reservation_id,
+                order_id=event.order_id,
+                requester_id=event.requester_id,
+                outcome=outcome.value,
+                reason=reason,
+            )
+        )
+        metrics.record_saga_task("transfer", outcome.value)
+        await self._publish_transfer_outcome(result)
+
     async def _save_task_result(self, result: CreditTaskResult) -> CreditTaskResult:
         """Persist the outcome and commit it together with whatever state change
         the caller already staged (release or amendment), so the operation can
@@ -636,6 +713,20 @@ class CreditService:
                 requester_id=result.requester_id,
                 amount=result.amount if result.amount is not None else 0,
                 reason=None if amended else result.reason,
+            )
+        )
+
+    @staticmethod
+    async def _publish_transfer_outcome(result: CreditTaskResult) -> None:
+        succeeded = result.outcome == TaskResultOutcome.TRANSFERRED.value
+        await publisher.publish_credit_event(
+            CreditTransferResult(
+                event_type="CreditTransferSucceeded" if succeeded else "CreditTransferFailed",
+                task_id=result.task_id,
+                order_id=result.order_id,
+                reservation_id=result.reservation_id,
+                timestamp=_utcnow(),
+                reason=None if succeeded else result.reason,
             )
         )
 

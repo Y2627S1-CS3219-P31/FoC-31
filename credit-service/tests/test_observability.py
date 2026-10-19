@@ -33,8 +33,15 @@ RESERVE_ROUTE = "/credits/reservations"
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[TestClient, None]:
+async def client(monkeypatch) -> AsyncGenerator[TestClient, None]:
     from app import models  # noqa: F401
+
+    # Keep the tests hermetic: the reservation publish path must not try to
+    # reach RabbitMQ (it would block for the connect timeout on every request).
+    async def _noop(event) -> None:
+        return None
+
+    monkeypatch.setattr(publisher, "publish_reservation_event", _noop)
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:
