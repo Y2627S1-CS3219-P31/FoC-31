@@ -1,4 +1,4 @@
-# AI-INFLUENCED: Sprint 1 Order Service workflows implemented with Codex.
+# AI-influenced: Order Service workflows; get_order_for_participant allows assigned courier access.
 from __future__ import annotations
 
 from datetime import UTC, datetime
@@ -385,10 +385,10 @@ async def list_assigned_completed_orders(
         raise OrderRetrievalError() from exc
 
 
-async def get_order_for_requester(
+async def get_order_for_participant(
     session: AsyncSession,
     order_id: str,
-    requester_id: str,
+    user_id: str,
 ) -> OrderTable:
     try:
         order = await order_repository.get_order(session, order_id)
@@ -397,7 +397,9 @@ async def get_order_for_requester(
 
     if order is None:
         raise OrderNotFoundError(order_id)
-    if order.requester_id != requester_id:
+    is_requester = user_id == order.requester_id
+    is_courier = order.courier_id is not None and user_id == order.courier_id
+    if not (is_requester or is_courier):
         raise OrderAccessDeniedError(order_id)
     return order
 

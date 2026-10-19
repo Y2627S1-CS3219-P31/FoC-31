@@ -190,17 +190,79 @@ async def test_approval_of_released_reservation_reports_failure(session, publish
     assert requester.available_balance == 100
 
 
-async def test_approval_without_courier_account_reports_failure(session, published):
+async def test_approval_creates_courier_account_when_missing_and_succeeds(session, published):
+    """Courier with no pre-existing account: account is auto-created and transfer succeeds."""
     service, reservation_id = await _setup(session)
 
     await service.handle_approval_requested(
-        _approval_event(reservation_id=reservation_id, courier_id="ghost")
+        _approval_event(reservation_id=reservation_id, courier_id="brand-new-courier")
     )
 
-    assert published[0].event_type == "CreditTransferFailed"
-    assert "No credit account exists for courier" in published[0].reason
-    # The strict reply model must still validate on the failure path.
+    assert published[0].event_type == "CreditTransferSucceeded"
+    courier = await service.get_balances("brand-new-courier")
+    # initial allocation (100) + reward (40)
+    assert courier.available_balance == 140
     CreditTransferResult.model_validate_json(published[0].model_dump_json())
+
+
+async def test_approval_creates_courier_account_and_transfers_when_account_missing(
+    session, published
+):
+    """Courier delivers before UserRegistered reaches credit-service.
+
+    handle_approval_requested must create the account and complete the transfer
+    rather than recording a definitive CreditTransferFailed.
+    """
+    service = CreditService(session)
+    await service.ensure_account("requester")
+    # Courier account intentionally absent — simulates the race window.
+    reservation = await service.reserve(user_id="requester", order_id="order-race", amount=40)
+
+    await service.handle_approval_requested(
+        _approval_event(
+            reservation_id=reservation.id,
+            order_id="order-race",
+            courier_id="late-courier",
+        )
+    )
+
+    assert published[0].event_type == "CreditTransferSucceeded"
+    courier = await service.get_balances("late-courier")
+    # initial allocation (100) + reward (40)
+    assert courier.available_balance == 140
+
+
+async def test_user_registered_after_approval_leaves_balance_unchanged(session, published):
+    """A UserRegistered event arriving after ensure_account was called during
+    approval must not grant a second initial allocation.
+    """
+    service = CreditService(session)
+    await service.ensure_account("requester")
+    reservation = await service.reserve(user_id="requester", order_id="order-race2", amount=40)
+    await service.handle_approval_requested(
+        _approval_event(
+            reservation_id=reservation.id,
+            order_id="order-race2",
+            courier_id="late-courier2",
+        )
+    )
+    balance_after_approval = (await service.get_balances("late-courier2")).available_balance
+
+    # Simulate the delayed UserRegistered event arriving now.
+    from foc_shared.events import UserRegisteredEvent
+
+    await service.handle_user_registered_event(
+        UserRegisteredEvent(user_id="late-courier2", email="late@example.com")
+    )
+
+    balance_after_registered = (await service.get_balances("late-courier2")).available_balance
+    assert balance_after_registered == balance_after_approval
+
+    from app.models.transaction import TransactionKind
+
+    txns = await service._transactions.list("late-courier2")
+    allocation_count = sum(1 for t in txns if t.kind == TransactionKind.ALLOCATION.value)
+    assert allocation_count == 1
 
 
 # ── transactionality and retry behaviour ─────────────────────────────────────

@@ -29,7 +29,7 @@ from app.services.events import publish_order_event
 from foc_shared.events import OrderEvent
 
 logger = logging.getLogger(__name__)
-POLL_INTERVAL_SECONDS = 5
+POLL_INTERVAL_SECONDS = 1
 
 
 LOCAL_OUTCOME_TYPES: dict[str, type[OrderLocalOutcomeEvent]] = {

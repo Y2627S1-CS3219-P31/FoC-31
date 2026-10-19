@@ -51,6 +51,7 @@ _ORDER_EVENT_BINDINGS: tuple[str, ...] = (
     OrderEventType.ORDER_COMPLETED.value,
     OrderEventType.COURIER_WITHDRAWN.value,
     OrderEventType.ORDER_EXPIRED.value,
+    OrderEventType.ORDER_CANCELLED.value,
     *RELEASE_REQUEST_EVENT_TYPES,
     "OrderUpdateRequested",
     "OrderApprovalRequested",

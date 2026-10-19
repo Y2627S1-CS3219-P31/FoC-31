@@ -968,3 +968,103 @@ Format for each entry:
   failure paths, and the order-side `approval_consumer` / `approval_worker` were
   read to confirm the routing keys and field expectations. Not validated in
   this environment: an end-to-end run against a live RabbitMQ/Order Service.
+
+---
+
+## 2026-10-19 — order-service: assigned courier can view order details (Task 2)
+
+- Task: Fix 2 on branch fix/d3-cancel-release-and-courier-view. Renamed
+  `get_order_for_requester` → `get_order_for_participant` and extended the
+  access check to also allow the currently assigned courier. A courier whose
+  `courier_id` has been reset to `None` (withdrawn) is denied access.
+  Renamed the route header parameter `requester_id` → `user_id` (alias
+  `HEADER_USER_ID` preserved). Added 5 new service tests and 3 new API tests
+  (happy-path parametrized + error-handler patch updated).
+- Files changed: `app/services/orders.py`, `app/api/routes/orders.py`,
+  `tests/test_orders_service.py`, `tests/test_orders_api.py`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-2-brief.md`.
+- Author review: TDD: 9 RED failures confirmed before implementing. After
+  implementation: `pytest` (213 passed, 15 skipped) and `ruff check` /
+  `ruff format` clean.
+
+
+
+## 2026-10-19 — frontend: ordersApi + creditsApi API layer (Task 3)
+
+- Task: Task 3 on branch fix/d3-cancel-release-and-courier-view. Extended
+  `request<T>` to accept an optional `extraHeaders` parameter. Added
+  TypeScript types (`OrderStatus`, `OrderResponse`, `OrderCreate`,
+  `OrderUpdate`, `OrderCancellationRequest`, `OrderActionResponse`,
+  `BalanceResponse`, `TransactionResponse`) and the `ordersApi` and
+  `creditsApi` objects. `withdraw` passes an `Idempotency-Key` header via
+  the new `extraHeaders` parameter. All methods use existing `request<T>`
+  and `buildQuery` helpers.
+- Files changed: `frontend/src/lib/api.ts`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-3-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript
+  errors. Build output: 493.63 kB JS, 202.52 kB CSS.
+
+## 2026-10-19 — frontend: StatusPill badge + credits header widget + nav items + routes (Task 4)
+
+- Task: Task 4 on branch fix/d3-cancel-release-and-courier-view. Added
+  `OrderStatusBadge` to `StatusPill.tsx` with a color map for all 7 statuses.
+  Added 3 new nav items (Errands, My requests, My deliveries) to `AppLayout.tsx`
+  with a credits balance widget fetching from `creditsApi.getBalance` on mount.
+  Added 5 lazy-loaded routes to `App.tsx` and created stub page files for each.
+- Files changed: `frontend/src/components/StatusPill.tsx`,
+  `frontend/src/components/AppLayout.tsx`, `frontend/src/App.tsx`,
+  `frontend/src/pages/errands/BrowseErrands.tsx`,
+  `frontend/src/pages/orders/CreateOrder.tsx`,
+  `frontend/src/pages/orders/MyRequests.tsx`,
+  `frontend/src/pages/orders/OrderDetail.tsx`,
+  `frontend/src/pages/deliveries/MyDeliveries.tsx`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-4-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
+
+## 2026-10-19 — credit-service: bind and handle OrderCancelled (Fix 1)
+
+- Task: PR A of fix/d3-cancel-release-and-courier-view. Bind `OrderCancelled`
+  to `_ORDER_EVENT_BINDINGS` in consumer.py and add an `ORDER_CANCELLED` branch
+  in `handle_order_event` that calls `release_for_order`. Root problem: after
+  supplier deactivation, `OrderCancelled` was published but no consumer was
+  bound, so the order outbox retried forever and credits stayed RESERVED.
+- Files changed: `app/services/consumer.py`, `app/services/credit_service.py`,
+  `tests/test_event_handling.py`, `tests/test_consumer.py`, `README.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-1-brief.md`.
+- Author review: `pytest` (99 tests passing, 5 new) and `ruff check` /
+  `ruff format` clean. TDD: RED confirmed (2 failures) before implementing.
+
+## 2026-10-19 — frontend: BrowseErrands page (Task 5)
+
+- Task: Task 5 on branch fix/d3-cancel-release-and-courier-view. Replaced the
+  stub `BrowseErrands.tsx` with a full implementation: filter state
+  (`minReward`, `maxReward`, `sortBy`, `sortOrder`), `useEffect` with
+  cancelled-flag calling `ordersApi.list`, and a `SimpleGrid` of Mantine
+  `Card`s showing name, reward badge, deadline, pickup→delivery route,
+  `OrderStatusBadge`, and an Accept button. Accept calls `ordersApi.accept`
+  and navigates to `/orders/mine` on success; errors surface via
+  `notifications.show`.
+- Files changed: `frontend/src/pages/errands/BrowseErrands.tsx`,
+  `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-5-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
+  Build output: 498.77 kB JS, 202.52 kB CSS.
+
+## 2026-10-20 — frontend: Profile credits balance and transaction history (Task 10)
+
+- Task: Task 10 on branch fix/d3-cancel-release-and-courier-view. Added a Credits
+  Card below the existing profile Card in `Profile.tsx`. On mount, calls
+  `creditsApi.getBalance` and `creditsApi.getTransactions` concurrently. Shows
+  available/reserved balance and a Mantine Table with Kind, Amount (signed),
+  Order ID, and Time columns. Loader shown while fetching; errors surface via
+  `ApiError.message`.
+- Files changed: `frontend/src/pages/Profile.tsx`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-10-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
+  Build output: 501.45 kB JS, 202.52 kB CSS.

@@ -4,6 +4,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from app.models.reservation import ReservationStatus
+from app.models.transaction import TransactionKind
+from app.repositories.transaction_repo import TransactionRepository
 from app.services import publisher
 from app.services.credit_service import CreditService
 from foc_shared.events import OrderEvent, OrderEventType, UserRegisteredEvent
@@ -74,9 +76,7 @@ async def test_order_completed_without_courier_keeps_reserved(session, monkeypat
     assert requester.reserved_balance == 40
 
 
-async def test_order_cancelled_event_is_ignored(session, monkeypatch):
-    """Cancellation now arrives as OrderCancellationRequested; the legacy
-    OrderCancelled event is no longer bound and must not release credits."""
+async def test_order_cancelled_releases_reserved_credits(session, monkeypatch):
     monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
     service = CreditService(session)
     await _setup(service)
@@ -84,8 +84,73 @@ async def test_order_cancelled_event_is_ignored(session, monkeypatch):
     await service.handle_order_event(_order_event(OrderEventType.ORDER_CANCELLED))
 
     requester = await service.get_balances("requester")
-    assert requester.available_balance == 60
-    assert requester.reserved_balance == 40
+    assert requester.available_balance == 100
+    assert requester.reserved_balance == 0
+
+    txns = await TransactionRepository(session).list("requester", limit=50, offset=0)
+    release_txns = [t for t in txns if t.kind == TransactionKind.RELEASE.value]
+    assert len(release_txns) == 1
+
+
+async def test_order_cancelled_after_already_released_is_noop(session, monkeypatch):
+    monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
+    service = CreditService(session)
+    await _setup(service)
+
+    await service.handle_order_event(_order_event(OrderEventType.ORDER_CANCELLED))
+    requester_after_first = await service.get_balances("requester")
+    available_after_first = requester_after_first.available_balance
+    reserved_after_first = requester_after_first.reserved_balance
+
+    txns_after_first = await TransactionRepository(session).list("requester", limit=50, offset=0)
+    release_count_after_first = len(
+        [t for t in txns_after_first if t.kind == TransactionKind.RELEASE.value]
+    )
+
+    await service.handle_order_event(_order_event(OrderEventType.ORDER_CANCELLED))
+
+    requester = await service.get_balances("requester")
+    assert requester.available_balance == available_after_first
+    assert requester.reserved_balance == reserved_after_first
+
+    txns = await TransactionRepository(session).list("requester", limit=50, offset=0)
+    release_txns = [t for t in txns if t.kind == TransactionKind.RELEASE.value]
+    assert len(release_txns) == release_count_after_first
+
+
+async def test_order_cancelled_delivered_twice_releases_once(session, monkeypatch):
+    monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
+    service = CreditService(session)
+    await _setup(service)
+
+    event = _order_event(OrderEventType.ORDER_CANCELLED)
+    await service.handle_order_event(event)
+    await service.handle_order_event(event)
+
+    requester = await service.get_balances("requester")
+    assert requester.available_balance == 100
+    assert requester.reserved_balance == 0
+
+    txns = await TransactionRepository(session).list("requester", limit=50, offset=0)
+    release_txns = [t for t in txns if t.kind == TransactionKind.RELEASE.value]
+    assert len(release_txns) == 1
+
+
+async def test_order_cancelled_unknown_order_is_noop(session, monkeypatch):
+    monkeypatch.setattr(publisher, "publish_reservation_event", _noop_publish)
+    service = CreditService(session)
+    await service.ensure_account("requester")
+
+    event = _order_event(OrderEventType.ORDER_CANCELLED, order_id="nonexistent-order")
+    await service.handle_order_event(event)
+
+    requester = await service.get_balances("requester")
+    assert requester.available_balance == 100
+    assert requester.reserved_balance == 0
+
+    txns = await TransactionRepository(session).list("requester", limit=50, offset=0)
+    release_txns = [t for t in txns if t.kind == TransactionKind.RELEASE.value]
+    assert len(release_txns) == 0
 
 
 async def test_order_expired_releases_credits(session, monkeypatch):

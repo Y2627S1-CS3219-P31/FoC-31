@@ -1,6 +1,5 @@
-// AI-assisted (OpenCode + Claude): application routes. Auth pages are public;
-// everything else is behind the auth guard, with admin-only sections behind the
-// admin guard. Reviewed by authors.
+// AI-assisted: application routes with lazy-loaded pages for orders, errands and deliveries.
+import React from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { AppLayout } from "./components/AppLayout";
 import { AdminRoute, ProtectedRoute } from "./components/RouteGuards";
@@ -13,6 +12,12 @@ import VerifyOtp from "./pages/auth/VerifyOtp";
 import SupplierDetail from "./pages/suppliers/SupplierDetail";
 import SupplierList from "./pages/suppliers/SupplierList";
 
+const BrowseErrands = React.lazy(() => import("./pages/errands/BrowseErrands"));
+const CreateOrder = React.lazy(() => import("./pages/orders/CreateOrder"));
+const MyRequests = React.lazy(() => import("./pages/orders/MyRequests"));
+const MyDeliveries = React.lazy(() => import("./pages/deliveries/MyDeliveries"));
+const OrderDetail = React.lazy(() => import("./pages/orders/OrderDetail"));
+
 export default function App() {
   return (
     <Routes>
@@ -24,16 +29,21 @@ export default function App() {
       {/* Authenticated app */}
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
-          <Route path="/" element={<Navigate to="/suppliers" replace />} />
-          <Route path="/suppliers" element={<SupplierList />} />
-          <Route path="/suppliers/:id" element={<SupplierDetail />} />
-          <Route path="/profile" element={<Profile />} />
+            <Route path="/" element={<Navigate to="/suppliers" replace />} />
+            <Route path="/suppliers" element={<SupplierList />} />
+            <Route path="/suppliers/:id" element={<SupplierDetail />} />
+            <Route path="/profile" element={<Profile />} />
+            <Route path="/errands" element={<BrowseErrands />} />
+            <Route path="/orders/new" element={<CreateOrder />} />
+            <Route path="/orders/mine" element={<MyRequests />} />
+            <Route path="/deliveries" element={<MyDeliveries />} />
+            <Route path="/orders/:id" element={<OrderDetail />} />
 
-          {/* Admin-only */}
-          <Route element={<AdminRoute />}>
-            <Route path="/admin/suppliers" element={<AdminSuppliers />} />
-            <Route path="/admin/clients" element={<AdminClients />} />
-          </Route>
+            {/* Admin-only */}
+            <Route element={<AdminRoute />}>
+              <Route path="/admin/suppliers" element={<AdminSuppliers />} />
+              <Route path="/admin/clients" element={<AdminClients />} />
+            </Route>
         </Route>
       </Route>
 

@@ -206,3 +206,27 @@ async def test_approval_request_is_routed_to_the_transfer_handler(monkeypatch):
 
     assert message.acked is True
     assert [e.task_id for e in handled] == ["task-1"]
+
+
+async def test_order_cancelled_routes_to_handle_order_event(monkeypatch):
+    from app.services import consumer as consumer_module
+
+    handled: list[OrderEvent] = []
+
+    async def handler(event):
+        handled.append(event)
+
+    monkeypatch.setattr(consumer_module, "handle_order_event", handler)
+    event = OrderEvent(
+        event_type=OrderEventType.ORDER_CANCELLED,
+        order_id="order-1",
+        requester_id="requester",
+        courier_id=None,
+        timestamp=datetime.now(UTC),
+    )
+    message = FakeMessage(event.model_dump_json().encode(), routing_key="OrderCancelled")
+
+    await CreditEventConsumer()._on_order_message(message, exchange=FakeExchange())
+
+    assert message.acked is True
+    assert len(handled) == 1
