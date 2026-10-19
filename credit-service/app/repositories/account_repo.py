@@ -1,7 +1,7 @@
 # AI-influenced: implemented with AI assistance; see ai/usage-log.md.
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.account import CreditAccount
@@ -26,3 +26,17 @@ class AccountRepository:
         self._session.add(account)
         await self._session.flush()
         return account
+
+    async def totals(self) -> dict[str, int]:
+        """One aggregate row for the observability summary/gauges."""
+        statement = select(
+            func.coalesce(func.sum(CreditAccount.available_balance), 0),
+            func.coalesce(func.sum(CreditAccount.reserved_balance), 0),
+            func.count(CreditAccount.user_id),
+        ).select_from(CreditAccount)
+        available, reserved, accounts = (await self._session.execute(statement)).one()
+        return {
+            "available_balance_sum": int(available),
+            "reserved_balance_sum": int(reserved),
+            "accounts_total": int(accounts),
+        }

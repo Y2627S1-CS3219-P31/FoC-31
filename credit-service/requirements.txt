@@ -6,6 +6,8 @@ sqlalchemy[asyncio]>=2.0
 asyncpg>=0.29
 # messaging (RabbitMQ publish/consume)
 aio-pika>=9.4
+# observability: Prometheus exposition at GET /metrics (N2H)
+prometheus-client>=0.20
 
 # shared contracts library is installed separately (see Dockerfile / make install)
 # because its path differs between local venv (../shared) and Docker (/shared).

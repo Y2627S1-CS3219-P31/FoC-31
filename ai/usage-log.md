@@ -440,3 +440,77 @@ Format for each entry:
   with `pytest` (73 tests passing) and `ruff check`/`ruff format` (clean).
   PR #11.
 
+
+## 18/10/2026 - credit-service owner (fill in name)
+
+- Tool: DeepSeek Harness (model: deepseek-flash)
+- Scope: credit-service observability N2H. Generated: `app/observability/`
+  (`context.py`, `metrics.py`, `middleware.py`, `logging.py`, `health.py`,
+  `summary.py`), the `/metrics` and `/health/ready` routes, the admin
+  `GET /credits/observability/summary` JSON view, Prometheus counters inside
+  `credit_service.py` / `publisher.py` / `consumer.py` / `errors.py`, DB pool
+  gauges in `db.py`, the `observability` compose profile (Prometheus + Grafana
+  with a provisioned dashboard and alert rules), `scripts/load-credit.sh`,
+  `scripts/observability-demo.py` (self-test that drives every metric family and
+  prints the coverage table), the summary `coverage` block, `Makefile` targets,
+  tests, `docs/observability.md`, and README/RBAC/env docs.
+  The metric set, the "metrics first, tracing later" ordering and the
+  route-template labelling decision were agreed in the team thread
+  (F. Yu / J. Gao); the tool implemented them.
+- Prompt(s):
+  1. (Team thread, F. Yu) "i need to do analytics for observability in order to
+     improve system availability" - request count / success rate / status-code
+     distribution, per-route latency and QPS, and business error-code frequency
+     including saga rejections that never reach HTTP.
+  2. (J. Gao) "we can set rabbitmq to track the traces and send to otel
+     collector ... u can do some research on the architecture" - reviewed that
+     suggestion: RabbitMQ emits broker metrics (`rabbitmq_prometheus`), traces
+     come from client-side context propagation, so tracing stays out of scope
+     for a credit-only rollout.
+  3. "你就做这些吧，然后按你的理解来，最后 Credit 暴露一个 api 做一下数据
+     展示。返回一个 json 块" - implement P0-P3 and add the JSON summary API.
+  4. "请你帮我做个测试：你新加的接口是什么？打一些请求，分别覆盖不同的 error
+     code，然后把每个功能的统计都展示一下。这个接口应该覆盖了所有 metric" -
+     added `scripts/observability-demo.py` and the `coverage` block.
+- Author review: `pytest` (96 tests passing) and `ruff check` / `ruff format`
+  clean; `compose.yaml`, the Prometheus configs and the Grafana provisioning
+  files parsed and validated as YAML, the dashboard JSON reloaded and checked
+  for unique panel ids; the sample summary block in `docs/observability.md` was
+  produced by calling the endpoint itself; the demo script exits 0 with all six
+  error codes exercised and 22/22 metric families covered. Not validated in this
+  environment: `docker compose --profile observability up` (no Docker
+  available), so the first real stack run still needs checking.
+
+## 19/10/2026 - credit-service owner (fill in name)
+
+- Tool: DeepSeek Harness (model: deepseek-flash)
+- Scope: credit-service participant side of the Order approval transfer task.
+  Generated: `OrderApprovalRequestedEvent` and `CreditTransferResult` in
+  `app/schemas/interop.py` (mirroring `order-service/app/schemas/
+  order_approval_events.py` and `credit_events.py`), `TaskResultKind.TRANSFER`
+  with `transferred` / `transfer_failed` outcomes, `_transfer_reservation(
+  commit=False)` so the settlement and its task result commit once,
+  `CreditService.handle_approval_requested` /
+  `report_transfer_retries_exhausted` / `_record_transfer_outcome` /
+  `_publish_transfer_outcome`, the consumer binding for
+  `OrderApprovalRequested`, `tests/test_approval_requests.py` (15 cases), the
+  event-catalog/README rows, and a hermetic-test change (the HTTP suites now
+  stub reservation publishing instead of waiting on a RabbitMQ connect).
+  The contract (event names, payload fields, reply fields, routing key) was
+  specified by the Order Service owner (Alexander) in the team thread; the tool
+  implemented it against the order-side schemas.
+- Prompt(s):
+  1. (Team thread, Alexander) "Event: OrderApprovalRequested ... Credit Service
+     actions: Find the reservation by reservation_id and verify it matches
+     order_id and requester_id. Transfer the reserved credits to the account
+     identified by courier_id. Process duplicate events idempotently; retry
+     transient errors, then report a definitive failure ... Credit Service
+     publishes CreditTransferSucceeded / CreditTransferFailed ... Set the
+     routing key to event_type."
+  2. "现在就实现（推荐）" - implement the contract.
+- Author review: `pytest` (111 tests passing, 15 new) and `ruff check` /
+  `ruff format` clean; the reply model round-trips through the strict
+  `CreditTransferResult` (extra=forbid, six fields) on both the success and
+  failure paths, and the order-side `approval_consumer` / `approval_worker` were
+  read to confirm the routing keys and field expectations. Not validated in
+  this environment: an end-to-end run against a live RabbitMQ/Order Service.

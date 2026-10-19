@@ -30,4 +30,24 @@ Ideas to extend the mandatory containerized setup (team to scope):
 - Kubernetes manifests / Helm charts for cloud rollout + autoscaling.
 - Infrastructure-as-code + a secrets manager.
 
+## N2H: Observability stack (implemented)
+
+Prometheus + Grafana are opt-in behind a compose profile so the mandatory setup
+is unchanged:
+
+```bash
+make obs-up     # docker compose --profile observability up -d prometheus grafana
+make obs-load   # generate credit-service traffic (needs FOC_TOKEN/FOC_USER_ID)
+make obs-down
+```
+
+- Prometheus <http://localhost:9090>, Grafana <http://localhost:3000>
+  (dashboard "Credit Service — Observability", datasource and dashboard
+  provisioned from `observability/grafana/`).
+- Scrape targets: `credit-service:8000/metrics` (application metrics) and
+  `rabbitmq:15692/metrics` (broker metrics, enabled via
+  `RABBITMQ_ENABLED_PLUGINS`). RabbitMQ does not produce application traces;
+  see [`observability.md`](./observability.md) §7.
+- Alert rules: `observability/prometheus/alerts.yml`.
+
 > This file is a placeholder — expand as deployment decisions are made.
