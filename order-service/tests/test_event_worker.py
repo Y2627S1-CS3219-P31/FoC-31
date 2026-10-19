@@ -85,7 +85,17 @@ async def test_confirmation_followed_by_db_failure_retries_same_message(event_st
     assert publish.await_args_list[0] == publish.await_args_list[1]
 
 
-async def test_publisher_uses_shared_schema_and_confirmed_persistent_delivery(monkeypatch):
+@pytest.mark.parametrize(
+    ("event_type", "mandatory"),
+    [
+        (OrderEventType.ORDER_ACCEPTED, False),
+        (OrderEventType.ORDER_CANCELLED, True),
+        (OrderEventType.ORDER_EXPIRED, True),
+    ],
+)
+async def test_publisher_uses_shared_schema_and_confirmed_persistent_delivery(
+    monkeypatch, event_type, mandatory
+):
     exchange = MagicMock()
     exchange.publish = AsyncMock()
     channel = MagicMock()
@@ -95,7 +105,7 @@ async def test_publisher_uses_shared_schema_and_confirmed_persistent_delivery(mo
     connection.channel.return_value = channel
     monkeypatch.setattr(events.aio_pika, "connect_robust", AsyncMock(return_value=connection))
     event = OrderEvent(
-        event_type=OrderEventType.ORDER_ACCEPTED,
+        event_type=event_type,
         order_id="order-1",
         requester_id="requester-1",
         courier_id="courier-1",
@@ -108,8 +118,8 @@ async def test_publisher_uses_shared_schema_and_confirmed_persistent_delivery(mo
     assert message.delivery_mode == aio_pika.DeliveryMode.PERSISTENT
     assert OrderEvent.model_validate_json(message.body) == event
     assert exchange.publish.await_args.kwargs == {
-        "routing_key": "OrderAccepted",
-        "mandatory": True,
+        "routing_key": event_type.value,
+        "mandatory": mandatory,
         "timeout": 5,
     }
 
@@ -137,6 +147,7 @@ async def test_publisher_supports_order_cancellation_failed(monkeypatch):
     message = exchange.publish.await_args.args[0]
     assert OrderCancellationFailedEvent.model_validate_json(message.body) == event
     assert exchange.publish.await_args.kwargs["routing_key"] == "OrderCancellationFailed"
+    assert exchange.publish.await_args.kwargs["mandatory"] is False
 
 
 @pytest.mark.parametrize(

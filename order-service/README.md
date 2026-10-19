@@ -14,7 +14,8 @@ and expiry (backlog: Order Service; project M4).
   cannot accept own order, single courier per order, ≤3 concurrent.
 - **F3** courier flow: pickup → deliver → requester approve/complete; courier
   withdraw; requester cancel-before-pickup.
-- **F4** cancel open orders when their supplier is deactivated (event-driven).
+- **F4** cancel `OPEN` and `ACCEPTED` orders when their supplier is deactivated
+  (event-driven); orders from `PICKED_UP` onward continue.
 - **F5** lifecycle **state machine** — see `app/services/lifecycle.py`
   (status set: `OPEN, ACCEPTED, PICKED_UP, AWAITING_APPROVAL, COMPLETED,
   CANCELLED, EXPIRED`). Invalid transitions are rejected.

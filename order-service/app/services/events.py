@@ -21,6 +21,22 @@ OrderPublishableEvent = (
     | OrderApprovalEvent
 )
 
+OPTIONAL_EVENT_TYPES = frozenset(
+    {
+        "OrderAccepted",
+        "OrderPickedUp",
+        "OrderDelivered",
+        "CourierWithdrawn",
+        "OrderDeleted",
+        "OrderDeletionFailed",
+        "OrderCancellationFailed",
+        "OrderUpdated",
+        "OrderUpdateFailed",
+        "OrderApproved",
+        "OrderApprovalFailed",
+    }
+)
+
 
 def _routing_key(event: OrderPublishableEvent) -> str:
     if isinstance(event.event_type, OrderEventType):
@@ -29,6 +45,7 @@ def _routing_key(event: OrderPublishableEvent) -> str:
 
 
 async def publish_order_event(event: OrderPublishableEvent, *, event_id: str) -> None:
+    routing_key = _routing_key(event)
     connection = await aio_pika.connect_robust(settings.rabbitmq_url, timeout=3)
     async with connection:
         channel = await connection.channel(publisher_confirms=True, on_return_raises=True)
@@ -42,7 +59,7 @@ async def publish_order_event(event: OrderPublishableEvent, *, event_id: str) ->
                 message_id=event_id,
                 delivery_mode=aio_pika.DeliveryMode.PERSISTENT,
             ),
-            routing_key=_routing_key(event),
-            mandatory=True,
+            routing_key=routing_key,
+            mandatory=routing_key not in OPTIONAL_EVENT_TYPES,
             timeout=5,
         )

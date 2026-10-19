@@ -1,4 +1,4 @@
-# AI-INFLUENCED: Centralized API exception registration added with Codex.
+# AI-INFLUENCED: Start SupplierDeactivated consumption with the Order Service.
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +18,7 @@ from app.services.client_manager import (
 from app.services.event_worker import run_event_worker
 from app.services.expiry_worker import run_expiry_sweeper
 from app.services.release_consumer import run_release_consumer
+from app.services.supplier_consumer import run_supplier_consumer
 from app.services.update_consumer import run_update_consumer
 
 
@@ -31,6 +32,7 @@ async def lifespan(_: FastAPI):
     event_worker_task = asyncio.create_task(run_event_worker())
     expiry_sweeper_task = asyncio.create_task(run_expiry_sweeper())
     auto_approval_task = asyncio.create_task(run_auto_approval_sweeper())
+    supplier_consumer_task = asyncio.create_task(run_supplier_consumer())
     try:
         yield
     finally:
@@ -40,6 +42,7 @@ async def lifespan(_: FastAPI):
         event_worker_task.cancel()
         expiry_sweeper_task.cancel()
         auto_approval_task.cancel()
+        supplier_consumer_task.cancel()
         with suppress(asyncio.CancelledError):
             await release_consumer_task
         with suppress(asyncio.CancelledError):
@@ -52,6 +55,8 @@ async def lifespan(_: FastAPI):
             await expiry_sweeper_task
         with suppress(asyncio.CancelledError):
             await auto_approval_task
+        with suppress(asyncio.CancelledError):
+            await supplier_consumer_task
         await close_remote_clients()
         await engine.dispose()
 

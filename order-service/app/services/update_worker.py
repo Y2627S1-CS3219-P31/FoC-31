@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.order_update_tasks import COMPLETED, PENDING, REJECTED
+from app.models.order_update_tasks import COMPLETED, PENDING, REJECTED, OrderUpdateTask
 from app.repositories import order_event_outbox as event_outbox_repository
 from app.repositories import order_update_tasks as update_tasks
 from app.repositories import orders as order_repository
@@ -13,6 +13,22 @@ from app.schemas.credit_events import CreditAmendResult
 from app.schemas.order_update_events import OrderUpdatedEvent, OrderUpdateFailedEvent
 from app.schemas.orders import OrderUpdate
 from app.services.lifecycle import OrderStatus
+
+
+async def _reject_update(session: AsyncSession, task: OrderUpdateTask, reason: str) -> None:
+    task.status = REJECTED
+    task.last_error = reason
+    await event_outbox_repository.create_event(
+        session,
+        OrderUpdateFailedEvent(
+            task_id=task.task_id,
+            order_id=task.order_id,
+            reservation_id=task.reservation_id,
+            requester_id=task.requester_id,
+            timestamp=datetime.now(UTC),
+            reason=reason,
+        ),
+    )
 
 
 async def process_amendment_result(session: AsyncSession, event: CreditAmendResult) -> bool:
@@ -30,37 +46,20 @@ async def process_amendment_result(session: AsyncSession, event: CreditAmendResu
         ):
             raise ValueError(f"Credit amendment result does not match task '{event.task_id}'.")
         if event.event_type == "CreditAmendRejected":
-            task.status = REJECTED
-            task.last_error = event.reason or "Credit Service rejected the amendment."
-            await event_outbox_repository.create_event(
-                session,
-                OrderUpdateFailedEvent(
-                    task_id=task.task_id,
-                    order_id=task.order_id,
-                    reservation_id=task.reservation_id,
-                    requester_id=task.requester_id,
-                    timestamp=datetime.now(UTC),
-                    reason=task.last_error,
-                ),
+            await _reject_update(
+                session, task, event.reason or "Credit Service rejected the amendment."
             )
             return True
 
         order = await order_repository.get_order_for_update(session, task.order_id)
         if order is None or order.status != OrderStatus.OPEN or order.courier_id is not None:
-            raise RuntimeError(f"Order '{task.order_id}' changed after its credit amendment.")
+            await _reject_update(
+                session, task, "Order changed before its credit amendment could be applied."
+            )
+            return True
         if order.reservation_id != task.reservation_id:
-            task.status = REJECTED
-            task.last_error = "The order reservation does not match the update task."
-            await event_outbox_repository.create_event(
-                session,
-                OrderUpdateFailedEvent(
-                    task_id=task.task_id,
-                    order_id=task.order_id,
-                    reservation_id=task.reservation_id,
-                    requester_id=task.requester_id,
-                    timestamp=datetime.now(UTC),
-                    reason=task.last_error,
-                ),
+            await _reject_update(
+                session, task, "The order reservation does not match the update task."
             )
             return True
         await order_repository.update_order(

@@ -1,3 +1,4 @@
+# AI-INFLUENCED: Map atomic supplier deactivation results to API errors with Codex.
 from __future__ import annotations
 
 from app.errors import ConflictError, NotFoundError
@@ -48,14 +49,12 @@ class SupplierService:
         return updated
 
     async def deactivate(self, supplier_id: str) -> Supplier:
-        current = await self._repo.get(supplier_id)
-        if current is None:
-            raise NotFoundError(f"Supplier '{supplier_id}' was not found.")
-        if not current.active:
-            raise ConflictError(f"Supplier '{supplier_id}' is already deactivated.")
         deactivated = await self._repo.deactivate(supplier_id)
-        assert deactivated is not None  # existence just confirmed
-        return deactivated
+        if deactivated is not None:
+            return deactivated
+        if await self._repo.get(supplier_id) is None:
+            raise NotFoundError(f"Supplier '{supplier_id}' was not found.")
+        raise ConflictError(f"Supplier '{supplier_id}' is already deactivated.")
 
     async def reactivate(self, supplier_id: str) -> Supplier:
         current = await self._repo.get(supplier_id)

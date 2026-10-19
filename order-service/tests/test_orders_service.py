@@ -12,6 +12,7 @@ from app.models.order_release_tasks import ReleaseAction
 from app.models.order_update_tasks import PENDING
 from app.schemas.orders import OrderUpdate
 from app.services import orders as order_service
+from app.services.clients.supplier.error import SupplierInactiveError, SupplierNotFoundError
 from app.services.errors import (
     OrderAccessDeniedError,
     OrderCancellationError,
@@ -49,6 +50,7 @@ def _order(
         requester_id=requester_id,
         courier_id=courier_id,
         reservation_id="reservation-1",
+        supplier_id="supplier-1",
         status=status,
         deadline=datetime.now(UTC) + timedelta(hours=2),
     )
@@ -86,13 +88,13 @@ def _action_task(action: ReleaseAction) -> SimpleNamespace:
     )
 
 
-def _updated_order(reward: int = 20) -> OrderUpdate:
+def _updated_order(reward: int = 20, supplier_id: str = "supplier-1") -> OrderUpdate:
     return OrderUpdate(
         name="Updated order",
         details="Updated details",
         reward=reward,
         deadline=datetime.now(UTC) + timedelta(hours=2),
-        supplier_id="supplier-1",
+        supplier_id=supplier_id,
         pickup_location="Library",
         delivery_location="Dorm",
     )
@@ -266,6 +268,82 @@ async def test_update_saves_one_pending_task_without_calling_credit(
     amend.assert_not_awaited()
 
 
+@pytest.mark.parametrize("supplier_id", ["supplier-1", "supplier-2"])
+async def test_update_validates_changed_supplier_before_saving_task(
+    monkeypatch: pytest.MonkeyPatch, supplier_id: str
+) -> None:
+    order = _order()
+    update = _updated_order(supplier_id=supplier_id)
+    task = _pending_task(update)
+    calls: list[str] = []
+
+    async def find_supplier(_supplier_id: str) -> SimpleNamespace:
+        calls.append("supplier")
+        return SimpleNamespace(active=True)
+
+    async def create_task(*_args, **_kwargs) -> SimpleNamespace:
+        calls.append("task")
+        return task
+
+    async def create_event(*_args, **_kwargs) -> None:
+        calls.append("event")
+
+    lookup = AsyncMock(side_effect=find_supplier)
+    monkeypatch.setattr(order_service, "get_supplier", lookup)
+    monkeypatch.setattr(
+        order_service.order_repository, "get_order_for_update", AsyncMock(return_value=order)
+    )
+    monkeypatch.setattr(
+        order_service.update_tasks, "get_pending_for_order", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        order_service.update_tasks, "create_task", AsyncMock(side_effect=create_task)
+    )
+    monkeypatch.setattr(
+        order_service.event_outbox_repository, "create_event", AsyncMock(side_effect=create_event)
+    )
+
+    assert await order_service.update_order("order-1", update, "user-1", _Session()) is task
+    assert calls == (["supplier"] if supplier_id != order.supplier_id else []) + ["task", "event"]
+    if supplier_id != order.supplier_id:
+        lookup.assert_awaited_once_with(supplier_id)
+    else:
+        lookup.assert_not_awaited()
+    assert order.supplier_id == "supplier-1"
+
+
+@pytest.mark.parametrize("missing", [False, True])
+async def test_update_rejects_invalid_supplier_without_task_or_event(
+    monkeypatch: pytest.MonkeyPatch, missing: bool
+) -> None:
+    order = _order()
+    original_order = vars(order).copy()
+    update = _updated_order(supplier_id="supplier-2")
+    lookup = AsyncMock(
+        side_effect=SupplierNotFoundError("supplier-2") if missing else None,
+        return_value=SimpleNamespace(active=False),
+    )
+    create_task = AsyncMock()
+    create_event = AsyncMock()
+    monkeypatch.setattr(order_service, "get_supplier", lookup)
+    monkeypatch.setattr(
+        order_service.order_repository, "get_order_for_update", AsyncMock(return_value=order)
+    )
+    monkeypatch.setattr(
+        order_service.update_tasks, "get_pending_for_order", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(order_service.update_tasks, "create_task", create_task)
+    monkeypatch.setattr(order_service.event_outbox_repository, "create_event", create_event)
+
+    with pytest.raises(SupplierNotFoundError if missing else SupplierInactiveError):
+        await order_service.update_order("order-1", update, "user-1", _Session())
+
+    lookup.assert_awaited_once_with("supplier-2")
+    create_task.assert_not_awaited()
+    create_event.assert_not_awaited()
+    assert vars(order) == original_order
+
+
 async def test_unchanged_reward_still_creates_local_update_task(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -294,8 +372,10 @@ async def test_same_pending_update_returns_existing_task(
 ) -> None:
     order = _order()
     order.reward = 5
-    update = _updated_order(20)
+    update = _updated_order(20, supplier_id="supplier-2")
     pending = _pending_task(update)
+    lookup = AsyncMock()
+    monkeypatch.setattr(order_service, "get_supplier", lookup)
     monkeypatch.setattr(
         order_service.order_repository, "get_order_for_update", AsyncMock(return_value=order)
     )
@@ -308,6 +388,7 @@ async def test_same_pending_update_returns_existing_task(
     monkeypatch.setattr(order_service.update_tasks, "create_task", create)
 
     assert await order_service.update_order("order-1", update, "user-1", _Session()) is pending
+    lookup.assert_not_awaited()
     create.assert_not_awaited()
 
 

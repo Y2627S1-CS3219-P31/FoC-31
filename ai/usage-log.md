@@ -16,6 +16,34 @@ Format for each entry:
 - Author review: <how you validated/edited/tested the output>
 ```
 
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the specified supplier-deactivation propagation. Supplier
+  Service now commits its inactive state with a durable `SupplierDeactivated`
+  outbox fact and retries publication. Order Service consumes that fact,
+  cancels matching `OPEN` and `ACCEPTED` orders atomically with `OrderCancelled`
+  outbox facts, and records completed event IDs to handle retries. Late credit
+  amendment replies now reject updates to cancelled orders instead of requeueing
+  forever. Added a migration and focused tests. Only `supplier-service/`,
+  `order-service/`, and this log were changed for this work.
+- Prompt(s): “Implement supplier deactivation propagation. When an admin
+  deactivates a supplier, commit its inactive state and a durable
+  `SupplierDeactivated` fact together. Order Service should consume that fact
+  idempotently, cancel matching `OPEN` and `ACCEPTED` orders, publish
+  `OrderCancelled` facts with a supplier-deactivation reason, and leave orders
+  at `PICKED_UP` or later unchanged. Handle concurrent state changes and broker
+  retries, add focused tests, and record AI usage. Make sure the code is neat,
+  simple to understand, and add clear comments where appropriate but don't
+  overdo the comments either. Make sure it follows the project's architecture.
+  Make sure it works together with the supplier service and works end to end.”
+- Author review: Contributor review pending. Automated verification passed:
+  Supplier and Order Service suites, Ruff lint and format checks,
+  `git diff --check`, and the PostgreSQL pickup/deactivation concurrency test.
+  A live isolated PostgreSQL/RabbitMQ check passed from admin deactivation
+  through both outboxes and `OrderCancelled` delivery; temporary containers
+  were removed afterward.
+
 ## 18/10/2026 — Alexander Gerald
 
 - Tool: Codex (model: GPT-6)

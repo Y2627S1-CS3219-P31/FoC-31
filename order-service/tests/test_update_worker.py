@@ -14,7 +14,8 @@ from app.models.order_event_outbox import OrderEventOutbox
 from app.models.order_update_tasks import COMPLETED, PENDING, REJECTED, OrderUpdateTask
 from app.models.orders import OrderTable
 from app.schemas.credit_events import CreditAmendResult
-from app.services import update_consumer, update_worker
+from app.schemas.supplier_events import SupplierDeactivatedEvent
+from app.services import supplier_deactivation, update_consumer, update_worker
 from app.services.lifecycle import OrderStatus
 
 
@@ -224,6 +225,34 @@ async def test_order_reservation_must_match_update_task(maker):
         assert (await session.get(OrderTable, "order-1")).reward == 5
         outcome = (await session.scalars(select(OrderEventOutbox))).one()
         assert outcome.payload["event_type"] == "OrderUpdateFailed"
+
+
+async def test_amendment_reply_after_supplier_cancellation_is_rejected(maker):
+    task_id = await _task(maker)
+    async with maker() as session:
+        await supplier_deactivation.process_supplier_deactivated(
+            session,
+            SupplierDeactivatedEvent(
+                event_id="deactivation-1",
+                supplier_id="supplier-1",
+                timestamp=datetime.now(UTC),
+            ),
+        )
+
+    async with maker() as session:
+        assert await update_worker.process_amendment_result(session, _result(task_id)) is True
+        assert await update_worker.process_amendment_result(session, _result(task_id)) is False
+
+    async with maker() as session:
+        assert (await session.get(OrderTable, "order-1")).status == OrderStatus.CANCELLED
+        task = await session.get(OrderUpdateTask, task_id)
+        assert task.status == REJECTED
+        assert "changed" in task.last_error
+        event_types = {
+            event.payload["event_type"]
+            for event in (await session.scalars(select(OrderEventOutbox))).all()
+        }
+        assert event_types == {"OrderCancelled", "OrderUpdateFailed"}
 
 
 async def test_accepted_update_can_finish_after_its_deadline_passes(maker):

@@ -1,12 +1,16 @@
+# AI-INFLUENCED: Persist supplier deactivation and its event atomically with Codex.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.supplier import Supplier as SupplierRow
+from app.models.supplier_event_outbox import SupplierEventOutbox
 from app.schemas.supplier import Supplier, SupplierCreate, SupplierList, SupplierUpdate
+from app.schemas.supplier_events import SupplierDeactivatedEvent
 
 
 def _new_id() -> str:
@@ -118,11 +122,29 @@ class SupplierRepository:
         return Supplier.model_validate(row)
 
     async def deactivate(self, supplier_id: str) -> Supplier | None:
-        row = await self._session.get(SupplierRow, supplier_id)
-        if row is None:
-            return None
-        row.active = False
-        await self._session.commit()
+        try:
+            result = await self._session.scalars(
+                update(SupplierRow)
+                .where(SupplierRow.id == supplier_id, SupplierRow.active.is_(True))
+                .values(active=False)
+                .returning(SupplierRow)
+            )
+            row = result.one_or_none()
+            if row is None:
+                await self._session.rollback()
+                return None
+
+            event_id = str(uuid.uuid4())
+            event = SupplierDeactivatedEvent(
+                event_id=event_id, supplier_id=supplier_id, timestamp=datetime.now(UTC)
+            )
+            self._session.add(
+                SupplierEventOutbox(event_id=event_id, payload=event.model_dump(mode="json"))
+            )
+            await self._session.commit()
+        except Exception:
+            await self._session.rollback()
+            raise
         await self._session.refresh(row)
         return Supplier.model_validate(row)
 

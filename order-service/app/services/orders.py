@@ -547,6 +547,12 @@ async def update_order(
                     order_id, "This order already has a different update in progress."
                 )
             return pending
+
+        if updated_order.supplier_id != order.supplier_id:
+            supplier = await get_supplier(updated_order.supplier_id)
+            if not supplier.active:
+                raise SupplierInactiveError(updated_order.supplier_id)
+
         task = await update_tasks.create_task(
             session,
             order_id=order_id,
