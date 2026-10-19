@@ -971,6 +971,25 @@ Format for each entry:
 
 ---
 
+## 2026-10-19 — order-service: assigned courier can view order details (Task 2)
+
+- Task: Fix 2 on branch fix/d3-cancel-release-and-courier-view. Renamed
+  `get_order_for_requester` → `get_order_for_participant` and extended the
+  access check to also allow the currently assigned courier. A courier whose
+  `courier_id` has been reset to `None` (withdrawn) is denied access.
+  Renamed the route header parameter `requester_id` → `user_id` (alias
+  `HEADER_USER_ID` preserved). Added 5 new service tests and 3 new API tests
+  (happy-path parametrized + error-handler patch updated).
+- Files changed: `app/services/orders.py`, `app/api/routes/orders.py`,
+  `tests/test_orders_service.py`, `tests/test_orders_api.py`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-2-brief.md`.
+- Author review: TDD: 9 RED failures confirmed before implementing. After
+  implementation: `pytest` (213 passed, 15 skipped) and `ruff check` /
+  `ruff format` clean.
+
+
+
 ## 2026-10-19 — credit-service: bind and handle OrderCancelled (Fix 1)
 
 - Task: PR A of fix/d3-cancel-release-and-courier-view. Bind `OrderCancelled`

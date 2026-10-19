@@ -1,4 +1,4 @@
-# AI-INFLUENCED: Sprint 1 Order Service routes implemented with Codex.
+# AI-influenced: Order Service routes; get_order accepts requester or assigned courier.
 from __future__ import annotations
 
 from typing import Annotated
@@ -220,15 +220,15 @@ async def list_assigned_completed_orders(
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
     order_id: str,
-    requester_id: Annotated[str, Header(alias=HEADER_USER_ID)],
+    user_id: Annotated[str, Header(alias=HEADER_USER_ID)],
     session: Annotated[AsyncSession, Depends(get_session)],
 ) -> OrderResponse:
-    """Returns an order to its requester."""
+    """Returns an order to its requester or assigned courier."""
 
-    return await order_service.get_order_for_requester(
+    return await order_service.get_order_for_participant(
         session,
         order_id,
-        requester_id,
+        user_id,
     )
 
 
