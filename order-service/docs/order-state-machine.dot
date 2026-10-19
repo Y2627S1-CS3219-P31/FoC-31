@@ -1,0 +1,36 @@
+// AI-INFLUENCED: Persisted Order lifecycle state machine drawn with Codex from implemented transition and workflow code.
+digraph OrderStateMachine {
+  graph [
+    label="Order state lifecycle | persisted statuses and implemented transitions",
+    labelloc=t, labeljust=l, fontsize=22, fontname="Helvetica-Bold",
+    fontcolor="#14243a", bgcolor="white", pad=0.4, rankdir=TB,
+    splines=true, nodesep=0.55, ranksep=1.15
+  ];
+  node [shape=ellipse, style=filled, fontname="Helvetica-Bold", fontsize=12,
+        color="#4d866e", fillcolor="#e7f4eb", fontcolor="#14243a", margin="0.20,0.12"];
+  edge [fontname="Helvetica", fontsize=10, color="#345d76", fontcolor="#28475c", arrowsize=0.8, penwidth=1.35];
+
+  start [shape=point, label="", width=0.16, fillcolor="#345d76", color="#345d76"];
+  OPEN [label="OPEN"];
+  ACCEPTED [label="ACCEPTED"];
+  PICKED_UP [label="PICKED_UP"];
+  AWAITING_APPROVAL [label="AWAITING_APPROVAL"];
+  COMPLETED [label="COMPLETED", peripheries=2, fillcolor="#daf0e4"];
+  CANCELLED [label="CANCELLED", peripheries=2, fillcolor="#f1e3e3", color="#ab6868"];
+  EXPIRED [label="EXPIRED", peripheries=2, fillcolor="#f1e3e3", color="#ab6868"];
+  DELETED [label="DELETED\n(no row)", shape=box, style="rounded,dashed,filled", fillcolor="#f0f1f3", color="#87919b"];
+
+  start -> OPEN [label="POST /orders\nactive supplier + Credit reservation succeeds;\nthen insert order"];
+  OPEN -> ACCEPTED [label="courier accepts\nopen, unassigned, before deadline,\nunder 3 ongoing; OrderAccepted"];
+  ACCEPTED -> OPEN [label="assigned courier withdraws\nIdempotency-Key; CourierWithdrawn\nreservation remains held"];
+  ACCEPTED -> PICKED_UP [label="assigned courier picks up\nOrderPickedUp"];
+  PICKED_UP -> AWAITING_APPROVAL [label="assigned courier delivers\nOrderDelivered; start 24 h clock"];
+  AWAITING_APPROVAL -> COMPLETED [label="requester approves + CreditTransferSucceeded\nOR 24 h auto-approval; OrderApproved"];
+  OPEN -> CANCELLED [label="requester cancels; CreditReleased\nthen OrderCancelled"];
+  ACCEPTED -> CANCELLED [label="requester cancels before pickup;\nCreditReleased then OrderCancelled"];
+  OPEN -> EXPIRED [label="deadline <= DB time; expiry sweeper\nOrderExpired"];
+  OPEN -> DELETED [label="requester deletes; CreditReleased\nthen remove row; OrderDeleted"];
+
+  note [shape=note, style=filled, color="#b49c5c", fillcolor="#fff8e7", fontname="Helvetica", fontsize=10,
+    label="Pending delete / cancel / update / approval tasks are separate rows, not order statuses.\nCreditReleaseFailed leaves OPEN or ACCEPTED. CreditAmendRejected leaves OPEN.\nCreditTransferFailed leaves AWAITING_APPROVAL. Auto-approval can reach COMPLETED\nwhile its transfer task remains unresolved. Invalid transitions are rejected."];
+}

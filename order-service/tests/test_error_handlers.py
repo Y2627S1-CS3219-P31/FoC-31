@@ -31,11 +31,14 @@ from app.services.clients.supplier.error import (
 )
 from app.services.errors import (
     OrderAccessDeniedError,
+    OrderCancellationError,
     OrderDeletionError,
+    OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
     OrderRetrievalError,
     OrderStateConflictError,
+    OrderUpdatePendingError,
 )
 
 
@@ -55,6 +58,12 @@ def _app_raising(exception_factory: Callable[[], Exception]) -> FastAPI:
     [
         (lambda: OrderNotFoundError("order-1"), 404, "order_not_found"),
         (lambda: OrderAccessDeniedError("order-1"), 403, "order_access_denied"),
+        (lambda: OrderUpdatePendingError("order-1"), 503, "order_update_pending"),
+        (
+            lambda: OrderCancellationError("order-1"),
+            500,
+            "order_cancellation_failed",
+        ),
         (
             lambda: OrderStateConflictError("order-1", "Invalid state."),
             409,
@@ -143,6 +152,19 @@ def test_known_exception_mapping(
     assert isinstance(response.json()["message"], str)
 
 
+def test_order_not_editable_explains_update_rejection() -> None:
+    app = _app_raising(lambda: OrderNotEditableError("order-1"))
+
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.get("/raise")
+
+    assert response.status_code == 409
+    assert response.json() == {
+        "code": "order_not_editable",
+        "message": "Only an open order without an assigned courier can be updated.",
+    }
+
+
 def test_request_validation_uses_error_envelope() -> None:
     app = FastAPI()
     register_exception_handlers(app)
@@ -185,7 +207,7 @@ def test_order_persistence_error_identifies_database_failure() -> None:
         (
             OrderDeletionError("order-1"),
             "order_deletion_failed",
-            "The order could not be deleted because the database operation failed.",
+            "The order deletion could not be started because the database operation failed.",
         ),
     ],
 )

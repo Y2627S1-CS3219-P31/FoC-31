@@ -1,3 +1,4 @@
+<!-- AI-INFLUENCED: Record Order Service photo implementation with Codex. -->
 # AI Usage Log
 
 Per the CS3219 AI Usage Policy (Project Document, Appendix 2). Record every
@@ -15,7 +16,75 @@ Format for each entry:
 - Author review: <how you validated/edited/tested the output>
 ```
 
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the specified supplier-deactivation propagation. Supplier
+  Service now commits its inactive state with a durable `SupplierDeactivated`
+  outbox fact and retries publication. Order Service consumes that fact,
+  cancels matching `OPEN` and `ACCEPTED` orders atomically with `OrderCancelled`
+  outbox facts, and records completed event IDs to handle retries. Late credit
+  amendment replies now reject updates to cancelled orders instead of requeueing
+  forever. Added a migration and focused tests. Only `supplier-service/`,
+  `order-service/`, and this log were changed for this work.
+- Prompt(s): “Implement supplier deactivation propagation. When an admin
+  deactivates a supplier, commit its inactive state and a durable
+  `SupplierDeactivated` fact together. Order Service should consume that fact
+  idempotently, cancel matching `OPEN` and `ACCEPTED` orders, publish
+  `OrderCancelled` facts with a supplier-deactivation reason, and leave orders
+  at `PICKED_UP` or later unchanged. Handle concurrent state changes and broker
+  retries, add focused tests, and record AI usage. Make sure the code is neat,
+  simple to understand, and add clear comments where appropriate but don't
+  overdo the comments either. Make sure it follows the project's architecture.
+  Make sure it works together with the supplier service and works end to end.”
+- Author review: Contributor review pending. Automated verification passed:
+  Supplier and Order Service suites, Ruff lint and format checks,
+  `git diff --check`, and the PostgreSQL pickup/deactivation concurrency test.
+  A live isolated PostgreSQL/RabbitMQ check passed from admin deactivation
+  through both outboxes and `OrderCancelled` delivery; temporary containers
+  were removed afterward.
+
+## 18/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Removed the unused `OrderUpdateTask.rejection_code` field and its
+  assignments. Added a new Order Service migration to drop the database column
+  and updated the affected tests. No other service was changed.
+- Prompt(s): “Remove `OrderUpdateTask.rejection_code` and its assignments while
+  retaining `status` and `last_error`. Add a new migration to drop the column;
+  do not edit old migrations. Update and run relevant order-service tests. Add
+  required AI attribution headers and record the exchange in `ai/usage-log.md`.
+  Change no files outside `order-service/` except that log.”
+- Author review: 87 focused tests passed. Ruff lint and format checks passed,
+  and `git diff --check` passed. One existing Starlette `httpx` deprecation
+  warning remains.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the user-specified category lookup flow, reward-range
+  filters, and deadline/reward sorting for Order Service listings. Category
+  filters resolve supplier IDs via Supplier Service's paginated HTTP API;
+  Order Service stores no category map. Default ordering remains nearest
+  deadline first. No other service was changed.
+- Prompt(s): “Make sure the code is neat, simple to understand, and add clear
+  comments where appropriate but don't overdo the comments either. Make sure
+  it follows the project's architecture. Implement this for the filtering and
+  sorting then which addresses F2.1, F2.1.1, F2.2, and F2.2.1.”
+- Author review: Pending contributor review. Tests were not run.
+
 ---
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Removed the “Credit release workflows” section from
+  `order-service/README.md` as requested.
+- Prompt(s): “Remove the entire Credit Relesae Workflows section from the
+  order service's readme”
+- Author review: Confirmed the section is removed and the following
+  “Order acceptance” section remains intact. Documentation-only change; no
+  tests run.
 
 ## 18/09/2026 — John Gao Jiahao
 
@@ -409,6 +478,391 @@ Format for each entry:
   scaffold and dependency, removed only the two tracked revision files, kept
   the versions directory, and did not modify a live database.
 
+## 14/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added a dedicated Order Service error for update attempts on orders
+  that are no longer open or have an assigned courier, with a 409 API mapping
+  and focused service/handler tests.
+- Prompt(s): "This would falsely say the error message. The frontend should be
+  able to receive it and interpret it as trying to update an order that is
+  already has a courier and not OPEN anymore. So create a new error for this.
+  I give perms to change the code."
+- Author review: Pending contributor review. Codex ran focused tests and
+  checked the new error mapping and update guard. Existing create/delete test
+  failures and unrelated lint errors from the in-progress client refactor remain.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the Order Service cancellation workflow and generalized
+  terminal-action result dispatcher. Added the cancellation API, durable
+  `cancel` task creation, Order-domain event publication (`OrderDelete`,
+  `OrderCancelled`, or `OrderExpired`), separate delete/cancel/expire handlers,
+  Credit outcome routing by reservation ID, transactional result handling, and
+  retry/idempotency tests. No service outside `order-service/` was modified.
+- Prompt(s): "Implement this: To cancel, Order Service authenticates the
+  requester, locks the order, and validates ownership, status, pending updates,
+  and conflicting tasks. It returns an existing pending task or creates a
+  CANCEL task and responds 202. A publisher maps pending DELETE, CANCEL, and
+  EXPIRE tasks to OrderDelete, OrderCancel, and OrderExpire events, publishing
+  with retries. Credit Service independently releases the reservation
+  idempotently, then publishes CreditReleased or CreditReleaseFailed. Order
+  Service locks the matching task by reservation ID. Failure marks it failed;
+  success calls its mapped handler. Each handler locks and revalidates the
+  order, then deletes it or changes its state, records any final lifecycle
+  event, and completes the task. Transaction errors roll back and requeue;
+  unmatched or duplicate events are acknowledged. Implement this and this
+  pseudocode. Make sure the code is neat, simple to understand, and add clear
+  comments where appropriate but don't overdo the comments either. Make sure
+  it follows the project's architecture."
+- Author review: Pending contributor review. Ruff passed; 131 tests passed and
+  12 optional PostgreSQL tests were skipped because no PostgreSQL test URL was
+  provided.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Revised the cancellation saga to publish
+  `OrderCancellationRequested` when a valid request becomes pending, then
+  durably record `OrderCancelled` after `CreditReleased` or
+  `OrderCancellationFailed` after `CreditReleaseFailed`. The final order/task
+  state and outcome event are committed atomically. No service outside
+  `order-service/` was modified.
+- Prompt(s): "To cancel an order, Order Service authenticates the requester,
+  locks the order, validates ownership and status, and rejects pending updates
+  or conflicting terminal actions... Make sure the code is neat, simple to
+  understand, and add clear comments where appropriate but don't overdo the
+  comments either. Make sure it follows the project's architecture."
+- Author review: Pending contributor review. Codex added focused request,
+  success, failure, publication, duplicate, and rollback coverage and ran the
+  complete Order Service validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Revised the deletion saga to publish `OrderDeletionRequested` while
+  deletion is pending, followed by the durable Order-domain outcome
+  `OrderDeleted` or `OrderDeletionFailed`. The final task, order, and outcome
+  event changes are transactional. No service outside `order-service/` was
+  modified.
+- Prompt(s): "Okay so change the initial published event to be
+  OrderDeletionRequested. After receiving the corresponding credit events,
+  should publish OrderDeleted or OrderDeletionFailed."
+- Author review: Pending contributor review. Codex added focused outcome,
+  publication, parsing, and rollback coverage and ran the Order Service
+  validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Corrected deletion conflict handling so only a repeated pending
+  deletion returns its existing task. Pending cancellation or expiry and any
+  failed terminal action now reject the DELETE request with the existing state
+  conflict API behavior. No service outside `order-service/` was modified.
+- Prompt(s): "Implement this logic in the deletion workflow: existing pending
+  DELETE task return the same task; existing pending CANCEL or EXPIRE task
+  reject deletion; existing FAILED terminal task reject for review; reject an
+  ineligible order; otherwise create a pending DELETE task."
+- Author review: Pending contributor review. Codex added focused service tests
+  and ran the Order Service validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added durable final Order Service outcomes for the asynchronous update
+  workflow. `CreditAmended` now results in `OrderUpdated`, while
+  `CreditAmendRejected` results in `OrderUpdateFailed`; each outcome event is
+  committed atomically with its order/task state. No service outside
+  `order-service/` was modified.
+- Prompt(s): "Make Order Service publish a final `OrderUpdated` or
+  `OrderUpdateFailed` event after completion of consuming the CreditAmended/
+  CreditAmendRejected."
+- Author review: Pending contributor review. Codex added focused success,
+  failure, parsing, duplicate, and rollback coverage and ran the Order Service
+  validation suite.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Consolidated Order Service outbound event publication into one event
+  outbox and one publisher, while keeping the credit-release and credit-update
+  result consumers separate. Both consumers now look up and lock tasks by
+  `task_id`, ignore non-pending duplicates, validate reservation and optional
+  order IDs, and check event type against the RabbitMQ routing key. Release
+  dispatch is chosen from the local task action. A migration preserves
+  unpublished task events while renaming the workflow tables. No service
+  outside `order-service/` was modified.
+- Prompt(s): "Apply this to the current order service: make both consumer flows
+  match using task ID, verify reservation ID and any supplied order ID, validate
+  event type against the routing key, and dispatch release results using the
+  local task action. Use one Order Service event outbox and one event worker."
+- Author review: Pending contributor review. Ruff checks and formatting passed;
+  the Order Service test suite passed with 12 optional PostgreSQL tests skipped.
+
+## 16/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Aligned credit release result handling so the locked pending task's
+  local `action` selects the delete, cancel, or expire handler for both
+  `CreditReleased` and `CreditReleaseFailed`. The release and update consumers
+  correlate results by `task_id`, validate reservation and optional order IDs,
+  acknowledge duplicate non-pending tasks, and validate event routing keys.
+  No service outside `order-service/` was modified.
+- Prompt(s): "Apply this to the current order service: Make sure that both
+  consumer flows in order service match using task id for consistency and
+  correctness. Then, make sure their reservation id matches as well. Conduct
+  the checks to ensure that the order that the reservation by the credit
+  service and the order referenced by the task matches... [the request also
+  specified pending-state duplicate handling, optional order ID validation,
+  type/routing-key validation, task-action dispatch, and one outbound event
+  outbox and worker]."
+- Author review: Pending contributor review. Focused Order Service checks run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Replaced the separate Order Service update, deletion, and action task
+  response schemas with one `OrderActionResponse`. It exposes a shared optional
+  `failure_reason` sourced from the task's stored error. No service outside
+  `order-service/` was modified.
+- Prompt(s): "okay so get rid of the orderupdatetaskresponse, and use one
+  \"OrderActionResponse\" exactly."
+- Author review: Pending contributor review. Tests were not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added concise FastAPI docstrings to each Order Service route, each
+  limited to ten words. No service outside `order-service/` was modified.
+- Prompt(s): "For each of the endpoints in routes/orders.py, add the
+  `description` of what the endpoint does in 10 words max for each of them."
+- Author review: Pending contributor review. Tests were not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Applied Ruff formatting to remove trailing whitespace in
+  `order-service/app/api/routes/orders.py`. Order Service Ruff lint, format,
+  and diff whitespace checks passed.
+- Prompt(s): "ok make the code base agree with ruff and the CI linting"
+- Author review: Pending contributor review. Tests were not run.
+
+## 17/10/2026 — Direct order expiry workflow
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added an Order Service expiry sweeper that runs every five seconds,
+  locks and processes up to 100 due open orders per transaction in deadline
+  order, marks them `EXPIRED`, and records `OrderExpired` facts in the existing
+  event outbox. The sweeper drains subsequent batches immediately and emits a
+  structured log signal when an order exceeds the 20-second expiry target. The
+  existing event worker publishes these events with broker confirmation and
+  retries. Expiry no longer waits for a Credit result or creates new release
+  tasks. Added a partial index migration, updated Order Service docs, and
+  aligned release-worker tests with the new ownership of expiry. Added tests
+  for eligibility, outbox records, and multi-batch draining. No service outside
+  `order-service/` was modified.
+- Prompt: "Implement the Order Service expiry workflow: run a sweeper every
+  five seconds; process up to 100 due eligible orders per transaction in
+  oldest-deadline order with row locks and `SKIP LOCKED`; recheck eligibility,
+  set each to `EXPIRED`, and add `OrderExpired` to the existing event outbox;
+  drain batches immediately; use no task table; reuse the confirmed, retrying
+  event worker; leave reservation release and retries to Credit Service; and
+  signal orders overdue by more than 20 seconds. Keep the code neat and follow
+  the architecture. Change only `order-service/` and this permitted AI usage
+  log."
+- Author review: Pending contributor review. `make test-order-service` passed
+  with 145 passed and 12 optional PostgreSQL tests skipped. Ruff lint,
+  formatting, and `git diff --check` passed; one existing Starlette deprecation
+  warning remains.
+
+## 17/10/2026 — Name the update request event explicitly
+
+- Tool: Codex (model: GPT-6)
+- Scope: Renamed the Order Service's outbound update request event to
+  `OrderUpdateRequested`, updated its schema, outbox worker and README. Added a
+  migration to rename unpublished legacy outbox payloads while preserving
+  already-published event history.
+- Prompt: "ok so change this to OrderUpdateRequested"
+- Author review: Pending contributor review. Ruff lint, formatting, and
+  `git diff --check` passed. Tests were not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented the F3 courier assigned-orders listing in Order Service.
+  The endpoint uses trusted caller headers, lists ongoing assigned orders in
+  deadline and ID order, and follows the existing route → service → repository
+  architecture. Added focused API and service tests and documented the
+  endpoint. No other service or the API Gateway was modified.
+- Prompt(s): “Implement F3 in `order-service` only: add `GET /orders/assigned`,
+  requiring trusted `X-User-Id` and `X-User-Role: client` headers. Return a
+  JSON array of existing `OrderResponse` objects for that courier’s orders in
+  `ACCEPTED`, `PICKED_UP`, or `AWAITING_APPROVAL` status, sorted by deadline
+  then order ID; return `[]` when none match. Follow the route → service →
+  repository architecture and query only Order Service’s database. Register
+  the static route before `/{order_id}`. Keep it read-only and publish no
+  events. Add focused tests and update Order Service documentation. Add
+  required AI attribution headers and record this prompt in the permitted AI
+  usage log. Do not modify other services or the gateway. Make sure the code
+  is neat, simple to understand, and add clear comments where appropriate but
+  don't overdo the comments either. Make sure it follows the project's
+  architecture.”
+- Author review: The focused Order Service API and service tests passed. Ruff
+  lint and format checks passed, and `git diff --check` passed.
+  One pre-existing Starlette `httpx` deprecation warning remains.
+
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented proof-of-delivery photo upload in the Order Service's
+  existing deliver endpoint, saved a private S3 object key on the order, and
+  returned the image as a data URI in the existing order-detail response for
+  the requester or assigned courier. Added validation, S3 failure handling,
+  a migration, configuration documentation, and focused tests. No other
+  service, shared code, or infrastructure source file was changed.
+- Prompt(s): “So make two endpoint updates: 1. Update the existing courier
+  `POST /orders/{order_id}/deliver` endpoint to accept the photo. This marks
+  the order `AWAITING_APPROVAL`; the courier does not submit the requester’s
+  approval. 2. Update the existing GET order id endpoint so that it returns
+  the order information alongside a photo proof of delivery right? This GET
+  will not have a picture in the open orders listing, but in completed orders
+  page of the requester/courier it will have a picture, because now the
+  picture is there. Also update the orders table so that it has a photo key
+  field. Make sure the code is neat, simple to understand, and add clear
+  comments where appropriate but don't overdo the comments either. Make sure
+  it follows the project's architecture.” Earlier exchange specified that the
+  deliver endpoint must reject missing, oversized, or invalid photo types
+  without publishing; requester and assigned courier may view order detail;
+  and the photo should appear in the same detail response rather than from a
+  separate photo endpoint.
+- Author review: 199 Order Service tests passed; 14 PostgreSQL tests were
+  skipped because no test database URL was supplied. Ruff lint/format and
+  `git diff --check` passed.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented Order Service's asynchronous approval workflow. The
+  service validates the requester and order state, atomically records a
+  pending approval task and `OrderApprovalRequested`, then applies correlated
+  credit-transfer results atomically with the task, order status, and final
+  order event. Added an approval-result consumer, task persistence and
+  migration, API route, event schemas, and Order Service documentation. No
+  service outside `order-service/` was modified.
+- Prompt(s): “Implement the order approval workflow, following Order Service’s
+  deletion and cancellation patterns. Modify only files under order-service/
+  and the root ai/usage-log.md; do not modify any other files or services. Add
+  AI attribution headers to modified AI-influenced files and log this prompt.
+
+  When the authenticated requester approves their order, validate ownership
+  and AWAITING_APPROVAL status. In one Order Service transaction, create a
+  pending approval task and write OrderApprovalRequested to the outbox. Return
+  202 with the task ID; publish through the event worker.
+
+  Treat events as facts about the publishing service, not commands. The Credit
+  Service independently validates the reservation, transfers the reward
+  idempotently, and publishes a success or failure result.
+
+  Handle each result in one Order Service transaction: lock and correlate the
+  pending task; ignore unmatched or stale results; validate task, reservation,
+  and order IDs; lock and recheck the order. On failure, fail the task, leave
+  the order AWAITING_APPROVAL, and write OrderApprovalFailed to the outbox. On
+  success, complete the order and task, and write OrderApproved to the outbox.
+  Commit before acknowledging; publish outcomes through the event worker.
+
+  Make sure the code is neat, simple to understand, and add clear comments
+  where appropriate but don't overdo the comments either. Make sure it follows
+  the project's architecture.”
+- Author review: Ruff lint, format, and `git diff --check` passed. Tests were
+  not run.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Updated available-order discovery to require a deadline later than
+  the database's current time, excluding overdue open orders before the expiry
+  sweeper updates their status. Added a repository-level regression test and
+  documented F2.4/F2.4.1 in the Order Service README. No other service or the
+  API Gateway was modified.
+- Prompt(s): “Update the Order Service available-orders query to exclude
+  orders whose deadline is at or before the current database time, even if
+  their status is still `OPEN`. Preserve existing filters and sorting. Add
+  focused tests proving overdue open orders are excluded and future open
+  orders remain listed. Follow the repository architecture, update Order
+  Service documentation and the permitted AI usage log, and modify no other
+  services or the API Gateway. Make sure the code is neat, simple to understand,
+  and add clear comments where appropriate but don't overdo the comments either.
+  Make sure it follows the project's architecture.”
+- Author review: The repository regression test passed. Ruff lint and format
+  checks passed, and `git diff --check` passed.
+
+## 17/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Implemented F3.1 delivery handling in Order Service. The endpoint
+  accepts both gateway-injected `client` and `admin` roles, verifies the caller
+  is the assigned courier, locks and validates the picked-up order, transitions
+  it to `AWAITING_APPROVAL`, and records `OrderDelivered` in the existing
+  outbox transactionally. Added service and API tests and Order Service
+  documentation. No service outside `order-service/`, the API Gateway, or
+  shared code was modified.
+- Prompt(s): “Implement F3.1 in `order-service`: add
+  `POST /orders/{order_id}/deliver`. Allow both gateway-injected `client` and
+  `admin` roles; don’t restrict the endpoint to clients. Lock the order,
+  require `X-User-Id` to match its assigned courier and status to be
+  `PICKED_UP`, then transition it to `AWAITING_APPROVAL` and save an
+  `OrderDelivered` event to the outbox in the same transaction. Let the
+  existing worker publish after commit. Return the updated order; make no
+  external service calls. Add focused tests and update Order Service
+  documentation and the permitted AI usage log. Don’t modify other services,
+  the gateway, or shared code. Make sure the code is neat, simple to understand,
+  and add clear comments where appropriate but don't overdo the comments either.
+  Make sure it follows the project's architecture.”
+- Author review: Focused delivery service, API, and error-mapping tests
+  passed. Ruff lint and format checks passed, and `git diff --check` passed.
+  One pre-existing Starlette `httpx` deprecation warning remains.
+
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Added three read-only Order Service listing endpoints for requester
+  ongoing orders, requester completed orders, and courier completed orders.
+  Queries filter by gateway-provided identity and status, return existing order
+  summaries without photo data, and publish no events. Updated Order Service
+  documentation and focused API, service, and repository tests. Changed no
+  other service.
+- Prompt(s): “Implement three Order Service listing endpoints:
+  `GET /orders/requested/ongoing` for the authenticated requester's `OPEN`,
+  `ACCEPTED`, `PICKED_UP`, or `AWAITING_APPROVAL` orders;
+  `GET /orders/requested/completed` for their `COMPLETED` orders; and
+  `GET /orders/assigned/completed` for the authenticated courier's `COMPLETED`
+  orders. Filter by gateway-provided `X-User-Id`, never a client-provided user
+  ID. Return summaries without photo bytes; retain `GET /orders/{order_id}`
+  for details and photo. Follow the route/service/repository architecture,
+  place static routes before `/{order_id}`, add meaningful tests and Order
+  Service documentation, publish no events, and modify only `order-service/`
+  and `ai/usage-log.md`. Keep code neat and comments clear but sparing.”
+- Author review: 210 Order Service tests passed; 14 optional PostgreSQL tests
+  were skipped because no test database URL was supplied. Ruff lint/format and
+  `git diff --check` passed. One pre-existing Starlette `httpx` deprecation
+  warning remains.
+
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Created `order/proof-of-delivery-photo` from the current Order Service
+  commit, then removed photo upload, storage, retrieval, configuration,
+  migration, documentation references, and tests from
+  `implementation/order-service`. Preserved the later order-listing work and
+  general architecture diagrams. Changed no other service.
+- Prompt(s): “Can't we branch out directly from the current commit? So from
+  the current commit, checkout to a order/proof-of-delivery-photo branch. Then
+  checkout back to implementation/order-service, then remove all the proof of
+  delivery photo feature? Because i want the implementation/order-service
+  branch to be photo proof of delivery feature free.”
+- Author review: Order Service tests and Ruff checks passed. Existing staged
+  Order Service work was preserved separately during the removal.
 ---
 
 ## 17/10/2026 — Frank Yu / Zhou Shiyao
