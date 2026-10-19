@@ -1006,6 +1006,24 @@ Format for each entry:
 - Author review: `npm run build` (tsc + vite) passed with zero TypeScript
   errors. Build output: 493.63 kB JS, 202.52 kB CSS.
 
+## 2026-10-19 — frontend: StatusPill badge + credits header widget + nav items + routes (Task 4)
+
+- Task: Task 4 on branch fix/d3-cancel-release-and-courier-view. Added
+  `OrderStatusBadge` to `StatusPill.tsx` with a color map for all 7 statuses.
+  Added 3 new nav items (Errands, My requests, My deliveries) to `AppLayout.tsx`
+  with a credits balance widget fetching from `creditsApi.getBalance` on mount.
+  Added 5 lazy-loaded routes to `App.tsx` and created stub page files for each.
+- Files changed: `frontend/src/components/StatusPill.tsx`,
+  `frontend/src/components/AppLayout.tsx`, `frontend/src/App.tsx`,
+  `frontend/src/pages/errands/BrowseErrands.tsx`,
+  `frontend/src/pages/orders/CreateOrder.tsx`,
+  `frontend/src/pages/orders/MyRequests.tsx`,
+  `frontend/src/pages/orders/OrderDetail.tsx`,
+  `frontend/src/pages/deliveries/MyDeliveries.tsx`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-4-brief.md`.
+- Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
+
 ## 2026-10-19 — credit-service: bind and handle OrderCancelled (Fix 1)
 
 - Task: PR A of fix/d3-cancel-release-and-courier-view. Bind `OrderCancelled`

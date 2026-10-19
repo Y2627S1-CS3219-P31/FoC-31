@@ -1,6 +1,4 @@
-// AI-assisted (OpenCode + Claude): responsive app shell with a desktop navbar
-// and a mobile bottom tab bar, matching the team's Penpot wireframe.
-// Reviewed by authors.
+// AI-assisted: responsive app shell with nav items, credits widget, desktop navbar and mobile bottom tab bar.
 import {
   ActionIcon,
   AppShell,
@@ -17,12 +15,17 @@ import {
 import { useDisclosure } from "@mantine/hooks";
 import {
   IconBuildingStore,
+  IconClipboardList,
   IconLogout,
   IconShieldCog,
+  IconShoppingBag,
+  IconTruck,
   IconUser,
   IconUsers,
 } from "@tabler/icons-react";
+import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { BalanceResponse, creditsApi } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 interface NavItem {
@@ -35,6 +38,9 @@ interface NavItem {
 const NAV_ITEMS: NavItem[] = [
   { to: "/suppliers", label: "Suppliers", icon: <IconBuildingStore size={18} /> },
   { to: "/profile", label: "Profile", icon: <IconUser size={18} /> },
+  { to: "/errands", label: "Errands", icon: <IconShoppingBag size={18} /> },
+  { to: "/orders/mine", label: "My requests", icon: <IconClipboardList size={18} /> },
+  { to: "/deliveries", label: "My deliveries", icon: <IconTruck size={18} /> },
   {
     to: "/admin/suppliers",
     label: "Manage Suppliers",
@@ -61,6 +67,12 @@ export function AppLayout() {
   const { user, role, isAdmin, logout } = useAuth();
   const navigate = useNavigate();
   const [drawerOpened, drawer] = useDisclosure(false);
+  const [balance, setBalance] = useState<BalanceResponse | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    creditsApi.getBalance(user.id).then(setBalance).catch(() => {});
+  }, [user?.id]);
 
   const items = NAV_ITEMS.filter((i) => !i.adminOnly || isAdmin);
 
@@ -111,6 +123,11 @@ export function AppLayout() {
                 {isAdmin ? "Admin" : "Client"}
               </Badge>
             )}
+            {balance && (
+              <Badge color="teal" variant="light" visibleFrom="xs">
+                {balance.available_balance} avail / {balance.reserved_balance} rsv
+              </Badge>
+            )}
             <Avatar radius="xl" color="brand" size="sm" visibleFrom="sm">
               {initials(user?.display_name, user?.email)}
             </Avatar>
@@ -136,7 +153,9 @@ export function AppLayout() {
 
       <AppShell.Main>
         <Box maw={1080} mx="auto">
-          <Outlet />
+          <React.Suspense fallback={null}>
+            <Outlet />
+          </React.Suspense>
         </Box>
       </AppShell.Main>
 
