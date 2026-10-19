@@ -60,6 +60,8 @@ export type Responder = (
 export interface MockCall {
   method: string;
   path: string;
+  /** Decoded query parameters; repeatable keys keep every value. */
+  query: Record<string, string[]>;
   body: Record<string, unknown> | null;
   authorization: string | null;
 }
@@ -120,7 +122,12 @@ export async function mockApi(
   await page.route("**/api/**", async (route: Route) => {
     const request = route.request();
     const method = request.method();
-    const path = new URL(request.url()).pathname;
+    const url = new URL(request.url());
+    const path = url.pathname;
+    const query: Record<string, string[]> = {};
+    url.searchParams.forEach((value, key) => {
+      query[key] = [...(query[key] ?? []), value];
+    });
 
     // Cross-origin JSON calls trigger a CORS preflight; answer it directly.
     if (method === "OPTIONS") {
@@ -141,6 +148,7 @@ export async function mockApi(
     calls.push({
       method,
       path,
+      query,
       body,
       authorization: request.headers()["authorization"] ?? null,
     });

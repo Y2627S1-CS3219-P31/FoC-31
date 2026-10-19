@@ -66,6 +66,9 @@ npx playwright install          # download Chromium, Firefox and WebKit
 # auth regression suite (login, register, OTP, session + route guards)
 npx playwright test tests/auth
 
+# supplier regression suite (browse, detail, admin create/edit/deactivate)
+npx playwright test tests/suppliers
+
 # everything under tests/
 npx playwright test
 ```

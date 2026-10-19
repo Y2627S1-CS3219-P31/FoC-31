@@ -421,3 +421,17 @@ Format for each entry:
 - Author review: Pending contributor review. Tests run against a mocked gateway
   (no real backend), assert request payloads and persisted tokens, and pass in
   Chromium, Firefox, and WebKit.
+
+## 19/10/2026 — Zhou Shiyao
+
+- Tool: GitHub Copilot Chat (model: DeepSeek V4.1 Flash)
+- Scope: Added Playwright end-to-end regression tests for the supplier area
+  (browse/search/filter/sort/pagination, detail with optional-field fallbacks
+  and 404s, and admin create/edit/deactivate/reactivate flows). Extended the
+  shared gateway mock to expose query parameters and added supplier fixtures.
+  Test-only changes; no application behavior, endpoint contracts, or
+  architecture decisions were changed.
+- Prompt(s): "Now generate the regression tests for supplier pages."
+- Author review: Pending contributor review. Tests run against a mocked gateway
+  (no real backend), assert request payloads and query parameters, and pass in
+  Chromium, Firefox, and WebKit.
