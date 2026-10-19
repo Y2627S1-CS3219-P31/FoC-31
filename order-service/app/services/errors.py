@@ -17,16 +17,6 @@ class OrderDeliveryError(OrderServiceError):
         self.order_id = order_id
 
 
-class InvalidOrderPhotoError(OrderServiceError):
-    def __init__(self, message: str) -> None:
-        super().__init__(message)
-
-
-class OrderPhotoStorageError(OrderServiceError):
-    def __init__(self) -> None:
-        super().__init__("Proof-of-delivery photo storage is unavailable.")
-
-
 class OrderPickupError(OrderServiceError):
     def __init__(self, order_id: str) -> None:
         super().__init__(f"Failed to mark order '{order_id}' as picked up.")

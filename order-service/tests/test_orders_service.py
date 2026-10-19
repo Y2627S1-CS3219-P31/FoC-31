@@ -50,7 +50,6 @@ def _order(
         courier_id=courier_id,
         reservation_id="reservation-1",
         status=status,
-        proof_of_delivery_photo_key=None,
         deadline=datetime.now(UTC) + timedelta(hours=2),
     )
 
@@ -172,7 +171,7 @@ async def test_participant_lists_translate_database_failure(
         await getattr(order_service, method_name)(_Session(), "user-1")
 
 
-async def test_get_order_enforces_participant_ownership(
+async def test_get_order_enforces_requester_ownership(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
@@ -182,42 +181,11 @@ async def test_get_order_enforces_participant_ownership(
     )
 
     with pytest.raises(OrderAccessDeniedError):
-        await order_service.get_order_for_participant(
+        await order_service.get_order_for_requester(
             _Session(),
             "order-1",
             "user-2",
         )
-
-
-async def test_get_order_allows_assigned_courier_and_loads_photo(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    order = _order(courier_id="courier-1", status=OrderStatus.COMPLETED)
-    order.proof_of_delivery_photo_key = "proof-of-delivery/order-1/photo.jpg"
-    monkeypatch.setattr(order_service.order_repository, "get_order", AsyncMock(return_value=order))
-    photo = order_service.proof_photo.Photo(b"photo", "image/jpeg")
-    load = AsyncMock(return_value=photo)
-    monkeypatch.setattr(order_service.proof_photo, "get", load)
-
-    assert await order_service.get_order_for_participant(_Session(), "order-1", "courier-1") == (
-        order,
-        photo,
-    )
-    load.assert_awaited_once_with(order.proof_of_delivery_photo_key)
-
-
-async def test_get_order_denies_unassigned_user_before_loading_photo(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    order = _order(courier_id="courier-1")
-    order.proof_of_delivery_photo_key = "private-key"
-    monkeypatch.setattr(order_service.order_repository, "get_order", AsyncMock(return_value=order))
-    load = AsyncMock()
-    monkeypatch.setattr(order_service.proof_photo, "get", load)
-
-    with pytest.raises(OrderAccessDeniedError):
-        await order_service.get_order_for_participant(_Session(), "order-1", "stranger")
-    load.assert_not_awaited()
 
 
 async def test_get_order_reports_missing_order(
@@ -230,7 +198,7 @@ async def test_get_order_reports_missing_order(
     )
 
     with pytest.raises(OrderNotFoundError):
-        await order_service.get_order_for_participant(
+        await order_service.get_order_for_requester(
             _Session(),
             "missing",
             "user-1",

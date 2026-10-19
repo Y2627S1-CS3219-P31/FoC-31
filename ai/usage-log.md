@@ -819,3 +819,19 @@ Format for each entry:
   were skipped because no test database URL was supplied. Ruff lint/format and
   `git diff --check` passed. One pre-existing Starlette `httpx` deprecation
   warning remains.
+
+## 19/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Created `order/proof-of-delivery-photo` from the current Order Service
+  commit, then removed photo upload, storage, retrieval, configuration,
+  migration, documentation references, and tests from
+  `implementation/order-service`. Preserved the later order-listing work and
+  general architecture diagrams. Changed no other service.
+- Prompt(s): “Can't we branch out directly from the current commit? So from
+  the current commit, checkout to a order/proof-of-delivery-photo branch. Then
+  checkout back to implementation/order-service, then remove all the proof of
+  delivery photo feature? Because i want the implementation/order-service
+  branch to be photo proof of delivery feature free.”
+- Author review: Order Service tests and Ruff checks passed. Existing staged
+  Order Service work was preserved separately during the removal.
