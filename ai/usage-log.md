@@ -408,3 +408,16 @@ Format for each entry:
 - Author review: Pending contributor review. Codex restored the Alembic
   scaffold and dependency, removed only the two tracked revision files, kept
   the versions directory, and did not modify a live database.
+
+## 19/10/2026 — Zhou Shiyao
+
+- Tool: GitHub Copilot Chat (model: DeepSeek V4.1 Flash)
+- Scope: Added Playwright end-to-end regression tests for the frontend auth
+  area (login, registration, OTP verification, session hydration/expiry,
+  logout, and client/admin route guards), a shared API-gateway mock helper, and
+  a dev-server warm-up global setup. Test tooling config only; no application
+  behavior, endpoint contracts, or architecture decisions were changed.
+- Prompt(s): "Help me to write regression tests for frontend/auth."
+- Author review: Pending contributor review. Tests run against a mocked gateway
+  (no real backend), assert request payloads and persisted tokens, and pass in
+  Chromium, Firefox, and WebKit.

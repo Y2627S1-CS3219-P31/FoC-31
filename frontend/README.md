@@ -49,6 +49,40 @@ cd frontend && npm install && npm run dev
   written to the **user-service logs** (`docker compose logs user-service`)
   instead of emailed. Never enable this in a real deployment.
 
+## Test
+
+End-to-end regression tests use **Playwright** (`playwright.config.ts`). The
+specs mock the API Gateway with Playwright routes, so **no backend, database, or
+`.env` is required** — Playwright starts the Vite dev server on
+`http://localhost:5173` for you.
+
+```bash
+cd frontend
+
+# one-time setup
+npm install
+npx playwright install          # download Chromium, Firefox and WebKit
+
+# auth regression suite (login, register, OTP, session + route guards)
+npx playwright test tests/auth
+
+# everything under tests/
+npx playwright test
+```
+
+Useful variants:
+
+```bash
+npx playwright test tests/auth --project=chromium   # one browser
+npx playwright test tests/auth/login.spec.ts        # one file
+npx playwright test tests/auth --headed             # watch it run
+npx playwright test tests/auth --ui                 # interactive UI mode
+npx playwright show-report                          # open the HTML report
+```
+
+If a dev server is already running on port 5173 it is reused; only CI always
+starts a fresh one.
+
 ## Build
 
 ```bash
