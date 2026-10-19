@@ -15,7 +15,7 @@ import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../lib/auth";
-import { ApiError, type OrderResponse, type OrderStatus, ordersApi } from "../../lib/api";
+import { ApiError, type OrderResponse, type OrderStatus, ordersApi, parseUtcDate } from "../../lib/api";
 
 const POLL_INTERVAL = 2000;
 const POLL_TIMEOUT = 15000;
@@ -233,6 +233,7 @@ export default function OrderDetail() {
           message: "Still processing",
         });
       } else {
+        window.dispatchEvent(new Event("credits-changed"));
         notifications.show({
           color: "green",
           title: "Cancelled",
@@ -267,6 +268,7 @@ export default function OrderDetail() {
           message: "Still processing",
         });
       } else {
+        window.dispatchEvent(new Event("credits-changed"));
         notifications.show({
           color: "green",
           title: "Approved",
@@ -311,13 +313,13 @@ export default function OrderDetail() {
           <DetailRow label="Order ID" value={order.order_id} />
           <DetailRow label="Details" value={order.details} />
           <DetailRow label="Reward" value={`${order.reward} credits`} />
-          <DetailRow label="Deadline" value={new Date(order.deadline).toLocaleString()} />
+          <DetailRow label="Deadline" value={parseUtcDate(order.deadline).toLocaleString()} />
           <DetailRow label="Pickup" value={order.pickup_location} />
           <DetailRow label="Delivery" value={order.delivery_location} />
           <DetailRow label="Supplier" value={order.supplier_id} />
           <DetailRow label="Requester" value={order.requester_id} />
           <DetailRow label="Courier" value={order.courier_id ?? "Unassigned"} />
-          <DetailRow label="Created" value={new Date(order.created_at).toLocaleString()} />
+          <DetailRow label="Created" value={parseUtcDate(order.created_at).toLocaleString()} />
         </Stack>
       </Box>
 

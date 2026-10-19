@@ -222,6 +222,12 @@ export const suppliersApi = {
   },
 };
 
+// Backend timestamps are naive UTC (no trailing Z). Append Z so JS parses them
+// as UTC rather than local time.
+export function parseUtcDate(s: string): Date {
+  return new Date(s.endsWith("Z") || s.includes("+") ? s : s + "Z");
+}
+
 // ---- Orders ----
 export type OrderStatus =
   | "OPEN"

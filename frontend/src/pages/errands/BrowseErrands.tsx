@@ -18,7 +18,7 @@ import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { OrderStatusBadge } from "../../components/StatusPill";
-import { ApiError, type OrderResponse, ordersApi } from "../../lib/api";
+import { ApiError, type OrderResponse, ordersApi, parseUtcDate, suppliersApi } from "../../lib/api";
 
 export default function BrowseErrands() {
   const navigate = useNavigate();
@@ -26,11 +26,23 @@ export default function BrowseErrands() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<OrderResponse[]>([]);
+  const [supplierNames, setSupplierNames] = useState<Record<string, string>>({});
   const [minReward, setMinReward] = useState<number | "">("");
   const [maxReward, setMaxReward] = useState<number | "">("");
   const [category, setCategory] = useState("");
   const [sortBy, setSortBy] = useState("deadline");
   const [sortOrder, setSortOrder] = useState("asc");
+
+  useEffect(() => {
+    suppliersApi
+      .list({ includeInactive: false })
+      .then((res) => {
+        const map: Record<string, string> = {};
+        for (const s of res.items) map[s.id] = s.name;
+        setSupplierNames(map);
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,7 +75,8 @@ export default function BrowseErrands() {
   async function handleAccept(orderId: string) {
     try {
       await ordersApi.accept(orderId);
-      navigate("/orders/mine");
+      window.dispatchEvent(new Event("credits-changed"));
+      navigate("/deliveries");
     } catch (err) {
       notifications.show({
         color: "red",
@@ -127,10 +140,14 @@ export default function BrowseErrands() {
           {items.map((order) => (
             <Card key={order.order_id} withBorder padding="md">
               <Text fw={600}>{order.name}</Text>
-              <Text size="xs" c="dimmed">Supplier: {order.supplier_id}</Text>
+              <Text size="xs" c="dimmed">
+                {supplierNames[order.supplier_id] ?? order.supplier_id}
+              </Text>
               <Group justify="space-between">
                 <Badge color="green">{order.reward} cr</Badge>
-                <Text size="sm" c="dimmed">{order.deadline}</Text>
+                <Text size="sm" c="dimmed">
+                  {parseUtcDate(order.deadline).toLocaleString()}
+                </Text>
               </Group>
               <Text size="sm">{order.pickup_location} → {order.delivery_location}</Text>
               <OrderStatusBadge status={order.status} />

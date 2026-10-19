@@ -123,6 +123,7 @@ export default function CreateOrder() {
             label="Supplier"
             placeholder="Select a supplier"
             required
+            searchable
             data={suppliers.map((s) => ({ value: s.id, label: s.name }))}
             value={supplierId}
             onChange={setSupplierId}

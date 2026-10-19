@@ -71,7 +71,10 @@ export function AppLayout() {
 
   useEffect(() => {
     if (!user?.id) return;
-    creditsApi.getBalance(user.id).then(setBalance).catch(() => {});
+    const fetch = () => creditsApi.getBalance(user.id).then(setBalance).catch(() => {});
+    fetch();
+    window.addEventListener("credits-changed", fetch);
+    return () => window.removeEventListener("credits-changed", fetch);
   }, [user?.id]);
 
   const items = NAV_ITEMS.filter((i) => !i.adminOnly || isAdmin);

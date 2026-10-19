@@ -22,6 +22,7 @@ import {
   TransactionResponse,
   authApi,
   creditsApi,
+  parseUtcDate,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
@@ -190,14 +191,14 @@ export default function Profile() {
                   </Table.Tr>
                 </Table.Thead>
                 <Table.Tbody>
-                  {transactions.length === 0 ? (
+                  {transactions.filter((tx) => tx.amount !== 0).length === 0 ? (
                     <Table.Tr>
                       <Table.Td colSpan={4}>
                         <Text c="dimmed" size="sm" ta="center">No transactions yet</Text>
                       </Table.Td>
                     </Table.Tr>
                   ) : (
-                    transactions.map((tx) => (
+                    transactions.filter((tx) => tx.amount !== 0).map((tx) => (
                       <Table.Tr key={tx.id}>
                         <Table.Td>{tx.kind}</Table.Td>
                         <Table.Td>
@@ -206,7 +207,7 @@ export default function Profile() {
                           </Text>
                         </Table.Td>
                         <Table.Td>{tx.order_id ?? "—"}</Table.Td>
-                        <Table.Td>{new Date(tx.created_at).toLocaleString()}</Table.Td>
+                        <Table.Td>{parseUtcDate(tx.created_at).toLocaleString()}</Table.Td>
                       </Table.Tr>
                     ))
                   )}

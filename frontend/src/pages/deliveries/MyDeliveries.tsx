@@ -12,7 +12,7 @@ import {
 import { notifications } from "@mantine/notifications";
 import { useEffect, useState } from "react";
 import { OrderStatusBadge } from "../../components/StatusPill";
-import { ApiError, type OrderResponse, ordersApi } from "../../lib/api";
+import { ApiError, type OrderResponse, ordersApi, parseUtcDate } from "../../lib/api";
 
 export default function MyDeliveries() {
   const [activeTab, setActiveTab] = useState<string | null>("active");
@@ -123,6 +123,7 @@ export default function MyDeliveries() {
     addLoading(id);
     try {
       await ordersApi.deliver(id);
+      window.dispatchEvent(new Event("credits-changed"));
       const updated = await ordersApi.assignedActive();
       setActiveItems(updated);
     } catch (err) {
@@ -152,7 +153,7 @@ export default function MyDeliveries() {
               <OrderStatusBadge status={order.status} />
               <Text size="sm">Reward: {order.reward} cr</Text>
               <Text size="sm" c="dimmed">
-                Deadline: {new Date(order.deadline).toLocaleString()}
+                Deadline: {parseUtcDate(order.deadline).toLocaleString()}
               </Text>
               <Text size="sm" c="dimmed">
                 {order.pickup_location} → {order.delivery_location}

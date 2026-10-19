@@ -21,6 +21,7 @@ import {
   type OrderResponse,
   type OrderUpdate,
   ordersApi,
+  parseUtcDate,
 } from "../../lib/api";
 
 const POLL_INTERVAL = 2000;
@@ -140,7 +141,7 @@ export default function MyRequests() {
 
   function openEditModal(order: OrderResponse) {
     setEditError(null);
-    const dt = new Date(order.deadline);
+    const dt = parseUtcDate(order.deadline);
     const local = new Date(dt.getTime() - dt.getTimezoneOffset() * 60000)
       .toISOString()
       .slice(0, 16);
@@ -279,6 +280,7 @@ export default function MyRequests() {
         });
       } else {
         setOngoingItems((prev) => prev.filter((o) => o.order_id !== id));
+        window.dispatchEvent(new Event("credits-changed"));
         notifications.show({
           color: "green",
           title: "Cancelled",
@@ -313,6 +315,7 @@ export default function MyRequests() {
         setOngoingItems(updated);
       } else {
         setOngoingItems((prev) => prev.filter((o) => o.order_id !== id));
+        window.dispatchEvent(new Event("credits-changed"));
         notifications.show({
           color: "green",
           title: "Approved",
@@ -348,10 +351,10 @@ export default function MyRequests() {
               <OrderStatusBadge status={order.status} />
               <Text size="sm">Reward: {order.reward} cr</Text>
               <Text size="sm" c="dimmed">
-                Deadline: {new Date(order.deadline).toLocaleString()}
+                Deadline: {parseUtcDate(order.deadline).toLocaleString()}
               </Text>
               <Text size="sm" c="dimmed">
-                Courier: {order.courier_id ?? "Unassigned"}
+                Courier: {order.courier_id ? order.courier_id.slice(0, 8) + "…" : "Unassigned"}
               </Text>
             </Group>
           </Stack>
