@@ -1,4 +1,4 @@
-// AI-INFLUENCED: Order Service architecture diagram drawn with Codex from the implemented code and supplied course materials.
+// AI-INFLUENCED: Order Service architecture diagram updated with Codex from current code, D1 project requirements, and course materials.
 digraph OrderServiceArchitecture {
   graph [
     label="Order Service architecture | implemented component view (C4 level 3)",
@@ -12,8 +12,8 @@ digraph OrderServiceArchitecture {
 
   users [label="Requester / courier\nweb client", fillcolor="#e9f1fb", color="#678dbd"];
   gateway [label="API Gateway\nJWT validation; trusted identity headers", fillcolor="#e9f1fb", color="#678dbd"];
-  supplier [label="Supplier Service API\nsupplier details and category search", fillcolor="#e9f1fb", color="#678dbd"];
-  credit [label="Credit Service (supplied zip)\nreservation API; order-event consumer;\ncredit-event publisher", fillcolor="#e9f1fb", color="#678dbd"];
+  supplier [label="Supplier Service\nsupplier HTTP API; deactivation fact publisher", fillcolor="#e9f1fb", color="#678dbd"];
+  credit [label="Credit Service\nreservation HTTP API; order-event consumer;\ncredit-result publisher", fillcolor="#e9f1fb", color="#678dbd"];
 
   subgraph cluster_order {
     label="Order Service | FastAPI / Python 3.12 :8000";
@@ -26,7 +26,8 @@ digraph OrderServiceArchitecture {
     http_adapters [label="Outbound HTTP clients\nclients/supplier + clients/credit\nhttpx transport and response contracts", fillcolor="#e6f3f7"];
     timed [label="Timed workers\nexpiry_worker.py (5 s)\nauto_approval_worker.py (60 s)", fillcolor="#fff2dc", color="#ba8c49"];
     results [label="Credit-result consumers / handlers\nrelease, update, approval consumers\ncorrelate task + reservation; apply outcome", fillcolor="#fff2dc", color="#ba8c49"];
-    repos [label="Persistence repositories\norders + request, release, update,\napproval-task and event-outbox repositories"];
+    supplier_listener [label="Supplier-deactivation consumer / handler\nsupplier_consumer.py + supplier_deactivation.py\ndeduplicate fact; cancel pre-pickup orders", fillcolor="#fff2dc", color="#ba8c49"];
+    repos [label="Persistence repositories\norders, requests, workflow tasks,\nevent outbox + supplier-deactivation inbox"];
     relay [label="Event relay\nevent_worker.py + events.py\nconfirmed, persistent AMQP publish; retry", fillcolor="#fff2dc", color="#ba8c49"];
 
     api -> workflow [label="calls / validated JSON"];
@@ -37,14 +38,16 @@ digraph OrderServiceArchitecture {
     timed -> repos [label="locks due orders; writes status + facts"];
     results -> lifecycle [label="checks transitions"];
     results -> repos [label="locks tasks + orders; writes outcomes"];
+    supplier_listener -> lifecycle [label="checks cancellation transition"];
+    supplier_listener -> repos [label="locks matching orders; writes inbox + facts"];
     relay -> repos [label="reads pending outbox; records delivery"];
   }
 
-  db [shape=cylinder, style=filled, label="order-db | PostgreSQL\norders; order_requests; release, update,\napproval tasks; order_event_outbox", fillcolor="#eef0f3", color="#778390"];
+  db [shape=cylinder, style=filled, label="order-db | PostgreSQL\norders; order_requests; release, update, approval tasks;\norder_event_outbox; supplier_deactivation_inbox", fillcolor="#eef0f3", color="#778390"];
   order_x [label="foc.order.events\nRabbitMQ topic exchange\norder-local facts", fillcolor="#fceecb", color="#bd943d"];
   credit_x [label="foc.credit.events\nRabbitMQ topic exchange\ncredit-local facts", fillcolor="#fceecb", color="#bd943d"];
-  gap [shape=note, style="filled,dashed", label="Integration gap in supplied credit zip:\nno OrderApprovalRequested binding; no\nCreditTransferSucceeded / Failed publisher.\nIt binds OrderCompleted, which Order does not emit.", fillcolor="#f8ecf5", color="#a76c99", fontsize=10];
-  legend [shape=note, style=filled, label="Legend\nBlue/green solid arrow = synchronous call or local control\nOrange dashed arrow = AMQP event flow\nGrey dotted arrow = database access\nPurple dashed note = contract gap, not a working flow\nCylinder = service-owned data store", fillcolor="#f6f7f9", color="#9aa4ae", fontsize=10];
+  supplier_x [label="foc.supplier.events\nRabbitMQ topic exchange\nsupplier-local facts", fillcolor="#fceecb", color="#bd943d"];
+  legend [shape=note, style=filled, label="Legend\nBlue/green solid arrow = synchronous call or local control\nOrange dashed arrow = AMQP event flow (publisher to broker to consumer)\nGrey dotted arrow = database access\nGreen outline = Order Service boundary; cylinder = its own data store", fillcolor="#f6f7f9", color="#9aa4ae", fontsize=10];
 
   users -> gateway [label="HTTPS / JSON + bearer token"];
   gateway -> api [label="HTTP / JSON; X-User-Id, X-User-Role"];
@@ -52,7 +55,9 @@ digraph OrderServiceArchitecture {
   http_adapters -> credit [label="HTTP POST /credits/reservations\nreserve on creation; release on DB failure"];
   repos -> db [label="SQLAlchemy / asyncpg", style=dotted, color="#778390", fontcolor="#626c76"];
   relay -> order_x [label="AMQP publish; routing key = event type", style=dashed, color="#b47a21", fontcolor="#805716"];
-  order_x -> credit [label="AMQP consume: delete/cancel/update requests,\nOrderExpired, CourierWithdrawn", style=dashed, color="#b47a21", fontcolor="#805716"];
-  credit -> credit_x [label="AMQP publish: release/amend outcomes\n(+ reservation facts)", style=dashed, color="#b47a21", fontcolor="#805716"];
-  credit_x -> results [label="AMQP consume: CreditReleased / Failed;\nCreditAmended / Rejected", style=dashed, color="#b47a21", fontcolor="#805716"];
+  order_x -> credit [label="AMQP consume: delete/cancel/update/approval facts;\nOrderCancelled, OrderExpired, CourierWithdrawn", style=dashed, color="#b47a21", fontcolor="#805716"];
+  credit -> credit_x [label="AMQP publish: release, amend, transfer results\n(+ reservation facts)", style=dashed, color="#b47a21", fontcolor="#805716"];
+  credit_x -> results [label="AMQP consume: release, amend, transfer\nsuccess / failure facts", style=dashed, color="#b47a21", fontcolor="#805716"];
+  supplier -> supplier_x [label="AMQP publish: SupplierDeactivated", style=dashed, color="#b47a21", fontcolor="#805716"];
+  supplier_x -> supplier_listener [label="AMQP consume: SupplierDeactivated", style=dashed, color="#b47a21", fontcolor="#805716"];
 }

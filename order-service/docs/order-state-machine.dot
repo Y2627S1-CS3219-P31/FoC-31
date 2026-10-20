@@ -1,4 +1,4 @@
-// AI-INFLUENCED: Persisted Order lifecycle state machine drawn with Codex from implemented transition and workflow code.
+// AI-INFLUENCED: Persisted Order lifecycle state machine updated with Codex from current transition/workflow code and D1 requirements.
 digraph OrderStateMachine {
   graph [
     label="Order state lifecycle | persisted statuses and implemented transitions",
@@ -26,11 +26,11 @@ digraph OrderStateMachine {
   ACCEPTED -> PICKED_UP [label="assigned courier picks up\nOrderPickedUp"];
   PICKED_UP -> AWAITING_APPROVAL [label="assigned courier delivers\nOrderDelivered; start 24 h clock"];
   AWAITING_APPROVAL -> COMPLETED [label="requester approves + CreditTransferSucceeded\nOR 24 h auto-approval; OrderApproved"];
-  OPEN -> CANCELLED [label="requester cancels; CreditReleased\nthen OrderCancelled"];
-  ACCEPTED -> CANCELLED [label="requester cancels before pickup;\nCreditReleased then OrderCancelled"];
+  OPEN -> CANCELLED [label="requester cancels + CreditReleased\nOR SupplierDeactivated; OrderCancelled"];
+  ACCEPTED -> CANCELLED [label="requester cancels before pickup + CreditReleased\nOR SupplierDeactivated; OrderCancelled"];
   OPEN -> EXPIRED [label="deadline <= DB time; expiry sweeper\nOrderExpired"];
   OPEN -> DELETED [label="requester deletes; CreditReleased\nthen remove row; OrderDeleted"];
 
   note [shape=note, style=filled, color="#b49c5c", fillcolor="#fff8e7", fontname="Helvetica", fontsize=10,
-    label="Pending delete / cancel / update / approval tasks are separate rows, not order statuses.\nCreditReleaseFailed leaves OPEN or ACCEPTED. CreditAmendRejected leaves OPEN.\nCreditTransferFailed leaves AWAITING_APPROVAL. Auto-approval can reach COMPLETED\nwhile its transfer task remains unresolved. Invalid transitions are rejected."];
+    label="Pending delete / cancel / update / approval tasks are separate rows, not order statuses.\nRequester cancellation waits for CreditReleased; SupplierDeactivated cancels immediately.\nCreditReleaseFailed leaves OPEN or ACCEPTED. CreditAmendRejected leaves OPEN.\nCreditTransferFailed leaves AWAITING_APPROVAL; auto-approval can still complete.\nInvalid transitions are rejected."];
 }
