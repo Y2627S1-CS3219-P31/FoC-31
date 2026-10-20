@@ -142,6 +142,12 @@ export default function SupplierDetail() {
             <Field label="Opening hours" value={hours} />
             <Field label="Coordinates" value={coords} />
           </Stack>
+
+          <Button
+            onClick={() => navigate("/orders/new?supplierId=" + supplier.id)}
+          >
+            Request errand
+          </Button>
         </Stack>
       </Card>
     </Stack>

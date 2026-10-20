@@ -4,9 +4,11 @@ from datetime import datetime
 from sqlalchemy import (
     CheckConstraint,
     DateTime,
+    Index,
     Integer,
     String,
     func,
+    text,
 )
 from sqlalchemy import (
     Enum as SqlEnum,
@@ -48,6 +50,20 @@ class OrderTable(Base):
         CheckConstraint(
             "char_length(btrim(reservation_id)) > 0",
             name="ck_orders_reservation_id_not_blank",
+        ),
+        Index(
+            "ix_orders_open_deadline",
+            "deadline",
+            "order_id",
+            postgresql_where=text("status = 'OPEN'"),
+            sqlite_where=text("status = 'OPEN'"),
+        ),
+        Index(
+            "ix_orders_awaiting_approval_at",
+            "awaiting_approval_at",
+            "order_id",
+            postgresql_where=text("status = 'AWAITING_APPROVAL'"),
+            sqlite_where=text("status = 'AWAITING_APPROVAL'"),
         ),
     )
 
@@ -96,6 +112,10 @@ class OrderTable(Base):
     status: Mapped[OrderStatus] = mapped_column(
         SqlEnum(OrderStatus, name="order_status"),
         nullable=False,
+    )
+
+    awaiting_approval_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     created_at: Mapped[datetime] = mapped_column(
