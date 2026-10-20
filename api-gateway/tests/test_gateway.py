@@ -44,11 +44,11 @@ def _request(headers: dict[str, str] | None = None) -> Request:
 
 def test_resolve_raises_for_unknown_route():
     with pytest.raises(RouteNotFoundError):
-        gateway.resolve("/api/does-not-exist")
+        gateway.resolve("/api/does-not-exist", "GET")
 
 
 def test_resolve_returns_upstream_for_known_route():
-    assert gateway.resolve("/api/users") == settings.user_service_url
+    assert gateway.resolve("/api/users/me", "GET") == settings.user_service_url
 
 
 async def test_authorize_public_route_needs_no_token():
