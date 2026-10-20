@@ -37,6 +37,18 @@ class OtpRepository:
         )
         return result.rowcount > 0
 
+    async def consume_all_unconsumed(self, user_id: str, purpose: OtpPurpose) -> None:
+        """Invalidate every outstanding code of one purpose for a user."""
+        await self._session.execute(
+            update(OtpCode)
+            .where(
+                OtpCode.user_id == user_id,
+                OtpCode.purpose == purpose.value,
+                OtpCode.consumed_at.is_(None),
+            )
+            .values(consumed_at=datetime.now(UTC).replace(tzinfo=None))
+        )
+
     async def increment_attempts(self, otp_id: str, *, max_attempts: int) -> int:
         result = await self._session.execute(
             update(OtpCode)
