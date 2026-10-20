@@ -56,6 +56,16 @@ read -r C1_TOKEN C1_ID < <(register_user courier1)
 read -r C2_TOKEN C2_ID < <(register_user courier2)
 log "requester=$REQ_ID courier1=$C1_ID courier2=$C2_ID"
 
+# Initial 100-credit allocation arrives asynchronously via the UserRegistered
+# event, so wait for it before creating the order (which reserves credits).
+log "waiting for requester credit allocation"
+for _ in $(seq 1 20); do
+  avail="$(curl -s "$GATEWAY/api/credits/$REQ_ID/balance" -H "Authorization: Bearer $REQ_TOKEN" | jq -r '.available_balance // 0')"
+  if [ "${avail:-0}" -ge 10 ] 2>/dev/null; then break; fi
+  sleep 1
+done
+[ "${avail:-0}" -ge 10 ] 2>/dev/null || { log "requester credits never allocated (available=$avail)"; exit 1; }
+
 SUPPLIER_ID="$(curl -s "$GATEWAY/api/suppliers?page_size=50" -H "Authorization: Bearer $REQ_TOKEN" \
   | jq -r '[.items[] | select(.active == true)][0].id')"
 [ -n "$SUPPLIER_ID" ] && [ "$SUPPLIER_ID" != "null" ] || { log "no active supplier"; exit 1; }
