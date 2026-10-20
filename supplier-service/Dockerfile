@@ -17,5 +17,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY supplier-service/ .
 
+# Seed data baked into the image so Kubernetes needs no /data bind mount. In
+# Compose the read-only ./data mount overlays this copy; the seeder is idempotent.
+COPY data/csv /data/csv
+COPY data/images /data/images
+
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

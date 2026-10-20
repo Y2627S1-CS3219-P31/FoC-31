@@ -1,0 +1,41 @@
+namespace: foc-notification
+replicas: 1
+port: 8000
+healthPath: /health
+
+image:
+  repository: foc/notification-service
+  tag: dev
+
+env:
+  LOG_LEVEL: info
+
+secretEnv:
+  - name: DATABASE_URL
+    secret: notification-secrets
+    key: DATABASE_URL
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+postgres:
+  name: notification-db
+  dbName: notification_db
+  secret: notification-secrets
+  image: postgres:16-alpine
+  sharedBuffers: 128MB
+  maxConnections: 50
+  storage: 1Gi
+  storageClass: local-path
+  resources:
+    requests:
+      cpu: 50m
+      memory: 160Mi
+    limits:
+      cpu: 500m
+      memory: 256Mi
