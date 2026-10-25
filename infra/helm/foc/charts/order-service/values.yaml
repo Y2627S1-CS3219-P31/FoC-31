@@ -9,6 +9,8 @@ image:
 
 env:
   LOG_LEVEL: info
+  SUPPLIER_SERVICE_URL: http://supplier-service.foc-supplier.svc.cluster.local:8000
+  CREDIT_SERVICE_URL: http://credit-service.foc-credit.svc.cluster.local:8000
 
 secretEnv:
   - name: DATABASE_URL
