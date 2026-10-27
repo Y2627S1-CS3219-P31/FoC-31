@@ -1,0 +1,5374 @@
+{
+  "info": {
+    "name": "FoC D3 Demo (Order + Credit async via Gateway)",
+    "_postman_id": "f0c00d33-0000-4000-8000-000000000d3a",
+    "description": "AI-influenced: Postman collection and polling scripts authored with Claude Code (Claude Opus 4.8); see ai/usage-log.md.\n\nMilestone D3 demo of the Order Service and Credit Service and their async (RabbitMQ/outbox) workflows, exercised end-to-end through the API Gateway (http://localhost:8080), no UI. Folders 00-11 run top to bottom; every email embeds a per-run runId so the whole collection is re-runnable with no manual steps. Auth is a per-request Bearer token (never raw X-User-* headers; the gateway strips those and injects identity from the JWT). Async terminal states are reached by polling (GET re-issues itself via setNextRequest, capped, failing loudly on timeout). OTP codes are read from Mailpit. See postman/README.md.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "00 Setup",
+      "item": [
+        {
+          "name": "GET /health (gateway, set runId)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "D3 Setup: gateway liveness; the first request sets a fresh runId so every email is unique per run."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('runId', String(Date.now()));",
+                  "pm.environment.set('pollOtpReq', 0);",
+                  "pm.environment.set('pollOtpCour', 0);",
+                  "pm.environment.set('pollOtpCour2', 0);",
+                  "pm.environment.set('pollAllocReq', 0);",
+                  "pm.environment.set('pollAllocCour', 0);",
+                  "pm.environment.set('pollAllocCour2', 0);",
+                  "pm.environment.set('pollCompleted', 0);",
+                  "pm.environment.set('pollUpdateDone', 0);",
+                  "pm.environment.set('pollUpdateRej', 0);",
+                  "pm.environment.set('pollCancelA', 0);",
+                  "pm.environment.set('pollCancelB', 0);",
+                  "pm.environment.set('pollDeletion', 0);",
+                  "pm.environment.set('pollExpired', 0);",
+                  "pm.environment.set('pollSupCancel', 0);"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: gateway up (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('body status == ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register requester -> 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "register"
+              ]
+            },
+            "description": "D3 Part 2.2: self-register the requester with a per-run @u.nus.edu email so reruns never 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"D3 requester\",\n  \"contact_number\": \"91234567\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('requesterEmail', 'd3req' + pm.environment.get('runId') + '@u.nus.edu');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: register requester (201)', function () { pm.response.to.have.status(201); });",
+                  "var b = pm.response.json();",
+                  "pm.test('returns id + echoed email', function () {",
+                  "    pm.expect(b).to.have.property('id');",
+                  "    pm.expect(b.email).to.eql(pm.environment.get('requesterEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fetch requester OTP (Mailpit) -> 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:%22{{requesterEmail}}%22",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{requesterEmail}}\""
+                }
+              ]
+            },
+            "description": "D3 Part 2.2: read the requester's OTP from Mailpit (newest message Snippet); polls until the mail arrives."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollOtpReq') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: Mailpit search ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var data = pm.response.json();",
+                  "var msgs = data.messages || [];",
+                  "var attempts = Number(pm.environment.get('pollOtpReq') || 0);",
+                  "var code = null;",
+                  "if (msgs.length > 0) { var m = String(msgs[0].Snippet || '').match(/(\\d{6})/); if (m) { code = m[1]; } }",
+                  "if (code) {",
+                  "    pm.environment.set('requesterOtp', code);",
+                  "    pm.environment.set('pollOtpReq', 0);",
+                  "    pm.test('D3 Setup: requester OTP extracted', function () { pm.expect(code).to.match(/^\\d{6}$/); });",
+                  "} else if (attempts < 15) {",
+                  "    pm.environment.set('pollOtpReq', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollOtpReq', 0);",
+                  "    pm.test('D3 Setup: requester OTP email arrived', function () { pm.expect.fail('No OTP email after 15 polls'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify requester OTP -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "D3 Part 2.2: verify the emailed OTP for the requester.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"code\": \"{{requesterOtp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: verify requester OTP (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('verified == true', function () { pm.expect(pm.response.json().verified).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login requester -> 200 (save token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            },
+            "description": "D3 Part 2.2: log the requester in and save the bearer token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{requesterEmail}}\",\n  \"password\": \"{{clientPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: requester login (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('bearer token issued', function () { pm.expect(b.token_type).to.eql('bearer'); pm.expect(b).to.have.property('access_token'); });",
+                  "pm.environment.set('requesterToken', b.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /me requester -> 200 (save id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me"
+              ]
+            },
+            "description": "D3 Part 2.2: resolve the requester's id from the gateway-injected identity.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: requester /me (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('role == client', function () { pm.expect(b.role).to.eql('client'); });",
+                  "pm.environment.set('requesterId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register courier -> 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "register"
+              ]
+            },
+            "description": "D3 Part 2.2: self-register the courier with a per-run @u.nus.edu email so reruns never 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courierEmail}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"D3 courier\",\n  \"contact_number\": \"91234567\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('courierEmail', 'd3cour' + pm.environment.get('runId') + '@u.nus.edu');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: register courier (201)', function () { pm.response.to.have.status(201); });",
+                  "var b = pm.response.json();",
+                  "pm.test('returns id + echoed email', function () {",
+                  "    pm.expect(b).to.have.property('id');",
+                  "    pm.expect(b.email).to.eql(pm.environment.get('courierEmail'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fetch courier OTP (Mailpit) -> 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:%22{{courierEmail}}%22",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{courierEmail}}\""
+                }
+              ]
+            },
+            "description": "D3 Part 2.2: read the courier's OTP from Mailpit (newest message Snippet); polls until the mail arrives."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollOtpCour') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: Mailpit search ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var data = pm.response.json();",
+                  "var msgs = data.messages || [];",
+                  "var attempts = Number(pm.environment.get('pollOtpCour') || 0);",
+                  "var code = null;",
+                  "if (msgs.length > 0) { var m = String(msgs[0].Snippet || '').match(/(\\d{6})/); if (m) { code = m[1]; } }",
+                  "if (code) {",
+                  "    pm.environment.set('courierOtp', code);",
+                  "    pm.environment.set('pollOtpCour', 0);",
+                  "    pm.test('D3 Setup: courier OTP extracted', function () { pm.expect(code).to.match(/^\\d{6}$/); });",
+                  "} else if (attempts < 15) {",
+                  "    pm.environment.set('pollOtpCour', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollOtpCour', 0);",
+                  "    pm.test('D3 Setup: courier OTP email arrived', function () { pm.expect.fail('No OTP email after 15 polls'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify courier OTP -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "D3 Part 2.2: verify the emailed OTP for the courier.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courierEmail}}\",\n  \"code\": \"{{courierOtp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: verify courier OTP (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('verified == true', function () { pm.expect(pm.response.json().verified).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login courier -> 200 (save token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            },
+            "description": "D3 Part 2.2: log the courier in and save the bearer token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courierEmail}}\",\n  \"password\": \"{{clientPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: courier login (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('bearer token issued', function () { pm.expect(b.token_type).to.eql('bearer'); pm.expect(b).to.have.property('access_token'); });",
+                  "pm.environment.set('courierToken', b.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /me courier -> 200 (save id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me"
+              ]
+            },
+            "description": "D3 Part 2.2: resolve the courier's id from the gateway-injected identity.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: courier /me (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('role == client', function () { pm.expect(b.role).to.eql('client'); });",
+                  "pm.environment.set('courierId', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Register courier2 -> 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/register",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "register"
+              ]
+            },
+            "description": "D3 Part 2.2: self-register the courier2 with a per-run @u.nus.edu email so reruns never 409.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courier2Email}}\",\n  \"password\": \"{{clientPassword}}\",\n  \"display_name\": \"D3 courier2\",\n  \"contact_number\": \"91234567\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('courier2Email', 'd3cour2' + pm.environment.get('runId') + '@u.nus.edu');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: register courier2 (201)', function () { pm.response.to.have.status(201); });",
+                  "var b = pm.response.json();",
+                  "pm.test('returns id + echoed email', function () {",
+                  "    pm.expect(b).to.have.property('id');",
+                  "    pm.expect(b.email).to.eql(pm.environment.get('courier2Email'));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Fetch courier2 OTP (Mailpit) -> 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{mailpitUrl}}/api/v1/search?query=to:%22{{courier2Email}}%22",
+              "host": [
+                "{{mailpitUrl}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "search"
+              ],
+              "query": [
+                {
+                  "key": "query",
+                  "value": "to:\"{{courier2Email}}\""
+                }
+              ]
+            },
+            "description": "D3 Part 2.2: read the courier2's OTP from Mailpit (newest message Snippet); polls until the mail arrives."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollOtpCour2') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: Mailpit search ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var data = pm.response.json();",
+                  "var msgs = data.messages || [];",
+                  "var attempts = Number(pm.environment.get('pollOtpCour2') || 0);",
+                  "var code = null;",
+                  "if (msgs.length > 0) { var m = String(msgs[0].Snippet || '').match(/(\\d{6})/); if (m) { code = m[1]; } }",
+                  "if (code) {",
+                  "    pm.environment.set('courier2Otp', code);",
+                  "    pm.environment.set('pollOtpCour2', 0);",
+                  "    pm.test('D3 Setup: courier2 OTP extracted', function () { pm.expect(code).to.match(/^\\d{6}$/); });",
+                  "} else if (attempts < 15) {",
+                  "    pm.environment.set('pollOtpCour2', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollOtpCour2', 0);",
+                  "    pm.test('D3 Setup: courier2 OTP email arrived', function () { pm.expect.fail('No OTP email after 15 polls'); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify courier2 OTP -> 200",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/otp/verify",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "otp",
+                "verify"
+              ]
+            },
+            "description": "D3 Part 2.2: verify the emailed OTP for the courier2.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courier2Email}}\",\n  \"code\": \"{{courier2Otp}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: verify courier2 OTP (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('verified == true', function () { pm.expect(pm.response.json().verified).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login courier2 -> 200 (save token)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            },
+            "description": "D3 Part 2.2: log the courier2 in and save the bearer token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{courier2Email}}\",\n  \"password\": \"{{clientPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: courier2 login (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('bearer token issued', function () { pm.expect(b.token_type).to.eql('bearer'); pm.expect(b).to.have.property('access_token'); });",
+                  "pm.environment.set('courier2Token', b.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /me courier2 -> 200 (save id)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/me",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "me"
+              ]
+            },
+            "description": "D3 Part 2.2: resolve the courier2's id from the gateway-injected identity.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courier2Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: courier2 /me (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('role == client', function () { pm.expect(b.role).to.eql('client'); });",
+                  "pm.environment.set('courier2Id', b.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login admin -> 200 (save adminToken)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/users/login",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "users",
+                "login"
+              ]
+            },
+            "description": "D3 Setup: authenticate the bootstrap admin for supplier administration.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: admin login (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.expect(b.token_type).to.eql('bearer');",
+                  "pm.environment.set('adminToken', b.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/suppliers -> 200 (save supplierId)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers?page=1&page_size=50",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "suppliers"
+              ],
+              "query": [
+                {
+                  "key": "page",
+                  "value": "1"
+                },
+                {
+                  "key": "page_size",
+                  "value": "50"
+                }
+              ]
+            },
+            "description": "D3 Setup: pick the first active seeded supplier for the order-creation steps.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: supplier list (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('has items', function () { pm.expect(b.items).to.be.an('array').that.is.not.empty; });",
+                  "var active = (b.items || []).filter(function (s) { return s.active === true; });",
+                  "pm.test('at least one active supplier', function () { pm.expect(active.length).to.be.above(0); });",
+                  "pm.environment.set('supplierId', active[0].id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create demo supplier (admin) -> 201 (save demoSupplierId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "suppliers"
+              ]
+            },
+            "description": "D3 Setup: admin creates a dedicated supplier used by the deactivation demo (folder 10).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{demoSupplierName}}\",\n  \"category\": \"Food\",\n  \"building\": \"COM1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('demoSupplierName', 'D3 Demo Supplier ' + pm.environment.get('runId'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Setup: create demo supplier (201)', function () { pm.response.to.have.status(201); });",
+                  "var b = pm.response.json();",
+                  "pm.test('created active with echoed name', function () { pm.expect(b.active).to.eql(true); pm.expect(b.name).to.eql(pm.environment.get('demoSupplierName')); });",
+                  "pm.environment.set('demoSupplierId', b.id);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "01 Initial allocation (2.2)",
+      "item": [
+        {
+          "name": "requester balance -> 100/0",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.2: each new user is allocated 100 available / 0 reserved via the UserRegistered event; poll (tolerating an initial 404 until the account exists) until it lands.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollAllocReq') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var attempts = Number(pm.environment.get('pollAllocReq') || 0);",
+                  "var ok = pm.response.code === 200;",
+                  "var b = ok ? pm.response.json() : null;",
+                  "var done = ok && b.available_balance === 100 && b.reserved_balance === 0;",
+                  "if (done) {",
+                  "    pm.environment.set('pollAllocReq', 0);",
+                  "    pm.test('requester has 100 available / 0 reserved', function () { pm.expect(b.available_balance).to.eql(100); pm.expect(b.reserved_balance).to.eql(0); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollAllocReq', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollAllocReq', 0);",
+                  "    pm.test('D3 Credit 2.2: requester allocation lands as 100/0', function () { pm.expect.fail('Timed out after 20 polls; last status ' + pm.response.code + ', body: ' + pm.response.text()); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "requester transactions -> one allocation +100",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "transactions"
+              ]
+            },
+            "description": "D3 Part 2.2: the ledger shows exactly one allocation of +100 for a new user.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.2: requester transactions (200)', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var alloc = rows.filter(function (t) { return t.kind === 'allocation'; });",
+                  "pm.test('exactly one allocation of +100', function () { pm.expect(alloc.length).to.eql(1); pm.expect(alloc[0].amount).to.eql(100); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "courier balance -> 100/0",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{courierId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{courierId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.2: each new user is allocated 100 available / 0 reserved via the UserRegistered event; poll (tolerating an initial 404 until the account exists) until it lands.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollAllocCour') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var attempts = Number(pm.environment.get('pollAllocCour') || 0);",
+                  "var ok = pm.response.code === 200;",
+                  "var b = ok ? pm.response.json() : null;",
+                  "var done = ok && b.available_balance === 100 && b.reserved_balance === 0;",
+                  "if (done) {",
+                  "    pm.environment.set('pollAllocCour', 0);",
+                  "    pm.test('courier has 100 available / 0 reserved', function () { pm.expect(b.available_balance).to.eql(100); pm.expect(b.reserved_balance).to.eql(0); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollAllocCour', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollAllocCour', 0);",
+                  "    pm.test('D3 Credit 2.2: courier allocation lands as 100/0', function () { pm.expect.fail('Timed out after 20 polls; last status ' + pm.response.code + ', body: ' + pm.response.text()); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "courier transactions -> one allocation +100",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{courierId}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{courierId}}",
+                "transactions"
+              ]
+            },
+            "description": "D3 Part 2.2: the ledger shows exactly one allocation of +100 for a new user.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.2: courier transactions (200)', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var alloc = rows.filter(function (t) { return t.kind === 'allocation'; });",
+                  "pm.test('exactly one allocation of +100', function () { pm.expect(alloc.length).to.eql(1); pm.expect(alloc[0].amount).to.eql(100); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "courier2 balance -> 100/0",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{courier2Id}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{courier2Id}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.2: each new user is allocated 100 available / 0 reserved via the UserRegistered event; poll (tolerating an initial 404 until the account exists) until it lands.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courier2Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollAllocCour2') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var attempts = Number(pm.environment.get('pollAllocCour2') || 0);",
+                  "var ok = pm.response.code === 200;",
+                  "var b = ok ? pm.response.json() : null;",
+                  "var done = ok && b.available_balance === 100 && b.reserved_balance === 0;",
+                  "if (done) {",
+                  "    pm.environment.set('pollAllocCour2', 0);",
+                  "    pm.test('courier2 has 100 available / 0 reserved', function () { pm.expect(b.available_balance).to.eql(100); pm.expect(b.reserved_balance).to.eql(0); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollAllocCour2', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollAllocCour2', 0);",
+                  "    pm.test('D3 Credit 2.2: courier2 allocation lands as 100/0', function () { pm.expect.fail('Timed out after 20 polls; last status ' + pm.response.code + ', body: ' + pm.response.text()); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Create + reservation (1.5, 2.3)",
+      "item": [
+        {
+          "name": "Snapshot requester balance",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: capture the requester balance before creating the order (delta assertion baseline).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot balance (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order reward 20 -> 201 OPEN (save orderId)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.5 / 2.3: create an order; the reward is reserved synchronously on the 201.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.5: create order (201)', function () { pm.response.to.have.status(201); });",
+                  "var b = pm.response.json();",
+                  "pm.test('OPEN with no courier', function () { pm.expect(b.status).to.eql('OPEN'); pm.expect(b.courier_id).to.eql(null); });",
+                  "pm.test('reward echoed', function () { pm.expect(b.reward).to.eql(20); });",
+                  "pm.environment.set('orderId', b.order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify reservation (-20 / +20)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: creating the order moved 20 credits available -> reserved synchronously.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: reservation balance (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('available -20, reserved +20', function () {",
+                  "    pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')) - 20);",
+                  "    pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')) + 20);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create reward 100000 -> 409 insufficient_credits",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 2.3: a reward exceeding available credits is rejected with 409 insufficient_credits.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 100000,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: insufficient credits (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('code == insufficient_credits', function () { pm.expect(pm.response.json().code).to.eql('insufficient_credits'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create past deadline -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.5: a deadline in the past fails validation (422).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"2000-01-01T00:00:00+08:00\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.5: past deadline (422)', function () { pm.response.to.have.status(422); });",
+                  "pm.test('code == validation_error', function () { pm.expect(pm.response.json().code).to.eql('validation_error'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create timezone-naive deadline -> 422",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.5: a deadline without a timezone offset fails validation (422).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"2030-01-01T00:00:00\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.5: naive deadline (422)', function () { pm.response.to.have.status(422); });",
+                  "pm.test('code == validation_error', function () { pm.expect(pm.response.json().code).to.eql('validation_error'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "03 Query (1.3)",
+      "item": [
+        {
+          "name": "Courier GET /api/orders contains order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.3: the open order appears in another user's available-orders feed.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: available list (200)', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var ids = rows.map(function (o) { return o.order_id; });",
+                  "pm.test('feed contains our order', function () { pm.expect(ids).to.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "min_reward=10 includes order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?min_reward=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "min_reward",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "D3 Part 1.3: min_reward filter (reward 20 >= 10) includes the order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: min_reward filter (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('included at min_reward=10', function () { pm.expect(ids).to.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "max_reward=10 excludes order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders?max_reward=10",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ],
+              "query": [
+                {
+                  "key": "max_reward",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "D3 Part 1.3: max_reward filter (reward 20 > 10) excludes the order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: max_reward filter (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('excluded at max_reward=10', function () { pm.expect(ids).to.not.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester GET /api/orders excludes own",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.3: the available feed never lists the caller's own orders.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: own order excluded (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('own order excluded from feed', function () { pm.expect(ids).to.not.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester GET /api/orders/{id} -> 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "D3 Part 1.3: the requester can read their own order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: requester get-one (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('order_id echoes', function () { pm.expect(pm.response.json().order_id).to.eql(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unrelated courier2 GET /api/orders/{id} -> 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "D3 Part 1.3: a user who is neither requester nor assigned courier is denied (403).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courier2Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: unrelated get-one denied (403)', function () { pm.response.to.have.status(403); });",
+                  "pm.test('code == order_access_denied', function () { pm.expect(pm.response.json().code).to.eql('order_access_denied'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unknown order id -> 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/ord_doesnotexist",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "ord_doesnotexist"
+              ]
+            },
+            "description": "D3 Part 1.3: an unknown order id returns 404 order_not_found.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: unknown order (404)', function () { pm.response.to.have.status(404); });",
+                  "pm.test('code == order_not_found', function () { pm.expect(pm.response.json().code).to.eql('order_not_found'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester /requested/ongoing contains order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/requested/ongoing",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "requested",
+                "ongoing"
+              ]
+            },
+            "description": "D3 Part 1.3: the order is listed in the requester's ongoing orders.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: requested/ongoing (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('ongoing contains our order', function () { pm.expect(ids).to.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "04 AuthZ + invalid transitions (1.2, 1.3)",
+      "item": [
+        {
+          "name": "Requester accepts own order -> 409",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 1.2: a requester cannot accept their own order (409).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: accept own (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('message explains own order', function () { pm.expect(pm.response.json().message).to.include('cannot accept your own order'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier pickup before accept -> 403",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/pickup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "pickup"
+              ]
+            },
+            "description": "D3 Part 1.2: pickup by a non-assigned courier is denied (403).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: pickup before accept (403)', function () { pm.response.to.have.status(403); });",
+                  "pm.test('code == order_access_denied', function () { pm.expect(pm.response.json().code).to.eql('order_access_denied'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier approves others' order -> 403",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "approve"
+              ]
+            },
+            "description": "D3 Part 1.2: only the requester may approve; a courier is denied (403).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: courier approve denied (403)', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier cancels others' order -> 403",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "cancel"
+              ]
+            },
+            "description": "D3 Part 1.2: only the requester may cancel; a courier is denied (403).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"not my order\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: courier cancel denied (403)', function () { pm.response.to.have.status(403); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "No Authorization header -> 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.2: a protected order route without a bearer token is rejected at the gateway (401)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Gateway: missing bearer (401)', function () { pm.response.to.have.status(401); });",
+                  "pm.test('code == unauthorized', function () { pm.expect(pm.response.json().code).to.eql('unauthorized'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "05 Happy path + concurrency (1.2, 1.4, 2.3)",
+      "item": [
+        {
+          "name": "Courier accept -> 200 ACCEPTED",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 1.2: the courier accepts the open order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: accept (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('ACCEPTED, courier assigned', function () { pm.expect(b.status).to.eql('ACCEPTED'); pm.expect(b.courier_id).to.eql(pm.environment.get('courierId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier2 accept same order -> 409",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 1.4: a second courier accepting the already-assigned order loses (409).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courier2Token}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: double accept (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('message: already has a courier', function () { pm.expect(pm.response.json().message).to.include('already has an assigned courier'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Assigned courier GET order -> 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "D3 Part 1.3: the assigned courier can read the order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: assigned courier get-one (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('courier is assigned', function () { pm.expect(pm.response.json().courier_id).to.eql(pm.environment.get('courierId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier /assigned contains order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/assigned",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "assigned"
+              ]
+            },
+            "description": "D3 Part 1.3: the order appears in the courier's assigned list.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: assigned list (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('assigned list contains our order', function () { pm.expect(ids).to.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier pickup -> 200 PICKED_UP",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/pickup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "pickup"
+              ]
+            },
+            "description": "D3 Part 1.2: the assigned courier marks the order picked up.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: pickup (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('PICKED_UP', function () { pm.expect(pm.response.json().status).to.eql('PICKED_UP'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier deliver -> 200 AWAITING_APPROVAL",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/deliver",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "deliver"
+              ]
+            },
+            "description": "D3 Part 1.2: delivery moves the order to AWAITING_APPROVAL.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: deliver (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('AWAITING_APPROVAL', function () { pm.expect(pm.response.json().status).to.eql('AWAITING_APPROVAL'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Pickup again -> 409",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/pickup",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "pickup"
+              ]
+            },
+            "description": "D3 Part 1.2: a picked-up/delivered order cannot be picked up again (409).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: re-pickup (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('message: only an accepted order', function () { pm.expect(pm.response.json().message).to.include('Only an accepted order can be picked up'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Snapshot requester balance (pre-approve)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline the requester balance before approval.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot requester (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Snapshot courier balance (pre-approve)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{courierId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{courierId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline the courier balance before approval.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot courier (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balCourAvail', b.available_balance);",
+                  "pm.environment.set('balCourReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester approve -> 202 (save taskId)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "approve"
+              ]
+            },
+            "description": "D3 Part 2.3: approval starts an async credit transfer (202).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: approve (202)', function () { pm.response.to.have.status(202); });",
+                  "var b = pm.response.json();",
+                  "pm.test('returns task_id + order_id', function () { pm.expect(b).to.have.property('task_id'); pm.expect(b.order_id).to.eql(pm.environment.get('orderId')); });",
+                  "pm.environment.set('taskId', b.task_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester approve again -> 202 same task_id",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}/approve",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}",
+                "approve"
+              ]
+            },
+            "description": "D3 Part 2.3: approval is idempotent while pending (same task_id).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: approve idempotent (202)', function () { pm.response.to.have.status(202); });",
+                  "pm.test('same task_id', function () { pm.expect(pm.response.json().task_id).to.eql(pm.environment.get('taskId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll order until COMPLETED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId}}"
+              ]
+            },
+            "description": "D3 Part 2.3: poll the order until the async approval completes (COMPLETED).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollCompleted') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: completion: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollCompleted') || 0);",
+                  "var done = (b.status === 'COMPLETED');",
+                  "if (done) {",
+                  "    pm.environment.set('pollCompleted', 0);",
+                  "    pm.test('order COMPLETED', function () { pm.expect(b.status).to.eql('COMPLETED'); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollCompleted', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollCompleted', 0);",
+                  "    pm.test('D3 Order 2.3: completion: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester balance: reserved -20, available unchanged",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: on completion the requester's reserved falls by 20; available is unchanged (it was already debited at reservation).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: requester post-approve (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('reserved -20, available unchanged', function () {",
+                  "    pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')) - 20);",
+                  "    pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')));",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier balance: available +20",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{courierId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{courierId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: the courier receives the reward (+20 available) on completion.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: courier post-approve (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('available +20', function () { pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balCourAvail')) + 20); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester /requested/completed contains order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/requested/completed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "requested",
+                "completed"
+              ]
+            },
+            "description": "D3 Part 1.3: the completed order appears in the requester's completed list.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: requested/completed (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('completed list contains our order', function () { pm.expect(ids).to.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier /assigned/completed contains order",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/assigned/completed",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "assigned",
+                "completed"
+              ]
+            },
+            "description": "D3 Part 1.3: the completed order appears in the courier's completed list.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.3: assigned/completed (200)', function () { pm.response.to.have.status(200); });",
+                  "var ids = pm.response.json().map(function (o) { return o.order_id; });",
+                  "pm.test('courier completed list contains our order', function () { pm.expect(ids).to.include(pm.environment.get('orderId')); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "06 Withdraw idempotency (1.4)",
+      "item": [
+        {
+          "name": "Create order2 (reward 5) -> 201 (save orderId2)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.4: an order to demonstrate courier withdrawal.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 5,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: create order2 (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderId2', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier accept order2 -> 200",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId2}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId2}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 1.4: the courier accepts order2 so it can be withdrawn.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: accept order2 (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('ACCEPTED', function () { pm.expect(pm.response.json().status).to.eql('ACCEPTED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Withdraw order2 (Idempotency-Key) -> 200 OPEN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{withdrawKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId2}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId2}}",
+                "withdraw"
+              ]
+            },
+            "description": "D3 Part 1.4: withdrawal reopens the order and clears the courier; the Idempotency-Key makes it replay-safe.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('withdrawKey', (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: withdraw (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('reopened OPEN, courier cleared', function () { pm.expect(b.status).to.eql('OPEN'); pm.expect(b.courier_id).to.eql(null); });",
+                  "pm.environment.set('withdrawBody', JSON.stringify(b));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Replay withdraw order2 (same key) -> 200 identical",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{withdrawKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId2}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId2}}",
+                "withdraw"
+              ]
+            },
+            "description": "D3 Part 1.4: replaying the same key on the same order returns the identical stored response.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: withdraw replay (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('identical body to first withdraw', function () { pm.expect(JSON.stringify(pm.response.json())).to.eql(pm.environment.get('withdrawBody')); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order3 (reward 5) -> 201 (save orderId3)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.4: a different order for the cross-order idempotency-conflict check.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 5,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: create order3 (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderId3', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Withdraw order3 (same key) -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Idempotency-Key",
+                "value": "{{withdrawKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId3}}/withdraw",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId3}}",
+                "withdraw"
+              ]
+            },
+            "description": "D3 Part 1.4: reusing the key for a different order is rejected (409).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: idempotency conflict (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('message: key used for another request', function () { pm.expect(pm.response.json().message).to.include('Idempotency key was used for another request'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier GET withdrawn order2 -> 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId2}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId2}}"
+              ]
+            },
+            "description": "D3 Part 1.4: after withdrawing, the courier is no longer a participant (403).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.4: withdrawn get denied (403)', function () { pm.response.to.have.status(403); });",
+                  "pm.test('code == order_access_denied', function () { pm.expect(pm.response.json().code).to.eql('order_access_denied'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "07 Update / amendment (2.3)",
+      "item": [
+        {
+          "name": "Create order4 (reward 20) -> 201 (save orderId4 + fields)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 2.3: an order to amend; save its full field set for the PATCH body.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Amend Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: create order4 (201)', function () { pm.response.to.have.status(201); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('orderId4', b.order_id);",
+                  "pm.environment.set('o4Name', b.name);",
+                  "pm.environment.set('o4Details', b.details);",
+                  "pm.environment.set('o4Supplier', b.supplier_id);",
+                  "pm.environment.set('o4Deadline', b.deadline);",
+                  "pm.environment.set('o4Pickup', b.pickup_location);",
+                  "pm.environment.set('o4Delivery', b.delivery_location);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Snapshot requester balance (pre-update)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline before amending the reward.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot pre-update (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH order4 reward 30 -> 202 (save updateTaskId)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId4}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId4}}"
+              ]
+            },
+            "description": "D3 Part 2.3: a full OrderUpdate body raising reward to 30 starts an async amendment (202).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{o4Name}}\",\n  \"details\": \"{{o4Details}}\",\n  \"reward\": 30,\n  \"deadline\": \"{{o4Deadline}}\",\n  \"supplier_id\": \"{{o4Supplier}}\",\n  \"pickup_location\": \"{{o4Pickup}}\",\n  \"delivery_location\": \"{{o4Delivery}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: update accepted (202)', function () { pm.response.to.have.status(202); });",
+                  "pm.environment.set('updateTaskId', pm.response.json().task_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll update task until completed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/updates/{{updateTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "updates",
+                "{{updateTaskId}}"
+              ]
+            },
+            "description": "D3 Part 2.3: poll the update task until it completes.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollUpdateDone') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: update completed: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollUpdateDone') || 0);",
+                  "var done = (b.status === 'completed');",
+                  "if (done) {",
+                  "    pm.environment.set('pollUpdateDone', 0);",
+                  "    pm.test('update task completed', function () { pm.expect(b.status).to.eql('completed'); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollUpdateDone', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollUpdateDone', 0);",
+                  "    pm.test('D3 Order 2.3: update completed: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET order4 reward == 30",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId4}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId4}}"
+              ]
+            },
+            "description": "D3 Part 2.3: the amendment applied; reward is now 30.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: amended reward (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('reward == 30', function () { pm.expect(pm.response.json().reward).to.eql(30); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester balance: available -10 / reserved +10",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: the +10 reward delta moved from available to reserved.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: amendment balance (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('available -10, reserved +10', function () {",
+                  "    pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')) - 10);",
+                  "    pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')) + 10);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH order4 reward 100000 -> 202 (rejected amendment)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId4}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId4}}"
+              ]
+            },
+            "description": "D3 Part 2.3: an amendment needing more credits than available is accepted (202) then rejected downstream.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"{{o4Name}}\",\n  \"details\": \"{{o4Details}}\",\n  \"reward\": 100000,\n  \"deadline\": \"{{o4Deadline}}\",\n  \"supplier_id\": \"{{o4Supplier}}\",\n  \"pickup_location\": \"{{o4Pickup}}\",\n  \"delivery_location\": \"{{o4Delivery}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: big update accepted (202)', function () { pm.response.to.have.status(202); });",
+                  "pm.environment.set('updateTaskId', pm.response.json().task_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll update task until rejected",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/updates/{{updateTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "updates",
+                "{{updateTaskId}}"
+              ]
+            },
+            "description": "D3 Part 2.3: poll until the amendment is rejected with a failure_reason.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollUpdateRej') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: update rejected: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollUpdateRej') || 0);",
+                  "var done = (b.status === 'rejected');",
+                  "if (done) {",
+                  "    pm.environment.set('pollUpdateRej', 0);",
+                  "    pm.test('rejected with failure_reason', function () { pm.expect(b.status).to.eql('rejected'); pm.expect(b.failure_reason).to.not.eql(null); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollUpdateRej', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollUpdateRej', 0);",
+                  "    pm.test('D3 Order 2.3: update rejected: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET order4 reward still 30",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId4}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId4}}"
+              ]
+            },
+            "description": "D3 Part 2.3: the rejected amendment left the reward unchanged at 30.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: reward unchanged (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('reward still 30', function () { pm.expect(pm.response.json().reward).to.eql(30); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Requester balance unchanged after rejection",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: the rejected amendment released its pending delta; balance matches the post-amendment state.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: balance after rejection (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.test('still available -10 / reserved +10 vs pre-update', function () {",
+                  "    pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')) - 10);",
+                  "    pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')) + 10);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "08 Cancel + delete (2.3)",
+      "item": [
+        {
+          "name": "Snapshot balance (cancel a)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline before cancelling an OPEN order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot cancel-a (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create OPEN order5 (reward 20) -> 201 (save orderId5)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 2.3: an OPEN order to cancel.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: create order5 (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderId5', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel order5 -> 202",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId5}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId5}}",
+                "cancel"
+              ]
+            },
+            "description": "D3 Part 2.3: cancelling an OPEN order starts an async release (202).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"demo open cancel\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: cancel order5 (202)', function () { pm.response.to.have.status(202); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll order5 until CANCELLED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId5}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId5}}"
+              ]
+            },
+            "description": "D3 Part 2.3: poll until the order reaches CANCELLED.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollCancelA') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: cancel-a terminal: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollCancelA') || 0);",
+                  "var done = (b.status === 'CANCELLED');",
+                  "if (done) {",
+                  "    pm.environment.set('pollCancelA', 0);",
+                  "    pm.test('order5 CANCELLED', function () { pm.expect(b.status).to.eql('CANCELLED'); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollCancelA', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollCancelA', 0);",
+                  "    pm.test('D3 Order 2.3: cancel-a terminal: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Balance back (cancel a): available +20 / reserved -20",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: cancellation released the reservation back to available.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollCancelA') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: cancel-a released: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollCancelA') || 0);",
+                  "var done = (b.available_balance === Number(pm.environment.get('balReqAvail')) && b.reserved_balance === Number(pm.environment.get('balReqReserved')));",
+                  "if (done) {",
+                  "    pm.environment.set('pollCancelA', 0);",
+                  "    pm.test('available and reserved restored to baseline', function () {",
+                  "        pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')));",
+                  "        pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')));",
+                  "    });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollCancelA', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollCancelA', 0);",
+                  "    pm.test('D3 Credit 2.3: cancel-a released: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Re-cancel terminal order5 -> 409",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId5}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId5}}",
+                "cancel"
+              ]
+            },
+            "description": "D3 Part 2.3: a cancelled order cannot be cancelled again (409).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"again\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: re-cancel (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('message: only an open or accepted order', function () { pm.expect(pm.response.json().message).to.include('Only an open or accepted order can be cancelled'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Snapshot balance (cancel b)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline before cancelling an ACCEPTED order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot cancel-b (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order6 (reward 20) -> 201 (save orderId6)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 2.3: an order to accept then cancel.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: create order6 (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderId6', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier accept order6 -> 200",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId6}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId6}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 2.3: the courier accepts order6.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: accept order6 (200)', function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel accepted order6 -> 202",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId6}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId6}}",
+                "cancel"
+              ]
+            },
+            "description": "D3 Part 2.3: an ACCEPTED order can still be cancelled (202).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"demo accepted cancel\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: cancel order6 (202)', function () { pm.response.to.have.status(202); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll order6 until CANCELLED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId6}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId6}}"
+              ]
+            },
+            "description": "D3 Part 2.3: poll until the accepted order reaches CANCELLED.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollCancelB') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: cancel-b terminal: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollCancelB') || 0);",
+                  "var done = (b.status === 'CANCELLED');",
+                  "if (done) {",
+                  "    pm.environment.set('pollCancelB', 0);",
+                  "    pm.test('order6 CANCELLED', function () { pm.expect(b.status).to.eql('CANCELLED'); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollCancelB', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollCancelB', 0);",
+                  "    pm.test('D3 Order 2.3: cancel-b terminal: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Balance back (cancel b)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: cancelling the accepted order released its reservation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollCancelB') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: cancel-b released: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollCancelB') || 0);",
+                  "var done = (b.available_balance === Number(pm.environment.get('balReqAvail')) && b.reserved_balance === Number(pm.environment.get('balReqReserved')));",
+                  "if (done) {",
+                  "    pm.environment.set('pollCancelB', 0);",
+                  "    pm.test('balance restored to baseline', function () {",
+                  "        pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')));",
+                  "        pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')));",
+                  "    });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollCancelB', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollCancelB', 0);",
+                  "    pm.test('D3 Credit 2.3: cancel-b released: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Snapshot balance (delete c)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline before deleting an OPEN order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot delete-c (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create OPEN order7 (reward 20) -> 201 (save orderId7)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 2.3: an OPEN order to delete.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: create order7 (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderId7', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE order7 -> 202 (save deletionTaskId)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId7}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId7}}"
+              ]
+            },
+            "description": "D3 Part 2.3: deleting an OPEN order starts an async deletion task (202).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: delete order7 (202)', function () { pm.response.to.have.status(202); });",
+                  "pm.environment.set('deletionTaskId', pm.response.json().task_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll deletion task until completed",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/deletions/{{deletionTaskId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "deletions",
+                "{{deletionTaskId}}"
+              ]
+            },
+            "description": "D3 Part 2.3: poll the deletion task until it completes.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollDeletion') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: deletion completed: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollDeletion') || 0);",
+                  "var done = (b.status === 'completed');",
+                  "if (done) {",
+                  "    pm.environment.set('pollDeletion', 0);",
+                  "    pm.test('deletion task completed', function () { pm.expect(b.status).to.eql('completed'); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollDeletion', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollDeletion', 0);",
+                  "    pm.test('D3 Order 2.3: deletion completed: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Balance back (delete c)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: deletion released the reservation back to available.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollDeletion') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: delete-c released: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollDeletion') || 0);",
+                  "var done = (b.available_balance === Number(pm.environment.get('balReqAvail')) && b.reserved_balance === Number(pm.environment.get('balReqReserved')));",
+                  "if (done) {",
+                  "    pm.environment.set('pollDeletion', 0);",
+                  "    pm.test('balance restored to baseline', function () {",
+                  "        pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')));",
+                  "        pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')));",
+                  "    });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollDeletion', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollDeletion', 0);",
+                  "    pm.test('D3 Credit 2.3: delete-c released: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET deleted order7 -> 404",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId7}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId7}}"
+              ]
+            },
+            "description": "D3 Part 2.3: the deleted order is gone (404).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: deleted get (404)', function () { pm.response.to.have.status(404); });",
+                  "pm.test('code == order_not_found', function () { pm.expect(pm.response.json().code).to.eql('order_not_found'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "09 Expiry (1.2, 2.3)",
+      "item": [
+        {
+          "name": "Snapshot balance (expiry)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: baseline before the order expires.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot expiry (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order deadline now+10s -> 201 (save orderIdExp)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.2: an order with a near deadline so the sweeper expires it.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{expiryDeadline}}\",\n  \"supplier_id\": \"{{supplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('expiryDeadline', new Date(Date.now() + 10000).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: create expiring order (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderIdExp', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll order until EXPIRED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderIdExp}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderIdExp}}"
+              ]
+            },
+            "description": "D3 Part 1.2: poll until the background sweeper marks the order EXPIRED (~15-25s).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollExpired') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: expiry terminal: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollExpired') || 0);",
+                  "var done = (b.status === 'EXPIRED');",
+                  "if (done) {",
+                  "    pm.environment.set('pollExpired', 0);",
+                  "    pm.test('order EXPIRED', function () { pm.expect(b.status).to.eql('EXPIRED'); });",
+                  "} else if (attempts < 30) {",
+                  "    pm.environment.set('pollExpired', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollExpired', 0);",
+                  "    pm.test('D3 Order 1.2: expiry terminal: reached terminal state within 30 polls', function () { pm.expect.fail('Timed out after 30 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Balance back after expiry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 2.3: expiry released the reservation back to available.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollExpired') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.3: expiry released: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollExpired') || 0);",
+                  "var done = (b.available_balance === Number(pm.environment.get('balReqAvail')) && b.reserved_balance === Number(pm.environment.get('balReqReserved')));",
+                  "if (done) {",
+                  "    pm.environment.set('pollExpired', 0);",
+                  "    pm.test('balance restored to baseline', function () {",
+                  "        pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')));",
+                  "        pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')));",
+                  "    });",
+                  "} else if (attempts < 30) {",
+                  "    pm.environment.set('pollExpired', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollExpired', 0);",
+                  "    pm.test('D3 Credit 2.3: expiry released: reached terminal state within 30 polls', function () { pm.expect.fail('Timed out after 30 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier accept expired order -> 409",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderIdExp}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderIdExp}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 1.2: an expired order can no longer be accepted (409).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.2: accept expired (409)', function () { pm.response.to.have.status(409); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10 Supplier deactivation (1.1)",
+      "item": [
+        {
+          "name": "Snapshot balance (supplier deactivation)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 1.1: baseline before the supplier is deactivated.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit: snapshot sup-deact (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "pm.environment.set('balReqAvail', b.available_balance);",
+                  "pm.environment.set('balReqReserved', b.reserved_balance);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order for demo supplier -> 201 (save orderIdSup)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.1: an OPEN order against the demo supplier.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{demoSupplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.1: create supplier order (201)', function () { pm.response.to.have.status(201); });",
+                  "pm.environment.set('orderIdSup', pm.response.json().order_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Admin deactivate demo supplier -> 200",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/suppliers/{{demoSupplierId}}/deactivate",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "suppliers",
+                "{{demoSupplierId}}",
+                "deactivate"
+              ]
+            },
+            "description": "D3 Part 1.1: deactivating a supplier cancels its OPEN/ACCEPTED orders and releases credits.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{adminToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Supplier 1.1: deactivate (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('active == false', function () { pm.expect(pm.response.json().active).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Poll supplier order until CANCELLED",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderIdSup}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderIdSup}}"
+              ]
+            },
+            "description": "D3 Part 1.1: poll until supplier deactivation cancels the order.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollSupCancel') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.1: supplier-cancel terminal: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollSupCancel') || 0);",
+                  "var done = (b.status === 'CANCELLED');",
+                  "if (done) {",
+                  "    pm.environment.set('pollSupCancel', 0);",
+                  "    pm.test('order CANCELLED by deactivation', function () { pm.expect(b.status).to.eql('CANCELLED'); });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollSupCancel', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollSupCancel', 0);",
+                  "    pm.test('D3 Order 1.1: supplier-cancel terminal: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Balance back after supplier deactivation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/balance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "balance"
+              ]
+            },
+            "description": "D3 Part 1.1: the reservation was released when the order was cancelled.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var _c = Number(pm.environment.get('pollSupCancel') || 0);",
+                  "if (_c > 0) { var _t = Date.now() + 1000; while (Date.now() < _t) {} }"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 1.1: sup-cancel released: poll request ok (200)', function () { pm.response.to.have.status(200); });",
+                  "var b = pm.response.json();",
+                  "var attempts = Number(pm.environment.get('pollSupCancel') || 0);",
+                  "var done = (b.available_balance === Number(pm.environment.get('balReqAvail')) && b.reserved_balance === Number(pm.environment.get('balReqReserved')));",
+                  "if (done) {",
+                  "    pm.environment.set('pollSupCancel', 0);",
+                  "    pm.test('balance restored to baseline', function () {",
+                  "        pm.expect(b.available_balance).to.eql(Number(pm.environment.get('balReqAvail')));",
+                  "        pm.expect(b.reserved_balance).to.eql(Number(pm.environment.get('balReqReserved')));",
+                  "    });",
+                  "} else if (attempts < 20) {",
+                  "    pm.environment.set('pollSupCancel', attempts + 1);",
+                  "    if (pm.execution && pm.execution.setNextRequest) { pm.execution.setNextRequest(pm.info.requestName); } else { postman.setNextRequest(pm.info.requestName); }",
+                  "} else {",
+                  "    pm.environment.set('pollSupCancel', 0);",
+                  "    pm.test('D3 Credit 1.1: sup-cancel released: reached terminal state within 20 polls', function () { pm.expect.fail('Timed out after 20 polls; last body: ' + JSON.stringify(b)); });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Create order for inactive supplier -> 409 supplier_inactive",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders"
+              ]
+            },
+            "description": "D3 Part 1.1: new orders against an inactive supplier are rejected (409 supplier_inactive).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"D3 Errand\",\n  \"details\": \"Collect parcel\",\n  \"reward\": 20,\n  \"deadline\": \"{{futureDeadline}}\",\n  \"supplier_id\": \"{{demoSupplierId}}\",\n  \"pickup_location\": \"COM1-01-01\",\n  \"delivery_location\": \"COM2-02-02\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('futureDeadline', new Date(Date.now() + 3600e3).toISOString());"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 1.1: inactive supplier (409)', function () { pm.response.to.have.status(409); });",
+                  "var b = pm.response.json();",
+                  "pm.test('code == supplier_inactive', function () { pm.expect(b.code).to.eql('supplier_inactive'); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11 Ledger (2.1)",
+      "item": [
+        {
+          "name": "Requester transactions include all kinds",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{requesterId}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{requesterId}}",
+                "transactions"
+              ]
+            },
+            "description": "D3 Part 2.1: the requester ledger shows allocation, reservation, release, amendment and transfer rows.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.1: requester ledger (200)', function () { pm.response.to.have.status(200); });",
+                  "var kinds = pm.response.json().map(function (t) { return t.kind; });",
+                  "pm.test('has allocation', function () { pm.expect(kinds).to.include('allocation'); });",
+                  "pm.test('has reservation', function () { pm.expect(kinds).to.include('reservation'); });",
+                  "pm.test('has release', function () { pm.expect(kinds).to.include('release'); });",
+                  "pm.test('has amendment', function () { pm.expect(kinds).to.include('amendment'); });",
+                  "pm.test('has transfer', function () { pm.expect(kinds).to.include('transfer'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier transactions include allocation + transfer",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/credits/{{courierId}}/transactions",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "credits",
+                "{{courierId}}",
+                "transactions"
+              ]
+            },
+            "description": "D3 Part 2.1: the courier ledger shows the +20 transfer it received on completion.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Credit 2.1: courier ledger (200)', function () { pm.response.to.have.status(200); });",
+                  "var rows = pm.response.json();",
+                  "var kinds = rows.map(function (t) { return t.kind; });",
+                  "pm.test('has allocation and transfer', function () { pm.expect(kinds).to.include('allocation'); pm.expect(kinds).to.include('transfer'); });",
+                  "var transfers = rows.filter(function (t) { return t.kind === 'transfer'; });",
+                  "pm.test('a +20 transfer credited the courier', function () { pm.expect(transfers.some(function (t) { return t.amount === 20; })).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

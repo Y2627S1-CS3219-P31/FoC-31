@@ -1105,3 +1105,37 @@ Format for each entry:
   1. Task brief in `.superpowers/sdd/you-are-working-in-snug-gizmo/task-10-brief.md`.
 - Author review: `npm run build` (tsc + vite) passed with zero TypeScript errors.
   Build output: 501.45 kB JS, 202.52 kB CSS.
+
+## 2026-10-20 — postman: D3 demo collection for order + credit workflows
+
+- Author: johngao122. Tool: Claude Code. Model: Claude Opus 4.8.
+- Task: Branch `feat/postman-d3`. Added a self-contained, re-runnable Postman
+  collection demonstrating Milestone D3 (Order + Credit services and their async
+  RabbitMQ/outbox workflows) end-to-end through the API Gateway, no UI. Twelve
+  numbered folders (00 Setup through 11 Ledger) cover allocation, synchronous
+  reservation, queries/filters, authZ and invalid transitions, the happy path
+  with a concurrent-accept race, withdraw idempotency, async update/amendment
+  (accept + reject), cancel/delete, expiry, and supplier-deactivation cascade.
+  Every request asserts status + key body fields; async terminal states are
+  reached by in-collection polling (a request re-issues itself via
+  `setNextRequest`, capped, failing loudly on timeout); OTP codes are read from
+  Mailpit; emails embed a per-run `runId` so the whole run repeats with no
+  manual steps. Auth is per-request `Bearer` only (never raw `X-User-*`).
+  Credit assertions are deltas against a snapshot taken immediately before each
+  action. Also added `scripts/d3-race.sh` (bash + curl + jq concurrent-accept
+  demo) and documented both in `postman/README.md`.
+- Files changed: `postman/FoC-D3.postman_collection.json`,
+  `postman/FoC-local.postman_environment.json`, `scripts/d3-race.sh`,
+  `postman/README.md`, `ai/usage-log.md`.
+- Prompt(s):
+  1. Executable brief from the D3 Postman plan (collection folder/assertion
+     spec, verified ground truth for order/credit/gateway/user/supplier routes,
+     re-runnability mechanics, env additions, and the verification bar).
+- Author review: against a fresh stack (`docker compose down -v && up --build`,
+  all 14 services healthy), `newman run` passed twice back-to-back with 0 failed
+  assertions (212 then 217; request/assertion counts vary with poll retries),
+  and `scripts/d3-race.sh` printed one 200 + one 409 and exited 0. The only
+  adjustment from the brief: the folder-01 allocation balance poll had to
+  tolerate an initial 404 (the credit account is created asynchronously from the
+  UserRegistered event, so `GET /balance` 404s until it exists) rather than
+  assert 200 on every poll.

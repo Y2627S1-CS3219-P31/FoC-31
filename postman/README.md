@@ -23,8 +23,9 @@ API collections (Postman git-sync format: one `.request.yaml` per endpoint):
 | `FoC Supplier Service API` | Supplier discovery + admin CRUD (create/update/deactivate/reactivate). |
 | `FoC Credit Service API` | Balance, transaction history, reservation lifecycle (reserve/amend/transfer/release). |
 
-> `order-service` and `notification-service` are not covered yet — their routes
-> are `501 Not Implemented` stubs.
+> `order-service` and `credit-service` are now covered end-to-end by the
+> **D3 demo collection** (`FoC-D3.postman_collection.json`, see below).
+> `notification-service` is not covered yet.
 
 All three go through the gateway (`{​{baseUrl}}/api/...`) and use the same
 **FoC local (D2 demo)** environment.
@@ -187,3 +188,72 @@ Because `01 Registration` is skipped, folder `02` logs in the already-verified
 - Supplier bodies/responses are **camelCase** (`pageSize`, `startingTime`,
   `locationDescription`); user bodies/responses are **snake_case**
   (`display_name`, `contact_number`, `is_suspended`).
+
+---
+
+# FoC D3 Demo — Order + Credit async workflows
+
+`FoC-D3.postman_collection.json` demonstrates Milestone **D3** (Order Service +
+Credit Service and their async RabbitMQ/outbox workflows) end-to-end through the
+**API Gateway**, no UI. It uses the same **FoC local** environment. Unlike the
+D2 collection it is **fully self-contained and re-runnable with no manual OTP
+step**: every email embeds a per-run `runId`, OTP codes are read from **Mailpit**
+(`mailpitUrl=http://localhost:8025`), and async terminal states are reached by
+in-collection polling (a request re-issues itself via `setNextRequest`, capped,
+failing the test loudly on timeout). Auth is always a per-request
+`Authorization: Bearer {{...Token}}`; raw `X-User-*` headers are never sent (the
+gateway strips them and injects identity from the JWT).
+
+## D3 collection structure (run top to bottom)
+
+| Folder | Demonstrates |
+| ------ | ------------ |
+| `00 Setup` | Health (sets `runId`); register + Mailpit-OTP + verify + login for requester/courier/courier2; `/me` → ids; admin login; first active `supplierId`; admin-created `demoSupplierId`. |
+| `01 Initial allocation (2.2)` | Each user polled to 100 available / 0 reserved; ledger shows exactly one `allocation` +100. |
+| `02 Create + reservation (1.5, 2.3)` | Create reward-20 order → 201 OPEN; reward reserved synchronously (available −20 / reserved +20); insufficient credits → 409; past deadline → 422; timezone-naive deadline → 422. |
+| `03 Query (1.3)` | Order in the courier's available feed; `min_reward`/`max_reward` filters; requester feed excludes own order; get-one requester 200 / unrelated 403 / unknown 404; requester `/requested/ongoing`. |
+| `04 AuthZ + invalid transitions (1.2, 1.3)` | Accept own → 409; pickup before accept → 403; courier approve/cancel others' → 403; no bearer → 401. |
+| `05 Happy path + concurrency (1.2, 1.4, 2.3)` | Accept → ACCEPTED; second courier → 409; pickup → deliver → AWAITING_APPROVAL; re-pickup → 409; approve → 202 (idempotent same `task_id`); poll → COMPLETED; requester reserved −20, courier available +20; completed lists. |
+| `06 Withdraw idempotency (1.4)` | Accept then withdraw (`Idempotency-Key`) → OPEN; replay same key → identical body; same key on a different order → 409; withdrawn order courier get-one → 403. |
+| `07 Update / amendment (2.3)` | Full-body PATCH reward 30 → 202 → poll `completed`; reward 30, available −10 / reserved +10; PATCH reward 100000 → 202 → poll `rejected` with `failure_reason`; reward/balance unchanged. |
+| `08 Cancel + delete (2.3)` | OPEN cancel → CANCELLED + credits released + re-cancel 409; ACCEPTED cancel → released; OPEN delete → poll deletion task `completed` + credits released + get-one 404. |
+| `09 Expiry (1.2, 2.3)` | Order with deadline now+10s polled until EXPIRED by the sweeper; credits released; accepting it → 409. |
+| `10 Supplier deactivation (1.1)` | Order for the demo supplier; admin deactivate → order polled to CANCELLED + credits released; new order for the inactive supplier → 409 `supplier_inactive`. |
+| `11 Ledger (2.1)` | Requester ledger has `allocation`/`reservation`/`release`/`amendment`/`transfer`; courier ledger has `allocation` + a +20 `transfer`. |
+
+## Running the D3 collection with newman (headless)
+
+One self-contained run, no manual steps (OTP comes from Mailpit). The async
+folders poll, so a full run takes a minute or two (folder 09 waits for the
+~15–25s expiry sweep):
+
+```bash
+npx newman run postman/FoC-D3.postman_collection.json \
+  -e postman/FoC-local.postman_environment.json
+```
+
+It is safe to run repeatedly: `runId` is reset every run, so each run registers
+fresh users and never 409s on duplicates.
+
+## Prerequisites (D3)
+
+The full Docker stack must be up and healthy, with `.env` configured for Mailpit
+(`SMTP_HOST=mailpit`, `OTP_DEV_MODE=false`) and the bootstrap admin:
+
+```bash
+docker compose up --build -d
+curl -s http://localhost:8080/health      # -> {"status":"ok"}
+```
+
+## Concurrency demo — `scripts/d3-race.sh`
+
+The curl + jq twin of folder 05's concurrency assertion. It registers a
+requester and two couriers (reading OTPs from Mailpit), creates an order, fires
+both couriers' `POST /api/orders/{id}/accept` **concurrently**, and prints both
+HTTP statuses. It exits 0 only when exactly one returns 200 and the other 409:
+
+```bash
+./scripts/d3-race.sh
+# GATEWAY and MAILPIT are overridable, e.g.
+# GATEWAY=http://localhost:8080 MAILPIT=http://localhost:8025 ./scripts/d3-race.sh
+```
