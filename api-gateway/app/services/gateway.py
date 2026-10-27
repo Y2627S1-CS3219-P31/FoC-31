@@ -31,8 +31,8 @@ _STRIP_RESPONSE_HEADERS = {"content-length", "transfer-encoding", "connection"}
 
 
 class GatewayService:
-    def resolve(self, full_path: str) -> str:
-        upstream = resolve_upstream(full_path)
+    def resolve(self, full_path: str, method: str) -> str:
+        upstream = resolve_upstream(method, full_path)
         if upstream is None:
             raise RouteNotFoundError(full_path)
         return upstream

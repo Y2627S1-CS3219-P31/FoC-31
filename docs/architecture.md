@@ -25,9 +25,9 @@ internally **layered** (`api/routes` → `services` → `repositories`).
 
 > **Where RBAC lives.** The gateway *authenticates* (verifies the JWT and
 > injects trusted `X-User-Id` / `X-User-Role` headers); it does **not** make
-> per-route role decisions — `ROUTE_TABLE` in
-> `api-gateway/app/services/routing.py` is a plain path-prefix map with no role
-> metadata. Role checks (admin-only operations) are enforced **inside each
+> per-route role decisions. `api-gateway/app/exposed_routes.py` only lists
+> which method + path pairs are reachable at all (default deny: anything else
+> gets `404`), with no role metadata. Role checks (admin-only operations) are enforced **inside each
 > service** using the trusted role header. See [`rbac.md`](./rbac.md).
 
 ## Diagram

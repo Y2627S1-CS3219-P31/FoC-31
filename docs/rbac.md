@@ -18,8 +18,10 @@ Authentication and authorization are split between two layers:
    `Authorization` header (`api-gateway/app/services/gateway.py`). A missing
    token yields `401 "Missing bearer token."`; an invalid/expired token yields
    `401 "Invalid or expired token."`. The gateway does **not** decide
-   admin-vs-client per route — `ROUTE_TABLE` (`app/services/routing.py`) is a
-   plain path-prefix map with no role metadata.
+   admin-vs-client per route. `EXPOSED_ROUTES` (`app/exposed_routes.py`)
+   only decides *which* method + path pairs are reachable at all: default deny,
+   so anything else gets `404` and never reaches a service (e.g. the
+   internal-only `/api/credits/reservations/...` routes). It has no role metadata.
 2. **Each service enforces the role.** The admin-vs-client decision lives in the
    backend service, reading the trusted `X-User-Role`:
    - user-service: `_require_admin(...)` in `app/api/routes/users.py`.

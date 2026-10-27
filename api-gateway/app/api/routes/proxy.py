@@ -22,7 +22,7 @@ async def proxy(path: str, request: Request) -> Response:
     full_path = f"/api/{path}"
 
     try:
-        upstream = gateway.resolve(full_path)
+        upstream = gateway.resolve(full_path, request.method)
     except RouteNotFoundError:
         return JSONResponse(
             status_code=404,
