@@ -36,7 +36,7 @@ postgres:
   secret: user-secrets
   image: postgres:16-alpine
   sharedBuffers: 128MB
-  maxConnections: 50
+  maxConnections: 100
   storage: 1Gi
   storageClass: local-path
   resources:
