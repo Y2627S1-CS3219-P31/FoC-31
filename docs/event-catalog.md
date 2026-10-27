@@ -35,6 +35,28 @@ Notification Service. Routing key = event type.
 | `OrderCancelled` | Requester cancels / supplier deactivation (F3.3.1, F4.1.3) | Credit, Notification | Release credits; notify |
 | `CourierWithdrawn` | Courier withdraws (F3.2.2) | Credit, Notification | Keep credits reserved; notify requester |
 | `OrderExpired` | Sweeper finds expired (F6.1.1) | Credit, Notification | Release credits; notify requester |
+| `OrderDeletionRequested` | Requester deletes a pending order (F3.3) | Credit | Release credits; reply `CreditReleased` / `CreditReleaseFailed` |
+| `OrderCancellationRequested` | Requester/supplier cancels (F3.3.1, F4.1.3) | Credit | Release credits; reply `CreditReleased` / `CreditReleaseFailed` |
+| `OrderUpdateRequested` | Requester edits a pending order (reward may change) | Credit | Amend the reservation; reply `CreditAmended` / `CreditAmendRejected` |
+| `OrderApprovalRequested` | Requester approves / auto-approval (F3.5.1) | Credit | Transfer the reservation to `courier_id`; reply `CreditTransferSucceeded` / `CreditTransferFailed` |
+
+## Task request/reply contract
+
+The deletion, cancellation, update and approval workflows are coordinated by the
+Order Service as tasks. Each request carries a `task_id` that Credit echoes on the
+definitive reply published to `foc.credit.events` (topic, routing key = event
+type):
+
+- `OrderDeletionRequested` / `OrderCancellationRequested` →
+  `CreditReleased` or `CreditReleaseFailed`
+- `OrderUpdateRequested` → `CreditAmended` or `CreditAmendRejected`
+- `OrderApprovalRequested` → `CreditTransferSucceeded` or `CreditTransferFailed`
+  (payload: `event_type`, `task_id`, `order_id`, `reservation_id`, `timestamp`,
+  `reason?` — no requester/amount fields)
+
+Credit handles requests idempotently per `task_id` and always replies —
+including for business rejections and for transient failures that exceed its
+retry budget — so the Order Service saga never waits forever.
 
 ## Order event envelope (scaffold)
 

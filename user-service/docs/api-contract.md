@@ -139,6 +139,75 @@ Success response — `200 OK`:
 
 Possible errors: `401` invalid credentials, `403` suspended or unverified account, `422` invalid body, `503` authentication configuration failure.
 
+### Forgot password (request a reset code)
+
+
+```http
+POST /users/password/forgot
+```
+
+Gateway path: `POST /api/users/password/forgot` (public)
+
+Request body:
+
+```json
+{
+  "email": "alice@u.nus.edu"
+}
+```
+
+Success response — `200 OK`:
+
+```json
+{
+  "message": "If an account exists for that email, a reset code has been sent."
+}
+```
+
+A 6-digit code (valid 5 minutes) is emailed only to **verified** accounts.
+The response is identical for unknown, unverified and rate-limited accounts,
+and also when email delivery fails (the failure is logged), so this endpoint
+cannot be used to find out which emails are registered. A new code is sent at
+most once per `OTP_RESEND_COOLDOWN_SECONDS`.
+
+Possible errors: `422` invalid body.
+
+### Reset password
+
+```http
+POST /users/password/reset
+```
+
+Gateway path: `POST /api/users/password/reset` (public)
+
+Request body:
+
+```json
+{
+  "email": "alice@u.nus.edu",
+  "code": "123456",
+  "new_password": "new-horse2"
+}
+```
+
+Success response — `200 OK`:
+
+```json
+{
+  "message": "Password updated. You can now log in with your new password."
+}
+```
+
+`new_password` follows the registration password rules. On success the code
+and every other outstanding reset code for the account stop working. Wrong
+guesses count towards `OTP_MAX_ATTEMPTS`, after which the code is locked.
+Resetting a password does not lift a suspension, and access tokens issued
+before the reset stay valid until they expire (tokens are stateless).
+
+Possible errors: `400` `"invalid or expired reset code"` — the same message
+for an unknown email, no requested code, a wrong, expired, used or locked
+code — and `422` invalid body or weak password.
+
 ## Authenticated endpoints
 
 Protected requests receive these trusted headers from the API gateway:

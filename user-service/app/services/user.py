@@ -98,8 +98,13 @@ class UserService:
             )
         )
         await self._session.commit()
+        sender = (
+            notification.send_password_reset_email
+            if purpose == OtpPurpose.PASSWORD_RESET
+            else notification.send_otp_email
+        )
         try:
-            await asyncio.to_thread(notification.send_otp_email, user.email, code)
+            await asyncio.to_thread(sender, user.email, code)
         except NotificationDeliveryError:
             raise
         except Exception as exc:
@@ -112,30 +117,85 @@ class UserService:
         if user.email_verified:
             return user
 
-        otp_row = await self._otps.get_latest_unconsumed(user.id, OtpPurpose.EMAIL_VERIFICATION)
+        await self._consume_otp(user, OtpPurpose.EMAIL_VERIFICATION, code)
+
+        user.email_verified = True
+        await events.enqueue_user_registered(
+            self._session, user_id=user.id, email=user.email
+        )
+        await self._session.commit()
+        return user
+
+    async def _consume_otp(
+        self,
+        user: User,
+        purpose: OtpPurpose,
+        code: str,
+        *,
+        uniform_error: str | None = None,
+    ) -> None:
+        """Check the user's latest code for ``purpose`` and mark it used.
+
+        Raises InvalidOtpError on any failure. With ``uniform_error`` every
+        failure carries that one message, so callers on unauthenticated
+        endpoints cannot tell "wrong code" from "no code / no account".
+        Wrong guesses are still counted and committed before raising.
+        """
+
+        def fail(message: str) -> InvalidOtpError:
+            return InvalidOtpError(uniform_error or message)
+
+        otp_row = await self._otps.get_latest_unconsumed(user.id, purpose)
         if otp_row is None:
-            raise InvalidOtpError("no active code — request a new one")
+            raise fail("no active code — request a new one")
         if otp_row.expires_at < datetime.now(UTC).replace(tzinfo=None):
-            raise InvalidOtpError("code expired — request a new one")
+            raise fail("code expired — request a new one")
         if otp_row.attempts >= settings.otp_max_attempts:
-            raise InvalidOtpError("too many attempts — request a new code")
+            raise fail("too many attempts — request a new code")
         if otp_row.code_hash != otp.hash_code(code):
             attempts = await self._otps.increment_attempts(
                 otp_row.id, max_attempts=settings.otp_max_attempts
             )
             await self._session.commit()
             if attempts >= settings.otp_max_attempts:
-                raise InvalidOtpError("too many attempts — request a new code")
-            raise InvalidOtpError("incorrect code")
+                raise fail("too many attempts — request a new code")
+            raise fail("incorrect code")
 
         consumed = await self._otps.mark_consumed(otp_row.id)
         if not consumed:
-            raise InvalidOtpError("code already used")
+            raise fail("code already used")
 
-        user.email_verified = True
-        await events.enqueue_user_registered(
-            self._session, user_id=user.id, email=user.email
-        )
+    async def request_password_reset(self, *, email: str) -> None:
+        """Email a reset code if the account can use one (F2.4, F2.4.1).
+
+        Always completes silently for unknown, unverified or rate-limited
+        accounts so the public endpoint cannot be used to enumerate emails.
+        Delivery failures are raised so the route can log them; the route
+        still answers with the same generic response.
+        """
+        user = await self._users.get_by_email(email)
+        if user is None or not user.email_verified:
+            return
+
+        latest = await self._otps.get_latest_unconsumed(user.id, OtpPurpose.PASSWORD_RESET)
+        if latest is not None:
+            age = datetime.now(UTC).replace(tzinfo=None) - latest.created_at
+            if age.total_seconds() < settings.otp_resend_cooldown_seconds:
+                return
+
+        await self._issue_and_send_otp(user, purpose=OtpPurpose.PASSWORD_RESET)
+
+    async def reset_password(self, *, email: str, code: str, new_password: str) -> User:
+        """Set a new password after proving control of the account's email."""
+        generic = "invalid or expired reset code"
+        user = await self._users.get_by_email(email)
+        if user is None or not user.email_verified:
+            raise InvalidOtpError(generic)
+
+        await self._consume_otp(user, OtpPurpose.PASSWORD_RESET, code, uniform_error=generic)
+
+        user.password_hash = security.hash_password(new_password)
+        await self._otps.consume_all_unconsumed(user.id, OtpPurpose.PASSWORD_RESET)
         await self._session.commit()
         return user
 

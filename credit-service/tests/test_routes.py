@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 
 from app.db import Base, get_session
 from app.main import app
+from app.services import publisher
 from app.services.credit_service import CreditService
 
 ADMIN = {"X-User-Id": "admin-1", "X-User-Role": "admin"}
@@ -16,8 +17,15 @@ CLIENT = {"X-User-Id": "user-1", "X-User-Role": "client"}
 
 
 @pytest_asyncio.fixture
-async def client() -> AsyncGenerator[TestClient, None]:
+async def client(monkeypatch) -> AsyncGenerator[TestClient, None]:
     from app import models  # noqa: F401
+
+    # Hermetic tests: reserving publishes an event, and a real publish attempt
+    # blocks for the RabbitMQ connect timeout on every request.
+    async def _noop(event) -> None:
+        return None
+
+    monkeypatch.setattr(publisher, "publish_reservation_event", _noop)
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:", future=True)
     async with engine.begin() as conn:

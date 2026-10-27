@@ -1,4 +1,4 @@
-# AI-INFLUENCED: Initialize the Order database schema at service startup.
+# AI-INFLUENCED: Register the supplier-deactivation inbox in the Order database.
 from __future__ import annotations
 
 from collections.abc import AsyncGenerator
@@ -22,7 +22,13 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
+    from app.models import order_approval_tasks as approval_models  # noqa: F401
+    from app.models import order_event_outbox as event_models  # noqa: F401
+    from app.models import order_release_tasks as release_models  # noqa: F401
+    from app.models import order_requests as request_models  # noqa: F401
+    from app.models import order_update_tasks as update_models  # noqa: F401
     from app.models import orders as order_models  # noqa: F401
+    from app.models import supplier_deactivation_inbox as supplier_inbox_models  # noqa: F401
 
     async with engine.begin() as connection:
         await connection.run_sync(Base.metadata.create_all)

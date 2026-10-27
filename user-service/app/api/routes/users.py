@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
@@ -7,6 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.schemas.otp import OtpVerifyRequest, OtpVerifyResponse, ResendOtpRequest, ResendOtpResponse
+from app.schemas.password import (
+    ForgotPasswordRequest,
+    ForgotPasswordResponse,
+    ResetPasswordRequest,
+    ResetPasswordResponse,
+)
 from app.schemas.user import (
     AdminUserListResponse,
     AdminUserResponse,
@@ -33,6 +40,8 @@ from app.services.exceptions import (
 )
 from app.services.user import UserService
 from foc_shared.auth import HEADER_USER_ID, HEADER_USER_ROLE, Role
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -116,6 +125,38 @@ async def resend_otp(
             detail="verification email could not be sent",
         ) from exc
     return ResendOtpResponse()
+
+
+@router.post("/password/forgot", response_model=ForgotPasswordResponse)
+async def forgot_password(
+    payload: ForgotPasswordRequest,
+    session: SessionDep,
+) -> ForgotPasswordResponse:
+    """F2.4.1: email a one-time reset code.
+
+    Always answers 200 with the same message, whether or not the email
+    belongs to an account, so this public endpoint cannot enumerate users.
+    """
+    try:
+        await UserService(session).request_password_reset(email=payload.email)
+    except NotificationDeliveryError:
+        # Returning 503 here would reveal that the account exists.
+        logger.exception("password reset email could not be sent")
+    return ForgotPasswordResponse()
+
+
+@router.post("/password/reset", response_model=ResetPasswordResponse)
+async def reset_password(
+    payload: ResetPasswordRequest,
+    session: SessionDep,
+) -> ResetPasswordResponse:
+    try:
+        await UserService(session).reset_password(
+            email=payload.email, code=payload.code, new_password=payload.new_password
+        )
+    except InvalidOtpError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return ResetPasswordResponse()
 
 
 @router.post("/login", response_model=LoginResponse)

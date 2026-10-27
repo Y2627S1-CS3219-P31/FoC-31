@@ -36,6 +36,8 @@
     "/api/users/login",
     "/api/users/otp/resend",
     "/api/users/otp/verify",
+    "/api/users/password/forgot",
+    "/api/users/password/reset",
     "/api/users/register",
     "/health"
   ]

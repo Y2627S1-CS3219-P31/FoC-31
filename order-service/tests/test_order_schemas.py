@@ -47,4 +47,3 @@ def test_order_create_rejects_deadline_without_timezone() -> None:
 
     with pytest.raises(ValidationError):
         OrderCreate.model_validate(payload)
-

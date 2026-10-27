@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import time
 
+import pytest
 from jose import jwt
 
 from app.config import settings
-from app.services.auth import authenticate
+from app.services.auth import authenticate, is_public
 
 ALGORITHM = "HS256"
 
@@ -41,3 +42,21 @@ async def test_authenticate_bad_signature():
 async def test_authenticate_missing_role_claim():
     token = jwt.encode({"sub": "user-1"}, settings.jwt_secret, algorithm=ALGORITHM)
     assert await authenticate(token) is None
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/users/password/forgot",
+        "/api/users/password/reset",
+    ],
+)
+def test_password_reset_routes_need_no_token(path):
+    assert is_public(path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/api/users/me", "/api/users/admin", "/api/users/password"],
+)
+def test_neighbouring_user_routes_stay_protected(path):
+    assert not is_public(path)

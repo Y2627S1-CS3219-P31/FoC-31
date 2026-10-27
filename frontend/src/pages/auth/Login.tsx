@@ -84,6 +84,9 @@ export default function Login() {
               placeholder="Your password"
               {...form.getInputProps("password")}
             />
+            <Anchor component={Link} to="/forgot-password" size="xs" ta="right">
+              Forgot password?
+            </Anchor>
             <Button type="submit" fullWidth mt="xs" loading={submitting}>
               Log In
             </Button>

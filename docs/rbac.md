@@ -31,7 +31,8 @@ Authentication and authorization are split between two layers:
 
 Public routes (`foc_shared.auth.PUBLIC_ROUTE_PREFIXES`) bypass step 1 entirely:
 `/health`, `/api/users/register`, `/api/users/login`, `/api/users/otp/verify`,
-`/api/users/otp/resend`.
+`/api/users/otp/resend`, `/api/users/password/forgot`,
+`/api/users/password/reset`.
 
 ## Role → capability matrix
 
@@ -45,6 +46,8 @@ reached). `403` = authenticated but wrong role (rejected in the service).
 | `POST /api/users/register` | allowed | allowed | allowed | public route |
 | `POST /api/users/otp/verify` | allowed | allowed | allowed | public route |
 | `POST /api/users/otp/resend` | allowed | allowed | allowed | public route |
+| `POST /api/users/password/forgot` | allowed | allowed | allowed | public route |
+| `POST /api/users/password/reset` | allowed | allowed | allowed | public route (needs emailed code) |
 | `POST /api/users/login` | allowed | allowed | allowed | public route |
 | `GET /api/users/me` | 401 | allowed (own) | allowed (own) | gateway authn; `X-User-Id` in `users.py::get_profile` |
 | `PATCH /api/users/me` | 401 | allowed (own) | allowed (own) | gateway authn; `X-User-Id` in `users.py::update_profile` |
