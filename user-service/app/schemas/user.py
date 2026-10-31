@@ -10,6 +10,15 @@ from foc_shared.auth import Role
 _ALLOWED_EMAIL_DOMAIN = "u.nus.edu"
 _PASSWORD_MIN_LENGTH = 8
 
+def validate_password_strength(v: str) -> str:
+    """Shared password rule for registration, admin creation and resets."""
+    if len(v) < _PASSWORD_MIN_LENGTH:
+        raise ValueError(f"password must be at least {_PASSWORD_MIN_LENGTH} characters")
+    if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
+        raise ValueError("password must contain both letters and digits")
+    return v
+
+
 class RegisterRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -31,11 +40,7 @@ class RegisterRequest(BaseModel):
     @field_validator("password")
     @classmethod
     def _validate_password_strength(cls, v: str) -> str:
-        if len(v) < _PASSWORD_MIN_LENGTH:
-            raise ValueError(f"password must be at least {_PASSWORD_MIN_LENGTH} characters")
-        if not re.search(r"[A-Za-z]", v) or not re.search(r"\d", v):
-            raise ValueError("password must contain both letters and digits")
-        return v
+        return validate_password_strength(v)
 
 
 class CreateAdminRequest(RegisterRequest):

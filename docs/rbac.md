@@ -18,8 +18,10 @@ Authentication and authorization are split between two layers:
    `Authorization` header (`api-gateway/app/services/gateway.py`). A missing
    token yields `401 "Missing bearer token."`; an invalid/expired token yields
    `401 "Invalid or expired token."`. The gateway does **not** decide
-   admin-vs-client per route — `ROUTE_TABLE` (`app/services/routing.py`) is a
-   plain path-prefix map with no role metadata.
+   admin-vs-client per route. `EXPOSED_ROUTES` (`app/exposed_routes.py`)
+   only decides *which* method + path pairs are reachable at all: default deny,
+   so anything else gets `404` and never reaches a service (e.g. the
+   internal-only `/api/credits/reservations/...` routes). It has no role metadata.
 2. **Each service enforces the role.** The admin-vs-client decision lives in the
    backend service, reading the trusted `X-User-Role`:
    - user-service: `_require_admin(...)` in `app/api/routes/users.py`.
@@ -29,7 +31,8 @@ Authentication and authorization are split between two layers:
 
 Public routes (`foc_shared.auth.PUBLIC_ROUTE_PREFIXES`) bypass step 1 entirely:
 `/health`, `/api/users/register`, `/api/users/login`, `/api/users/otp/verify`,
-`/api/users/otp/resend`.
+`/api/users/otp/resend`, `/api/users/password/forgot`,
+`/api/users/password/reset`.
 
 ## Role → capability matrix
 
@@ -43,6 +46,8 @@ reached). `403` = authenticated but wrong role (rejected in the service).
 | `POST /api/users/register` | allowed | allowed | allowed | public route |
 | `POST /api/users/otp/verify` | allowed | allowed | allowed | public route |
 | `POST /api/users/otp/resend` | allowed | allowed | allowed | public route |
+| `POST /api/users/password/forgot` | allowed | allowed | allowed | public route |
+| `POST /api/users/password/reset` | allowed | allowed | allowed | public route (needs emailed code) |
 | `POST /api/users/login` | allowed | allowed | allowed | public route |
 | `GET /api/users/me` | 401 | allowed (own) | allowed (own) | gateway authn; `X-User-Id` in `users.py::get_profile` |
 | `PATCH /api/users/me` | 401 | allowed (own) | allowed (own) | gateway authn; `X-User-Id` in `users.py::update_profile` |
