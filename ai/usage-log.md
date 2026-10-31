@@ -17,7 +17,7 @@ Format for each entry:
 - Author review: <how you validated/edited/tested the output>
 ```
 
-## 31/10/2026 — <author>
+## 31/10/2026 — John
 
 - Tool: Claude Code (model: Opus 4.8)
 - Scope: Added ArgoCD GitOps deployment for the FoC k3s-on-EC2 cluster -
