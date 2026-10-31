@@ -1,4 +1,4 @@
-# REPLACE_ME hosts and origins are filled by scripts/render-ec2-values.sh after terraform apply.
+# Host and origin placeholders are filled by scripts/render-ec2-values.sh after terraform apply.
 # Image tags (global.backup.image.tag and each <svc>.image.tag) are managed by CI; do not edit by hand.
 createNamespaces: false
 smokeTest:
@@ -11,6 +11,7 @@ global:
       repository: pg-backup
       tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6
     s3EndpointUrl: ""
+    bucket: cs3219-g31-foc-backups-f6748651
 supplier-service:
   image: {repository: supplier-service, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
 user-service:
@@ -24,18 +25,18 @@ notification-service:
 api-gateway:
   image: {repository: api-gateway, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
   env:
-    CORS_ALLOWED_ORIGINS: https://REPLACE_ME.nip.io
+    CORS_ALLOWED_ORIGINS: https://13.215.134.195.nip.io
   ingress:
-    host: REPLACE_ME.nip.io
+    host: 13.215.134.195.nip.io
     tls:
       enabled: true
       issuer: letsencrypt-prod
 frontend:
   image: {repository: frontend, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
   env:
-    API_BASE_URL: https://REPLACE_ME.nip.io
+    API_BASE_URL: https://13.215.134.195.nip.io
   ingress:
-    host: REPLACE_ME.nip.io
+    host: 13.215.134.195.nip.io
     tls:
       enabled: true
       issuer: letsencrypt-prod

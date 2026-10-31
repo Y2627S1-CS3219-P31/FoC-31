@@ -1,12 +1,9 @@
 dex:
   enabled: false
-
 notifications:
   enabled: false
-
 applicationSet:
   replicas: 0
-
 configs:
   params:
     server.insecure: true
@@ -25,7 +22,6 @@ configs:
         end
       end
       return hs
-
 controller:
   replicas: 1
   resources:
@@ -34,7 +30,6 @@ controller:
       memory: 256Mi
     limits:
       memory: 512Mi
-
 repoServer:
   replicas: 1
   resources:
@@ -43,7 +38,6 @@ repoServer:
       memory: 128Mi
     limits:
       memory: 256Mi
-
 server:
   replicas: 1
   resources:
@@ -55,11 +49,10 @@ server:
   ingress:
     enabled: true
     ingressClassName: traefik
-    hostname: argocd.REPLACE_ME.nip.io
+    hostname: argocd.13.215.134.195.nip.io
     annotations:
       cert-manager.io/cluster-issuer: letsencrypt-prod
     tls: true
-
 redis:
   resources:
     requests:
