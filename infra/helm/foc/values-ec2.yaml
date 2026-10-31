@@ -11,21 +11,21 @@ global:
   backup:
     image:
       repository: pg-backup
-      tag: e2bd43b69663a2343b4b7a975515108dd615208a
+      tag: b2e8120835f56971d12a849d0b43037c2e3a5524
     s3EndpointUrl: ""
     bucket: cs3219-g31-foc-backups-f6748651
 supplier-service:
-  image: {repository: supplier-service, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: supplier-service, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
 user-service:
-  image: {repository: user-service, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: user-service, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
 credit-service:
-  image: {repository: credit-service, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: credit-service, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
 order-service:
-  image: {repository: order-service, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: order-service, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
 notification-service:
-  image: {repository: notification-service, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: notification-service, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
 api-gateway:
-  image: {repository: api-gateway, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: api-gateway, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
   env:
     CORS_ALLOWED_ORIGINS: https://13.215.134.195.nip.io
   ingress:
@@ -34,7 +34,7 @@ api-gateway:
       enabled: true
       issuer: letsencrypt-prod
 frontend:
-  image: {repository: frontend, tag: e2bd43b69663a2343b4b7a975515108dd615208a}
+  image: {repository: frontend, tag: b2e8120835f56971d12a849d0b43037c2e3a5524}
   env:
     API_BASE_URL: https://13.215.134.195.nip.io
   ingress:
