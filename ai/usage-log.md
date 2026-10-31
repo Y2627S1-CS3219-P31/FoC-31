@@ -1,4 +1,5 @@
 <!-- AI-INFLUENCED: Record Order Service photo implementation with Codex. -->
+
 # AI Usage Log
 
 Per the CS3219 AI Usage Policy (Project Document, Appendix 2). Record every
@@ -15,6 +16,23 @@ Format for each entry:
 - Prompt(s): <exact prompt(s) + key responses, or a link>
 - Author review: <how you validated/edited/tested the output>
 ```
+
+## 31/10/2026 — <author>
+
+- Tool: Claude Code (model: Opus 4.8)
+- Scope: Added ArgoCD GitOps deployment for the FoC k3s-on-EC2 cluster -
+  Terraform Elastic IP for a stable nip.io host, chart hardening
+  (`createNamespaces` flag, ArgoCD sync-option annotations, optional PostSync
+  smoke Job), a Sealed Secrets refactor (shared builder script with local and
+  sealed modes), the ArgoCD app-of-apps manifests plus bootstrap values and a
+  Let's Encrypt ClusterIssuer, the `render-ec2-values` / `argocd-bootstrap` /
+  `sealed-secrets-keygen` scripts, a restructured gated CI pipeline with a Trivy
+  scan + GHCR push + image-tag bump, Dependabot config, and these docs. Top-level
+  dirs changed: `infra/terraform`, `infra/helm/foc`, `infra/argocd`, `infra/k8s`,
+  `scripts`, `.github`, `docs`, `frontend`.
+- Prompt(s): Implement the team's ArgoCD GitOps design for the FoC k3s cluster
+  (full task spec in the PR description).
+- Author review: Validated the helm charts with helm lint and also deployed onto the cluster.
 
 ## 19/10/2026 — Alexander Gerald
 
@@ -465,6 +483,7 @@ Format for each entry:
   2. "can you export and put it in the documentation markdown files"
 - Author review: Checked every node and edge against the Helm charts
   (`infra/helm/foc`) and Terraform (`infra/terraform`).
+
 ## 04/10/2026 — Alexander Gerald
 
 - Tool: Codex (model: GPT-5)
@@ -530,6 +549,7 @@ Format for each entry:
   — **162 passed** (54 tests × Chromium/Firefox/WebKit) with a cold Vite cache.
   Tests use a mocked gateway (no backend/DB required); no production code was
   modified.
+
 ## 14/10/2026 — Alexander Gerald
 
 - Tool: Codex (model: GPT-6)
@@ -826,6 +846,7 @@ Format for each entry:
   Make sure the code is neat, simple to understand, and add clear comments
   where appropriate but don't overdo the comments either. Make sure it follows
   the project's architecture.”
+
 - Author review: Ruff lint, format, and `git diff --check` passed. Tests were
   not run.
 
@@ -915,6 +936,7 @@ Format for each entry:
   branch to be photo proof of delivery feature free.”
 - Author review: Order Service tests and Ruff checks passed. Existing staged
   Order Service work was preserved separately during the removal.
+
 ---
 
 ## 17/10/2026 — Frank Yu / Zhou Shiyao
@@ -945,7 +967,6 @@ Format for each entry:
   `OrderExpiryRequested`, definitive replies and schema ownership. Verified
   with `pytest` (73 tests passing) and `ruff check`/`ruff format` (clean).
   PR #11.
-
 
 ## 18/10/2026 - credit-service owner (fill in name)
 
@@ -993,9 +1014,9 @@ Format for each entry:
 - Scope: credit-service participant side of the Order approval transfer task.
   Generated: `OrderApprovalRequestedEvent` and `CreditTransferResult` in
   `app/schemas/interop.py` (mirroring `order-service/app/schemas/
-  order_approval_events.py` and `credit_events.py`), `TaskResultKind.TRANSFER`
+order_approval_events.py` and `credit_events.py`), `TaskResultKind.TRANSFER`
   with `transferred` / `transfer_failed` outcomes, `_transfer_reservation(
-  commit=False)` so the settlement and its task result commit once,
+commit=False)` so the settlement and its task result commit once,
   `CreditService.handle_approval_requested` /
   `report_transfer_retries_exhausted` / `_record_transfer_outcome` /
   `_publish_transfer_outcome`, the consumer binding for
@@ -1039,8 +1060,6 @@ Format for each entry:
 - Author review: TDD: 9 RED failures confirmed before implementing. After
   implementation: `pytest` (213 passed, 15 skipped) and `ruff check` /
   `ruff format` clean.
-
-
 
 ## 2026-10-19 — frontend: ordersApi + creditsApi API layer (Task 3)
 
