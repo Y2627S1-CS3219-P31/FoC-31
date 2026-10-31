@@ -22,14 +22,15 @@ log() { echo "[d3-race] $*" >&2; }
 # register_user <label> -> echoes "<access_token> <user_id>" on stdout
 register_user() {
   local label="$1"
-  local email="d3race$(date +%s)_${RANDOM}@u.nus.edu"
+  local email
+  email="d3race$(date +%s)_${RANDOM}@u.nus.edu"
   log "registering $label ($email)"
   curl -s -o /dev/null -X POST "$GATEWAY/api/users/register" \
     -H 'Content-Type: application/json' \
     -d "{\"email\":\"$email\",\"password\":\"$PASSWORD\",\"display_name\":\"D3 Race $label\",\"contact_number\":\"91234567\"}"
 
-  local code="" i
-  for i in $(seq 1 20); do
+  local code=""
+  for _ in $(seq 1 20); do
     code="$(curl -s "$MAILPIT/api/v1/search?query=$(python3 -c "import urllib.parse,sys;print(urllib.parse.quote('to:\"'+sys.argv[1]+'\"'))" "$email")" \
       | jq -r '.messages[0].Snippet // ""' | grep -oE '[0-9]{6}' | head -1 || true)"
     [ -n "$code" ] && break
