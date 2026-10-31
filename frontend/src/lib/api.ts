@@ -284,7 +284,7 @@ export interface OrderCreate {
   delivery_location: string;
 }
 
-export interface OrderUpdate extends OrderCreate {}
+export type OrderUpdate = OrderCreate;
 
 export interface OrderCancellationRequest {
   reason: string;
