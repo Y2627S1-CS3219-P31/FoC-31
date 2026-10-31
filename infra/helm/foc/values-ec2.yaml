@@ -1,5 +1,7 @@
 # REPLACE_ME hosts and origins are set by cluster-up.sh at deploy time.
 createNamespaces: false
+smokeTest:
+  enabled: true
 global:
   imageRegistry: ghcr.io/y2627s1-cs3219-p31
   imagePullPolicy: IfNotPresent
