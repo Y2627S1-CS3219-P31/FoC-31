@@ -7,3 +7,7 @@ crash.*.log
 *.tfvars.json
 !*.tfvars.example
 secrets.env
+
+*.key
+foc-sealed-secrets-key/
+!k8s/sealed/pub-cert.pem
