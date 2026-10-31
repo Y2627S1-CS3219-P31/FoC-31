@@ -6,6 +6,8 @@ smokeTest:
 global:
   imageRegistry: ghcr.io/y2627s1-cs3219-p31
   imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: ghcr-pull
   backup:
     image:
       repository: pg-backup

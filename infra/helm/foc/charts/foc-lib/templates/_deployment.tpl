@@ -19,6 +19,7 @@ spec:
       labels:
         app.kubernetes.io/name: {{ .Chart.Name }}
     spec:
+      {{- include "foc-lib.imagePullSecrets" . | nindent 6 }}
       containers:
         - name: {{ .Chart.Name }}
           image: {{ include "foc-lib.image" . }}
