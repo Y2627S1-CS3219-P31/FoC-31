@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-curl -sfL https://get.k3s.io | sh -
+# k3s pod/service CIDRs must not overlap the VPC CIDR (10.42.0.0/16): the VPC DNS
+# resolver at 10.42.0.2 sits inside the default pod CIDR, so pods cannot reach it
+# and external name resolution fails. Use non-overlapping ranges.
+curl -sfL https://get.k3s.io | INSTALL_K3S_EXEC="--cluster-cidr=10.244.0.0/16 --service-cidr=10.245.0.0/16 --cluster-dns=10.245.0.10" sh -
 
 mkdir -p /var/lib/foc
 
