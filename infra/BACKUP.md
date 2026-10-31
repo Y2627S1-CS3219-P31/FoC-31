@@ -19,13 +19,14 @@ BUCKET=$(terraform output -raw backup_bucket)
 ```
 
 The EC2 instance role (Phase E) grants `s3:PutObject` to this bucket, and the
-backup pods pick it up via IMDS. Deploy with just the bucket name, no AWS keys
-in the cluster:
+backup pods pick it up via IMDS, so no AWS keys live in the cluster.
 
-```
-helm upgrade foc infra/helm/foc -f infra/helm/foc/values-ec2.yaml \
-  --set global.backup.bucket="$BUCKET" -n foc-system
-```
+On the GitOps EC2 deployment you do not run `helm upgrade` or `--set` by hand,
+and there is no `foc-system` namespace.
+`scripts/render-ec2-values.sh` writes the bucket name (from the `backup_bucket`
+Terraform output) into `infra/helm/foc/values-ec2.yaml`, and once that commit is
+on `main` ArgoCD deploys it.
+The bucket name still comes from `terraform output -raw backup_bucket`.
 
 ## Trigger a backup now
 

@@ -1,3 +1,4 @@
+{{- if .Values.createNamespaces }}
 {{- range .Values.namespaces }}
 apiVersion: v1
 kind: Namespace
@@ -5,5 +6,8 @@ metadata:
   name: {{ . }}
   labels:
     app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
 ---
+{{- end }}
 {{- end }}

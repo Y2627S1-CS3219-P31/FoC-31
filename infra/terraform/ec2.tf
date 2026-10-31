@@ -35,3 +35,16 @@ resource "aws_instance" "node" {
     ignore_changes = [ami]
   }
 }
+
+resource "aws_eip" "node" {
+  domain = "vpc"
+
+  tags = {
+    Name = "foc-k3s"
+  }
+}
+
+resource "aws_eip_association" "node" {
+  instance_id   = aws_instance.node.id
+  allocation_id = aws_eip.node.id
+}

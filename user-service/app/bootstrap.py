@@ -19,8 +19,7 @@ async def seed_bootstrap_admin() -> None:
 
     if not all(configured):
         raise RuntimeError(
-            "BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD "
-            "must be configured together"
+            "BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD must be configured together"
         )
 
     payload = CreateAdminRequest(

@@ -1,15 +1,169 @@
-# CI: lint + test every backend service (N2H DevOps hook, project N4).
-# Uses the same tooling as local dev so `make lint test` == CI.
 name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  RUFF_VERSION: "0.17.1"
+  KUBECONFORM_VERSION: "0.6.7"
+  ACTIONLINT_VERSION: "1.7.7"
+  YQ_VERSION: "4.44.3"
 
 jobs:
-  backend:
-    name: Lint & test (${{ matrix.service }})
+  lint-backend:
+    name: Lint backend (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - shared
+          - api-gateway
+          - user-service
+          - supplier-service
+          - order-service
+          - credit-service
+          - notification-service
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - name: Install ruff
+        run: pip install "ruff==${RUFF_VERSION}"
+      - name: ruff check
+        working-directory: ${{ matrix.service }}
+        run: ruff check .
+      - name: ruff format --check
+        working-directory: ${{ matrix.service }}
+        run: ruff format --check .
+
+  lint-frontend:
+    name: Lint frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm ci
+        working-directory: frontend
+        run: npm ci
+      - name: eslint
+        working-directory: frontend
+        run: npm run lint
+
+  static-checks:
+    name: Static checks (helm/k8s/terraform/shell/actions)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL -o /tmp/kubeconform.tar.gz \
+            "https://github.com/yannh/kubeconform/releases/download/v${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz"
+          tar -xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
+          sudo install -m 0755 /tmp/kubeconform /usr/local/bin/kubeconform
+          kubeconform -v
+
+      - name: helm lint
+        run: helm lint infra/helm/foc
+
+      - name: helm template + kubeconform (values-local)
+        run: |
+          helm template foc infra/helm/foc -f infra/helm/foc/values-local.yaml \
+            | kubeconform -strict -ignore-missing-schemas -summary
+
+      - name: helm template + kubeconform (values-ec2)
+        run: |
+          helm template foc infra/helm/foc -f infra/helm/foc/values-ec2.yaml \
+            | kubeconform -strict -ignore-missing-schemas -summary
+
+      - name: kubeconform namespaces
+        run: kubeconform -strict -ignore-missing-schemas -summary infra/k8s/namespaces/*.yaml
+
+      - name: kubeconform argocd + sealed manifests
+        run: |
+          find infra/argocd -name '*.yaml' -print0 \
+            | xargs -0 kubeconform -strict -ignore-missing-schemas \
+              -ignore-filename-pattern '.*values.*' -summary
+          if ls infra/k8s/sealed/*.yaml >/dev/null 2>&1; then
+            kubeconform -strict -ignore-missing-schemas -summary infra/k8s/sealed/*.yaml
+          else
+            echo "No sealed yaml manifests (README only) - skipping."
+          fi
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: terraform fmt + validate
+        run: |
+          terraform -chdir=infra/terraform fmt -check
+          terraform -chdir=infra/terraform init -backend=false
+          terraform -chdir=infra/terraform validate
+
+      - name: Install actionlint
+        run: |
+          curl -fsSL -o /tmp/actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          tar -xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          sudo install -m 0755 /tmp/actionlint /usr/local/bin/actionlint
+          actionlint -version
+
+      - name: actionlint
+        run: actionlint .github/workflows/*.yml
+
+      - name: shellcheck
+        run: |
+          shopt -s nullglob
+          files=(scripts/*.sh)
+          while IFS= read -r -d '' f; do files+=("$f"); done \
+            < <(find infra -name '*.sh' -print0)
+          shellcheck "${files[@]}"
+
+  trivy-config:
+    name: Trivy config (report-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy config scan (SARIF, report-only)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          scan-type: config
+          scan-ref: infra/
+          format: sarif
+          output: trivy-config.sarif
+          exit-code: "0"
+      - name: Upload Trivy config SARIF
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+  backend-tests:
+    name: Backend tests (${{ matrix.service }})
+    needs: [lint-backend, lint-frontend, static-checks]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -23,37 +177,286 @@ jobs:
           - notification-service
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Install deps (service + shared)
+          cache: pip
+      - name: Install deps (shared + service)
         working-directory: ${{ matrix.service }}
         run: |
           python -m pip install --upgrade pip
           pip install -e ../shared
           pip install -r requirements.txt
-          pip install ruff
-
-      - name: Lint
-        working-directory: ${{ matrix.service }}
-        run: ruff check .
-
-      - name: Test
+      - name: pytest
         working-directory: ${{ matrix.service }}
         run: pytest
 
-  frontend:
-    name: Build (frontend)
+  frontend-playwright:
+    name: Frontend Playwright
+    needs: [lint-backend, lint-frontend, static-checks]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
-      - name: Install & build
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: npm ci
         working-directory: frontend
+        run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('frontend/package-lock.json') }}
+      - name: Install Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Playwright tests (chromium)
+        working-directory: frontend
+        run: npx playwright test --project=chromium
+      - name: Upload Playwright report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report
+
+  compose-e2e:
+    name: Compose E2E
+    needs: [lint-backend, lint-frontend, static-checks]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Prepare env
         run: |
-          npm install
-          npm run build
+          cp .env.example .env
+          set_env() { sed -i "s|^$1=.*|$1=$2|" .env; grep -q "^$1=" .env || echo "$1=$2" >> .env; }
+          set_env SMTP_HOST mailpit
+          set_env SMTP_PORT 1025
+          set_env SMTP_STARTTLS false
+          set_env OTP_DEV_MODE false
+          set_env BOOTSTRAP_ADMIN_EMAIL e0000000@u.nus.edu
+          set_env BOOTSTRAP_ADMIN_PASSWORD admin1234
+          set_env BOOTSTRAP_ADMIN_DISPLAY_NAME "System Administrator"
+          set_env BOOTSTRAP_ADMIN_CONTACT_NUMBER 91234567
+      - name: Start stack (prod compose, no dev override)
+        run: docker compose -f compose.yaml up -d --build --wait
+      - name: Newman API collection
+        run: npx newman run postman/FoC-D3.postman_collection.json -e postman/FoC-local.postman_environment.json --reporters cli,junit --reporter-junit-export newman-report.xml
+      - name: Concurrent-accept race
+        run: bash scripts/d3-race.sh
+      - name: Collect compose logs
+        if: failure()
+        run: docker compose -f compose.yaml logs > compose-logs.txt
+      - name: Upload compose logs + newman report
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-logs
+          path: |
+            compose-logs.txt
+            newman-report.xml
+      - name: Tear down
+        if: always()
+        run: docker compose -f compose.yaml down -v
+
+  k3d-smoke:
+    name: k3d smoke
+    needs: [lint-backend, lint-frontend, static-checks]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create k3d cluster
+        uses: AbsaOSS/k3d-action@v2.4.0
+        with:
+          cluster-name: foc
+          k3d-version: v5.8.3
+          args: >-
+            --servers 1
+            --port 8081:80@loadbalancer
+            --wait
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Build + import backend images
+        run: |
+          set -euo pipefail
+          for svc in api-gateway user-service supplier-service order-service credit-service notification-service; do
+            docker build -t "foc/${svc}:dev" -f "${svc}/Dockerfile" .
+            k3d image import "foc/${svc}:dev" -c foc
+          done
+
+      - name: Build + import frontend image
+        run: |
+          set -euo pipefail
+          docker build -t foc/frontend:dev -f frontend/Dockerfile.prod frontend
+          k3d image import foc/frontend:dev -c foc
+
+      - name: helm install
+        run: helm install foc infra/helm/foc -f infra/helm/foc/values-local.yaml
+
+      - name: Create local secrets
+        run: bash infra/k8s/secrets/secrets.template.sh
+
+      - name: Wait for workloads
+        run: |
+          set -euo pipefail
+          namespaces="foc-supplier foc-user foc-credit foc-order foc-notification foc-messaging foc-gateway foc-frontend"
+          for ns in $namespaces; do
+            for sts in $(kubectl get statefulset -n "$ns" -o name); do
+              kubectl rollout status "$sts" -n "$ns" --timeout=300s
+            done
+          done
+          kubectl wait --for=condition=available deploy --all -A --timeout=300s
+
+      - name: Smoke curl through Traefik
+        run: |
+          set -euo pipefail
+          fe="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: foc.localhost' http://127.0.0.1:8081/)"
+          echo "frontend / -> HTTP ${fe}"
+          [ "${fe}" = "200" ] || { echo "frontend not serving 200"; exit 1; }
+          gw="$(curl -s -o /dev/null -w '%{http_code}' -H 'Host: foc.localhost' http://127.0.0.1:8081/api/suppliers)"
+          echo "gateway /api/suppliers -> HTTP ${gw}"
+          case "${gw}" in
+            200|401|403) echo "gateway reachable through Traefik" ;;
+            *) echo "gateway not reachable (HTTP ${gw})"; exit 1 ;;
+          esac
+
+      - name: Diagnostics
+        if: failure()
+        run: |
+          kubectl get pods -A -o wide > k3d-diag.txt 2>&1 || true
+          for ns in foc-supplier foc-user foc-credit foc-order foc-notification foc-messaging foc-gateway foc-frontend; do
+            kubectl describe pods -n "$ns" >> k3d-diag.txt 2>&1 || true
+          done
+          kubectl get events -A --sort-by=.lastTimestamp >> k3d-diag.txt 2>&1 || true
+          kubectl get pods -A --no-headers 2>/dev/null \
+            | awk '$4!="Running" && $4!="Completed" {print $1" "$2}' \
+            | while read -r ns name; do
+                echo "=== logs $ns/$name ===" >> k3d-diag.txt
+                kubectl logs --all-containers --tail=200 -n "$ns" "$name" >> k3d-diag.txt 2>&1 || true
+              done
+
+      - name: Upload diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k3d-diagnostics
+          path: k3d-diag.txt
+
+  image-build:
+    name: Build (${{ matrix.image.name }})
+    needs: [backend-tests, frontend-playwright, compose-e2e, k3d-smoke]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        image:
+          - { name: api-gateway, context: ".", file: api-gateway/Dockerfile }
+          - { name: user-service, context: ".", file: user-service/Dockerfile }
+          - { name: supplier-service, context: ".", file: supplier-service/Dockerfile }
+          - { name: order-service, context: ".", file: order-service/Dockerfile }
+          - { name: credit-service, context: ".", file: credit-service/Dockerfile }
+          - { name: notification-service, context: ".", file: notification-service/Dockerfile }
+          - { name: frontend, context: frontend, file: frontend/Dockerfile.prod }
+          - { name: pg-backup, context: infra/backup, file: infra/backup/Dockerfile }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Compute lowercase owner
+        id: img
+        run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + load image
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.image.context }}
+          file: ${{ matrix.image.file }}
+          push: false
+          load: true
+          tags: |
+            ghcr.io/${{ steps.img.outputs.owner }}/${{ matrix.image.name }}:${{ github.sha }}
+            ghcr.io/${{ steps.img.outputs.owner }}/${{ matrix.image.name }}:latest
+          cache-from: type=gha,scope=${{ matrix.image.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
+
+      - name: Push to GHCR (main only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker push "ghcr.io/${{ steps.img.outputs.owner }}/${{ matrix.image.name }}:${{ github.sha }}"
+          docker push "ghcr.io/${{ steps.img.outputs.owner }}/${{ matrix.image.name }}:latest"
+
+  tag-bump:
+    name: Bump EC2 image tags
+    needs: [image-build]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: deploy-main
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          ref: main
+          fetch-depth: 0
+
+      - name: Install yq
+        run: |
+          curl -fsSL -o /tmp/yq \
+            "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64"
+          sudo install -m 0755 /tmp/yq /usr/local/bin/yq
+          yq --version
+
+      - name: Bump image tags to the built SHA
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          yq -i '
+            .["api-gateway"].image.tag = strenv(SHA) |
+            .["user-service"].image.tag = strenv(SHA) |
+            .["supplier-service"].image.tag = strenv(SHA) |
+            .["order-service"].image.tag = strenv(SHA) |
+            .["credit-service"].image.tag = strenv(SHA) |
+            .["notification-service"].image.tag = strenv(SHA) |
+            .["frontend"].image.tag = strenv(SHA) |
+            .global.backup.image.tag = strenv(SHA)
+          ' infra/helm/foc/values-ec2.yaml
+
+      - name: Commit + push (skip CI to avoid a loop)
+        env:
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- infra/helm/foc/values-ec2.yaml; then
+            echo "Tags already current - nothing to commit."
+            exit 0
+          fi
+          short="${SHA:0:7}"
+          git add infra/helm/foc/values-ec2.yaml
+          git commit -m "ci: deploy ${short} [skip ci]"
+          git push origin HEAD:main

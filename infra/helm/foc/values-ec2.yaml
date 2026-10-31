@@ -1,4 +1,8 @@
-# REPLACE_ME hosts and origins are set by cluster-up.sh at deploy time.
+# REPLACE_ME hosts and origins are filled by scripts/render-ec2-values.sh after terraform apply.
+# Image tags (global.backup.image.tag and each <svc>.image.tag) are managed by CI; do not edit by hand.
+createNamespaces: false
+smokeTest:
+  enabled: true
 global:
   imageRegistry: ghcr.io/y2627s1-cs3219-p31
   imagePullPolicy: IfNotPresent

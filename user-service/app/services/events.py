@@ -15,9 +15,8 @@ from foc_shared.events import UserRegisteredEvent
 
 logger = logging.getLogger(__name__)
 
-async def enqueue_user_registered(
-    session: AsyncSession, *, user_id: str, email: str
-) -> None:
+
+async def enqueue_user_registered(session: AsyncSession, *, user_id: str, email: str) -> None:
     event = UserRegisteredEvent(user_id=user_id, email=email)
     session.add(
         OutboxEvent(

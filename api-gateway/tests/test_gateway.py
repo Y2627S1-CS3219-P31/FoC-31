@@ -25,9 +25,7 @@ def _make_token(*, sub="user-1", role="client", exp_delta=3600) -> str:
 
 
 def _request(headers: dict[str, str] | None = None) -> Request:
-    raw_headers = [
-        (k.lower().encode(), v.encode()) for k, v in (headers or {}).items()
-    ]
+    raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
     scope = {
         "type": "http",
         "method": "GET",
@@ -63,9 +61,7 @@ async def test_authorize_protected_route_without_token_raises():
 
 async def test_authorize_protected_route_with_malformed_header_raises():
     with pytest.raises(MissingBearerTokenError):
-        await gateway.authorize(
-            "/api/users/me", _request({"authorization": "not-a-bearer-token"})
-        )
+        await gateway.authorize("/api/users/me", _request({"authorization": "not-a-bearer-token"}))
 
 
 async def test_authorize_protected_route_with_invalid_token_raises():

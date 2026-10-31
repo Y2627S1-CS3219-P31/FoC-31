@@ -43,6 +43,7 @@ async def test_authenticate_missing_role_claim():
     token = jwt.encode({"sub": "user-1"}, settings.jwt_secret, algorithm=ALGORITHM)
     assert await authenticate(token) is None
 
+
 @pytest.mark.parametrize(
     "path",
     [

@@ -1,0 +1,52 @@
+{{- if .Values.smokeTest.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: foc-smoke-test
+  namespace: foc-gateway
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  ttlSecondsAfterFinished: 120
+  backoffLimit: 1
+  activeDeadlineSeconds: 180
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: smoke
+          image: curlimages/curl:8.11.1
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+          command:
+            - sh
+            - -c
+            - |
+              check() {
+                url="$1"
+                i=0
+                until curl -fsS --max-time 5 "$url"; do
+                  i=$((i+1))
+                  if [ "$i" -ge 30 ]; then
+                    echo "FAIL: $url did not respond after 30 attempts"
+                    exit 1
+                  fi
+                  sleep 5
+                done
+                echo "OK: $url"
+              }
+              check http://api-gateway.foc-gateway.svc.cluster.local:8000/health
+              check http://user-service.foc-user.svc.cluster.local:8000/health
+              check http://supplier-service.foc-supplier.svc.cluster.local:8000/health
+              check http://credit-service.foc-credit.svc.cluster.local:8000/health
+              check http://order-service.foc-order.svc.cluster.local:8000/health
+              check http://notification-service.foc-notification.svc.cluster.local:8000/health
+              check http://frontend.foc-frontend.svc.cluster.local:80/healthz
+              echo "all healthy"
+{{- end }}

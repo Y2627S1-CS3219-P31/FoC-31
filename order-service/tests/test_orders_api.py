@@ -86,9 +86,7 @@ def test_accept_uses_gateway_identity(client, fake_session, monkeypatch):
     accept.assert_awaited_once_with(fake_session, "order-1", "courier-1")
 
 
-def test_withdraw_requires_and_forwards_idempotency_key(
-    client, fake_session, monkeypatch
-):
+def test_withdraw_requires_and_forwards_idempotency_key(client, fake_session, monkeypatch):
     order = _stored_order()
     withdraw = AsyncMock(return_value=order)
     monkeypatch.setattr(order_routes.order_service, "withdraw_order", withdraw)
@@ -103,9 +101,7 @@ def test_withdraw_requires_and_forwards_idempotency_key(
         headers={**headers, "Idempotency-Key": "withdrawal-1"},
     )
     assert response.status_code == 200
-    withdraw.assert_awaited_once_with(
-        fake_session, "order-1", "courier-1", "withdrawal-1"
-    )
+    withdraw.assert_awaited_once_with(fake_session, "order-1", "courier-1", "withdrawal-1")
 
 
 def test_pickup_uses_gateway_courier_identity(client, fake_session, monkeypatch):
@@ -209,12 +205,8 @@ def test_accept_requires_trusted_client_headers(client, monkeypatch, headers, ex
         (OrderAcceptanceError("order-1"), 500, "order_acceptance_failed"),
     ],
 )
-def test_accept_maps_domain_errors(
-    client, monkeypatch, error, expected_status, expected_code
-):
-    monkeypatch.setattr(
-        order_routes.order_service, "accept_order", AsyncMock(side_effect=error)
-    )
+def test_accept_maps_domain_errors(client, monkeypatch, error, expected_status, expected_code):
+    monkeypatch.setattr(order_routes.order_service, "accept_order", AsyncMock(side_effect=error))
     response = client.post(
         "/orders/order-1/accept",
         headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
@@ -398,9 +390,7 @@ def test_completed_assigned_list_requires_client_role(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     listing = AsyncMock()
-    monkeypatch.setattr(
-        order_routes.order_service, "list_assigned_completed_orders", listing
-    )
+    monkeypatch.setattr(order_routes.order_service, "list_assigned_completed_orders", listing)
 
     response = client.get(
         "/orders/assigned/completed",
@@ -523,9 +513,7 @@ def test_cancel_order_returns_accepted_task(
 ) -> None:
     task = SimpleNamespace(task_id="task-1", order_id="order-1", status="pending")
     cancel = AsyncMock(return_value=task)
-    monkeypatch.setattr(
-        order_routes.order_service, "cancel_order_for_requester", cancel
-    )
+    monkeypatch.setattr(order_routes.order_service, "cancel_order_for_requester", cancel)
 
     response = client.post(
         "/orders/order-1/cancel",
@@ -556,9 +544,7 @@ def test_cancel_order_returns_accepted_task(
         {"reason": "cancel", "unexpected": True},
     ],
 )
-def test_cancel_order_validates_reason(
-    client: TestClient, payload: dict[str, Any]
-) -> None:
+def test_cancel_order_validates_reason(client: TestClient, payload: dict[str, Any]) -> None:
     response = client.post(
         "/orders/order-1/cancel",
         headers={"X-User-Id": "user-1"},
@@ -577,17 +563,13 @@ def test_get_deletion_reports_completion_to_owner(
         assert (task_id, requester_id) == ("task-1", "user-1")
         return SimpleNamespace(task_id=task_id, order_id="order-1", status="completed")
 
-    monkeypatch.setattr(
-        order_routes.order_service, "get_deletion_for_requester", fake_get_deletion
-    )
+    monkeypatch.setattr(order_routes.order_service, "get_deletion_for_requester", fake_get_deletion)
     response = client.get("/orders/deletions/task-1", headers={"X-User-Id": "user-1"})
     assert response.status_code == 200
     assert response.json()["status"] == "completed"
 
 
-def test_patch_returns_pending_task_and_can_be_polled(
-    client, fake_session, monkeypatch
-):
+def test_patch_returns_pending_task_and_can_be_polled(client, fake_session, monkeypatch):
     task = SimpleNamespace(
         task_id="task-1",
         order_id="order-1",
@@ -606,13 +588,9 @@ def test_patch_returns_pending_task_and_can_be_polled(
         return task
 
     monkeypatch.setattr(order_routes.order_service, "update_order", fake_update_order)
-    monkeypatch.setattr(
-        order_routes.order_service, "get_update_for_requester", fake_get_update
-    )
+    monkeypatch.setattr(order_routes.order_service, "get_update_for_requester", fake_get_update)
 
-    response = client.patch(
-        "/orders/order-1", headers={"X-User-Id": "user-1"}, json=_payload()
-    )
+    response = client.patch("/orders/order-1", headers={"X-User-Id": "user-1"}, json=_payload())
     assert response.status_code == 202
     assert response.json()["task_id"] == "task-1"
     assert response.json()["status"] == "pending"

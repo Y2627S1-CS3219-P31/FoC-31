@@ -120,9 +120,7 @@ class UserService:
         await self._consume_otp(user, OtpPurpose.EMAIL_VERIFICATION, code)
 
         user.email_verified = True
-        await events.enqueue_user_registered(
-            self._session, user_id=user.id, email=user.email
-        )
+        await events.enqueue_user_registered(self._session, user_id=user.id, email=user.email)
         await self._session.commit()
         return user
 
