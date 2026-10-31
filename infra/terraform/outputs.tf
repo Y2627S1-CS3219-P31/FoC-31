@@ -11,9 +11,13 @@ output "instance_id" {
 }
 
 output "public_ip" {
-  value = aws_instance.node.public_ip
+  value = aws_eip.node.public_ip
 }
 
 output "app_url" {
-  value = "https://${aws_instance.node.public_ip}.nip.io"
+  value = "https://${aws_eip.node.public_ip}.nip.io"
+}
+
+output "argocd_url" {
+  value = "https://argocd.${aws_eip.node.public_ip}.nip.io"
 }
