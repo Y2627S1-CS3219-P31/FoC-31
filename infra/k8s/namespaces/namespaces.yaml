@@ -1,0 +1,71 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-supplier
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-user
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-credit
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-order
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-notification
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-messaging
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-gateway
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: foc-frontend
+  labels:
+    app.kubernetes.io/part-of: campus-errand
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
