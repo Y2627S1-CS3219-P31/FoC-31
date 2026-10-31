@@ -9,22 +9,20 @@ global:
   backup:
     image:
       repository: pg-backup
-      tag: latest
+      tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6
     s3EndpointUrl: ""
-
 supplier-service:
-  image: { repository: supplier-service, tag: latest }
+  image: {repository: supplier-service, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
 user-service:
-  image: { repository: user-service, tag: latest }
+  image: {repository: user-service, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
 credit-service:
-  image: { repository: credit-service, tag: latest }
+  image: {repository: credit-service, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
 order-service:
-  image: { repository: order-service, tag: latest }
+  image: {repository: order-service, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
 notification-service:
-  image: { repository: notification-service, tag: latest }
-
+  image: {repository: notification-service, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
 api-gateway:
-  image: { repository: api-gateway, tag: latest }
+  image: {repository: api-gateway, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
   env:
     CORS_ALLOWED_ORIGINS: https://REPLACE_ME.nip.io
   ingress:
@@ -32,9 +30,8 @@ api-gateway:
     tls:
       enabled: true
       issuer: letsencrypt-prod
-
 frontend:
-  image: { repository: frontend, tag: latest }
+  image: {repository: frontend, tag: 73c8d43e9d3dfcceaa532aace03efae2b79c23c6}
   env:
     API_BASE_URL: https://REPLACE_ME.nip.io
   ingress:
