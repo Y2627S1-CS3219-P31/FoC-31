@@ -12,3 +12,10 @@ helm.sh/chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 {{- define "foc-lib.fqdn" -}}
 {{ .svc }}.{{ .ns }}.svc.cluster.local
 {{- end -}}
+
+{{- define "foc-lib.imagePullSecrets" -}}
+{{- with .Values.global.imagePullSecrets }}
+imagePullSecrets:
+{{ toYaml . }}
+{{- end }}
+{{- end -}}

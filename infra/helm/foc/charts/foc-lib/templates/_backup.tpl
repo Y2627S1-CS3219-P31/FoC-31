@@ -24,6 +24,7 @@ spec:
       template:
         spec:
           restartPolicy: Never
+          {{- include "foc-lib.imagePullSecrets" . | nindent 10 }}
           containers:
             - name: backup
               image: {{ if $reg }}{{ $reg }}/{{ end }}{{ $b.image.repository }}:{{ $b.image.tag | default "dev" }}
