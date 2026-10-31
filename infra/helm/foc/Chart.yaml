@@ -1,0 +1,35 @@
+apiVersion: v2
+name: foc
+description: Campus Errand (FoC) umbrella chart. Deploys each service and its database into its own namespace.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+
+dependencies:
+  - name: foc-lib
+    version: 0.1.0
+    repository: "file://charts/foc-lib"
+  - name: supplier-service
+    version: 0.1.0
+    repository: "file://charts/supplier-service"
+  - name: user-service
+    version: 0.1.0
+    repository: "file://charts/user-service"
+  - name: credit-service
+    version: 0.1.0
+    repository: "file://charts/credit-service"
+  - name: order-service
+    version: 0.1.0
+    repository: "file://charts/order-service"
+  - name: notification-service
+    version: 0.1.0
+    repository: "file://charts/notification-service"
+  - name: rabbitmq
+    version: 0.1.0
+    repository: "file://charts/rabbitmq"
+  - name: api-gateway
+    version: 0.1.0
+    repository: "file://charts/api-gateway"
+  - name: frontend
+    version: 0.1.0
+    repository: "file://charts/frontend"

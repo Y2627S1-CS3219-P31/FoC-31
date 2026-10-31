@@ -450,6 +450,21 @@ Format for each entry:
   changed here). order-service and its event/HTTP flows are drawn dashed and
   labelled "PR #5" because they exist only on the unmerged branch.
 
+## 18/10/2026 — John Gao Jiahao
+
+- Tool: Claude Code (model: Claude Opus 4.8) with the draw.io MCP server
+- Scope: Generated the cluster infrastructure diagram
+  (`docs/cluster-infrastructure.drawio`) depicting the k3s-on-EC2 Kubernetes
+  deployment: VPC/public subnet, the EC2 node, namespace-per-service with each
+  service's co-located Postgres, RabbitMQ, Traefik ingress, HPA, S3 backups, and
+  the CloudWatch/EventBridge/Budgets auto-stop. Exported it to PNG/SVG and added
+  a "Cluster infrastructure" section embedding it in `docs/deployment.md`. The
+  architecture was decided by the team; AI only drew the diagram from it.
+- Prompt(s):
+  1. "make a cluster infrastructure diagram using drawio mcp"
+  2. "can you export and put it in the documentation markdown files"
+- Author review: Checked every node and edge against the Helm charts
+  (`infra/helm/foc`) and Terraform (`infra/terraform`).
 ## 04/10/2026 — Alexander Gerald
 
 - Tool: Codex (model: GPT-5)

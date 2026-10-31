@@ -1,0 +1,5 @@
+apiVersion: v2
+name: foc-lib
+description: Shared library chart for Campus Errand services (deployment, service, postgres, helpers).
+type: library
+version: 0.1.0

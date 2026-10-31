@@ -14,7 +14,16 @@ import type {
   SupplierUpdate,
 } from "./types";
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8080";
+declare global {
+  interface Window {
+    __FOC_ENV__?: { API_BASE_URL?: string };
+  }
+}
+
+const BASE_URL =
+  (typeof window !== "undefined" ? window.__FOC_ENV__?.API_BASE_URL : undefined) ??
+  import.meta.env.VITE_API_BASE_URL ??
+  "http://localhost:8080";
 
 const TOKEN_KEY = "foc.token";
 

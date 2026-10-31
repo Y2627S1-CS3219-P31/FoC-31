@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+curl -sfL https://get.k3s.io | sh -
+
+mkdir -p /var/lib/foc
+
+cat <<'IDLE' > /usr/local/bin/foc-idle-check.sh
+#!/usr/bin/env bash
+set -uo pipefail
+
+STATE_DIR=/var/lib/foc
+RX_THRESHOLD=1048576
+IDLE_LIMIT=6
+
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 300" || true)
+AUTOSTOP=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  "http://169.254.169.254/latest/meta-data/tags/instance/foc:autostop" || true)
+if [ "$AUTOSTOP" = "disabled" ]; then
+  exit 0
+fi
+
+IFACE=$(ip route show default 2>/dev/null | awk '/default/ {print $5; exit}')
+RX_NOW=0
+if [ -n "$IFACE" ] && [ -r "/sys/class/net/$IFACE/statistics/rx_bytes" ]; then
+  RX_NOW=$(cat "/sys/class/net/$IFACE/statistics/rx_bytes")
+fi
+RX_PREV=$(cat "$STATE_DIR/rx_bytes" 2>/dev/null || echo "$RX_NOW")
+echo "$RX_NOW" > "$STATE_DIR/rx_bytes"
+RX_DELTA=$(( RX_NOW - RX_PREV ))
+if [ "$RX_DELTA" -lt 0 ]; then RX_DELTA=0; fi
+
+idle=0
+if [ -z "$(who)" ] && ! pgrep -f ssm-session-worker >/dev/null 2>&1 \
+  && [ "$RX_DELTA" -lt "$RX_THRESHOLD" ]; then
+  idle=1
+fi
+
+COUNT=$(cat "$STATE_DIR/idle_count" 2>/dev/null || echo 0)
+if [ "$idle" -eq 1 ]; then
+  COUNT=$(( COUNT + 1 ))
+else
+  COUNT=0
+fi
+echo "$COUNT" > "$STATE_DIR/idle_count"
+
+if [ "$COUNT" -ge "$IDLE_LIMIT" ]; then
+  shutdown -h now
+fi
+IDLE
+chmod +x /usr/local/bin/foc-idle-check.sh
+
+cat <<'UNIT' > /etc/systemd/system/foc-idle.service
+[Unit]
+Description=FoC idle detector
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/foc-idle-check.sh
+UNIT
+
+cat <<'TIMER' > /etc/systemd/system/foc-idle.timer
+[Unit]
+Description=FoC idle detector timer
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=5min
+
+[Install]
+WantedBy=timers.target
+TIMER
+
+systemctl daemon-reload
+systemctl enable --now foc-idle.timer
