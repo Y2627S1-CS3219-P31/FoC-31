@@ -7,7 +7,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: TODO-REPLACE-ME@example.com # TODO: team fills in the real ACME contact email
+    email: e1138485@u.nus.edu
     privateKeySecretRef:
       name: letsencrypt-prod-account-key
     solvers:
