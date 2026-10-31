@@ -59,11 +59,6 @@ variable "budget_limit_usd" {
   default = 30
 }
 
-variable "idle_cpu_threshold_percent" {
-  type    = number
-  default = 5
-}
-
 variable "nightly_stop_cron" {
   type    = string
   default = "cron(0 2 * * ? *)"

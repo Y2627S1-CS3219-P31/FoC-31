@@ -6,11 +6,9 @@ export AWS_REGION="${AWS_REGION:-ap-southeast-1}"
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TF_DIR="$HERE/../infra/terraform"
-ALARM="foc-idle-cpu"
 
 ID=$(terraform -chdir="$TF_DIR" output -raw instance_id)
 
 aws ec2 create-tags --resources "$ID" --tags Key=foc:autostop,Value=enabled
-aws cloudwatch enable-alarm-actions --alarm-names "$ALARM"
 
 echo "Autostop enabled for $ID."

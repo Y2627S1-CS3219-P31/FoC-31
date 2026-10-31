@@ -1,19 +1,3 @@
-resource "aws_cloudwatch_metric_alarm" "idle_cpu" {
-  alarm_name          = "foc-idle-cpu"
-  namespace           = "AWS/EC2"
-  metric_name         = "CPUUtilization"
-  statistic           = "Average"
-  period              = 300
-  evaluation_periods  = 6
-  threshold           = var.idle_cpu_threshold_percent
-  comparison_operator = "LessThanThreshold"
-  treat_missing_data  = "notBreaching"
-  dimensions = {
-    InstanceId = aws_instance.node.id
-  }
-  alarm_actions = ["arn:aws:automate:${var.region}:ec2:stop"]
-}
-
 resource "aws_sns_topic" "alerts" {
   name = "foc-alerts"
 }
