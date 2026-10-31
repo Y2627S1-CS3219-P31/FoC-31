@@ -170,9 +170,7 @@ The `foc` chart does not need it, so it is not enabled there.
 
 ## Autostop note
 
-The ArgoCD controller, repo-server, and redis add a baseline CPU draw even when nothing is deploying.
-After the cluster has been running, measure the real idle CPU and re-tune the `idle_cpu_threshold_percent` Terraform variable (default 5) accordingly.
-If the threshold is left too low, the autostop may read ArgoCD's baseline as "busy", or too high and it may stop the node under you.
+Autostop is driven by the instance-side network idle check (`foc-idle-check.sh` in `user_data`): the node shuts itself down after ~30 minutes with no inbound network traffic and no active login/SSM session. Toggle it with `scripts/autostop-enable.sh` / `scripts/autostop-disable.sh`, which set the `foc:autostop` instance tag the check reads.
 
 ## Required status checks
 
