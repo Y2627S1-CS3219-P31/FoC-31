@@ -31,8 +31,10 @@ test: ## Run pytest across all backend services
 	@bash scripts/test-all.sh
 
 .PHONY: lint
-lint: ## ruff check across all backend services
+lint: ## Full CI lint set: backend ruff check+format + frontend eslint
 	@bash scripts/lint-all.sh
+	@echo "== eslint frontend =="
+	@cd frontend && npm run lint
 
 .PHONY: fmt
 fmt: ## ruff format across all backend services
