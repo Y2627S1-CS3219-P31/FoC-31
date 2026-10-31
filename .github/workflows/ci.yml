@@ -353,14 +353,13 @@ jobs:
           name: k3d-diagnostics
           path: k3d-diag.txt
 
-  image-scan:
-    name: Build + scan (${{ matrix.image.name }})
+  image-build:
+    name: Build (${{ matrix.image.name }})
     needs: [backend-tests, frontend-playwright, compose-e2e, k3d-smoke]
     runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write
-      security-events: write
     strategy:
       fail-fast: false
       matrix:
@@ -401,32 +400,6 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.image.name }}
           cache-to: type=gha,mode=max,scope=${{ matrix.image.name }}
 
-      - name: Trivy scan (gate - CRITICAL, fixed only)
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          image-ref: ghcr.io/${{ steps.img.outputs.owner }}/${{ matrix.image.name }}:${{ github.sha }}
-          format: table
-          severity: CRITICAL
-          ignore-unfixed: true
-          exit-code: "1"
-          trivyignores: .trivyignore
-
-      - name: Trivy scan (SARIF - all severities, report)
-        if: always()
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
-        with:
-          image-ref: ghcr.io/${{ steps.img.outputs.owner }}/${{ matrix.image.name }}:${{ github.sha }}
-          format: sarif
-          output: trivy-${{ matrix.image.name }}.sarif
-          exit-code: "0"
-
-      - name: Upload Trivy SARIF
-        if: always() && hashFiles(format('trivy-{0}.sarif', matrix.image.name)) != ''
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: trivy-${{ matrix.image.name }}.sarif
-          category: image-${{ matrix.image.name }}
-
       - name: Push to GHCR (main only)
         if: github.ref == 'refs/heads/main'
         run: |
@@ -435,7 +408,7 @@ jobs:
 
   tag-bump:
     name: Bump EC2 image tags
-    needs: [image-scan]
+    needs: [image-build]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

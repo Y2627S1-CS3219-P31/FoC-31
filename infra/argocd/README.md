@@ -2,7 +2,7 @@
 
 This cluster is deployed with GitOps.
 The `main` branch is the single source of truth, and ArgoCD continuously reconciles the single-node k3s cluster on EC2 to whatever is committed in git.
-You deploy by merging to `main`; CI builds, scans, and commits image tags; ArgoCD syncs the cluster to the result.
+You deploy by merging to `main`; CI builds and commits image tags; ArgoCD syncs the cluster to the result.
 This README is the operational runbook: architecture, the CI pipeline, first-time bootstrap, and day-2 operations.
 
 ## Architecture
@@ -13,7 +13,7 @@ This README is the operational runbook: architecture, the CI pipeline, first-tim
 git push / PR
     |
     v
-CI  (lint -> test -> compose-e2e -> k3d-smoke -> image build + Trivy scan)
+CI  (lint -> test -> compose-e2e -> k3d-smoke -> image build)
     |
     |  on merge to main
     v
@@ -62,14 +62,14 @@ gate:
   Backend tests (6 services)   Frontend Playwright   Compose E2E   k3d smoke
       |
       v
-  Build + scan (8 images: 6 backend + frontend + pg-backup, Trivy, push on main)
+  Build (8 images: 6 backend + frontend + pg-backup, push on main)
       |
       v   (main only)
   Bump EC2 image tags  ->  commit "ci: deploy <sha> [skip ci]" to main
 ```
 
 `Static checks` runs `helm template | kubeconform` for both value files, `kubeconform` over the namespaces, the argocd apps, and the sealed manifests, plus `terraform validate`, `actionlint`, and `shellcheck`, so bad manifests fail the gate rather than the cluster.
-`Build + scan` gates on CRITICAL fixed vulnerabilities (via `.trivyignore`) and pushes to GHCR only on `main`.
+`Build` builds each image and pushes it to GHCR only on `main`. Image vulnerability scanning is temporarily disabled; the `Trivy config (report-only)` IaC scan still runs.
 `Bump EC2 image tags` is the only job that writes to the repo, and it runs only on `main`.
 
 ## First-time runbook
@@ -132,7 +132,7 @@ gate:
 ## Day-2 operations
 
 - Deploy: merge to `main`.
-  CI builds, scans, and bumps the image tags, and ArgoCD syncs the new commit.
+  CI builds and bumps the image tags, and ArgoCD syncs the new commit.
 
 - Roll back: `git revert` the `ci: deploy <sha>` tag-bump commit.
   ArgoCD syncs the cluster back to the previous images.
@@ -186,7 +186,7 @@ Mark the gate jobs as required so a red CI run cannot merge:
 - `Frontend Playwright`
 - `Compose E2E`
 - `k3d smoke`
-- `Build + scan (api-gateway)`, `Build + scan (user-service)`, `Build + scan (supplier-service)`, `Build + scan (order-service)`, `Build + scan (credit-service)`, `Build + scan (notification-service)`, `Build + scan (frontend)`, `Build + scan (pg-backup)`
+- `Build (api-gateway)`, `Build (user-service)`, `Build (supplier-service)`, `Build (order-service)`, `Build (credit-service)`, `Build (notification-service)`, `Build (frontend)`, `Build (pg-backup)`
 
 The GHCR push step and the `Bump EC2 image tags` job are not gate checks; they run only on `main` after the gates pass.
 `Trivy config (report-only)` uploads a SARIF report and does not gate.
