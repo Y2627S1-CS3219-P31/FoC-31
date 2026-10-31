@@ -14,6 +14,7 @@ class OtpPurpose(str, enum.Enum):
     EMAIL_VERIFICATION = "email_verification"
     PASSWORD_RESET = "password_reset"
 
+
 class OtpCode(Base):
     __tablename__ = "email_otps"
 

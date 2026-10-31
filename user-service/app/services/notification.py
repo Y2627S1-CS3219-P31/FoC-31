@@ -51,8 +51,7 @@ def _deliver(*, email: str, code: str, kind: str, subject: str, body: str) -> No
     if not settings.smtp_host:
         if settings.otp_dev_mode:
             logger.warning(
-                "OTP_DEV_MODE active: %s code for %s is %s "
-                "(dev-only; never enable in production)",
+                "OTP_DEV_MODE active: %s code for %s is %s (dev-only; never enable in production)",
                 kind,
                 email,
                 code,

@@ -15,9 +15,7 @@ router = APIRouter()
 gateway = GatewayService()
 
 
-@router.api_route(
-    "/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"]
-)
+@router.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"])
 async def proxy(path: str, request: Request) -> Response:
     full_path = f"/api/{path}"
 

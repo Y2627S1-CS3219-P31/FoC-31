@@ -63,7 +63,5 @@ class OtpRepository:
         if result.rowcount == 0:
             return max_attempts
 
-        attempts = await self._session.scalar(
-            select(OtpCode.attempts).where(OtpCode.id == otp_id)
-        )
+        attempts = await self._session.scalar(select(OtpCode.attempts).where(OtpCode.id == otp_id))
         return int(attempts or max_attempts)

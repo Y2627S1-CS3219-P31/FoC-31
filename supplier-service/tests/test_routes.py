@@ -120,9 +120,7 @@ def test_list_excludes_deactivated(client):
 
 def test_update_admin_only(client):
     created = _create(client)
-    forbidden = client.patch(
-        f"/suppliers/{created['id']}", json={"name": "New"}, headers=CLIENT
-    )
+    forbidden = client.patch(f"/suppliers/{created['id']}", json={"name": "New"}, headers=CLIENT)
     assert forbidden.status_code == 403
 
     ok = client.patch(f"/suppliers/{created['id']}", json={"name": "New"}, headers=ADMIN)

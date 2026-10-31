@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 OTP_TTL = timedelta(minutes=5)
 
+
 def generate_code() -> str:
     return f"{secrets.randbelow(1_000_000):06d}"
 

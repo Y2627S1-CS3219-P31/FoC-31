@@ -67,7 +67,8 @@ def _require_admin(*, user_id: str | None, role: str | None) -> str:
 
 @router.post("/register", response_model=RegisterResponse, status_code=status.HTTP_201_CREATED)
 async def register(
-    payload: RegisterRequest, session: SessionDep,
+    payload: RegisterRequest,
+    session: SessionDep,
 ) -> RegisterResponse:
     service = UserService(session)
     try:
@@ -95,9 +96,7 @@ async def register(
 
 
 @router.post("/otp/verify", response_model=OtpVerifyResponse)
-async def verify_otp(
-    payload: OtpVerifyRequest, session: SessionDep
-) -> OtpVerifyResponse:
+async def verify_otp(payload: OtpVerifyRequest, session: SessionDep) -> OtpVerifyResponse:
     service = UserService(session)
     try:
         await service.verify_email(email=payload.email, code=payload.code)
@@ -265,9 +264,7 @@ async def list_all_users(
     if offset < 0:
         raise HTTPException(status_code=422, detail="offset must not be negative")
     if status is not None and status not in ("active", "suspended"):
-        raise HTTPException(
-            status_code=422, detail="status must be 'active' or 'suspended'"
-        )
+        raise HTTPException(status_code=422, detail="status must be 'active' or 'suspended'")
 
     users, total = await UserService(session).list_users(
         limit=limit, offset=offset, q=q, status=status

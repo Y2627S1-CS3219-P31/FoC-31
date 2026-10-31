@@ -48,7 +48,6 @@ EXPOSED_ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", "/api/users/admin/{user_id}/suspend"),
     ("POST", "/api/users/admin/{user_id}/unsuspend"),
     ("PATCH", "/api/users/admin/{user_id}/role"),
-
     # supplier-service
     ("GET", "/api/suppliers"),
     ("POST", "/api/suppliers"),
@@ -56,7 +55,6 @@ EXPOSED_ROUTES: tuple[tuple[str, str], ...] = (
     ("PATCH", "/api/suppliers/{supplier_id}"),
     ("POST", "/api/suppliers/{supplier_id}/deactivate"),
     ("POST", "/api/suppliers/{supplier_id}/reactivate"),
-
     # order-service
     ("GET", "/api/orders"),
     ("POST", "/api/orders"),
@@ -75,11 +73,9 @@ EXPOSED_ROUTES: tuple[tuple[str, str], ...] = (
     ("POST", "/api/orders/{order_id}/deliver"),
     ("POST", "/api/orders/{order_id}/approve"),
     ("POST", "/api/orders/{order_id}/cancel"),
-
     # credit-service (read-only for clients)
     ("GET", "/api/credits/{user_id}/balance"),
     ("GET", "/api/credits/{user_id}/transactions"),
-
     # notification-service
     ("GET", "/api/notifications/{user_id}"),
 )
