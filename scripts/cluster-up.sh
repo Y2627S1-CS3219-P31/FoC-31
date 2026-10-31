@@ -17,5 +17,7 @@ aws ec2 wait instance-status-ok --instance-ids "$ID"
 IP=$(aws ec2 describe-instances --instance-ids "$ID" \
   --query 'Reservations[0].Instances[0].PublicIpAddress' --output text)
 
-echo "Instance running."
-echo "URL: https://$IP.nip.io"
+echo "Instance running. ArgoCD reconciles from git on boot; this starts no deploy."
+echo "App:    https://$IP.nip.io"
+echo "ArgoCD: https://argocd.$IP.nip.io"
+echo "Apps:   KUBECONFIG=/etc/rancher/k3s/k3s.yaml kubectl get applications -n argocd"
