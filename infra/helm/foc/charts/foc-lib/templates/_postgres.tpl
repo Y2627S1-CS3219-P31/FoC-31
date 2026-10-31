@@ -25,6 +25,8 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ $pg.name }}
     {{- include "foc-lib.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-options: Delete=false,Prune=false
 spec:
   serviceName: {{ $pg.name }}
   replicas: 1

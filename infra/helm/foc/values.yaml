@@ -13,6 +13,8 @@ global:
       tag: dev
     s3EndpointUrl: ""
 
+createNamespaces: true
+
 namespaces:
   - foc-supplier
   - foc-user
