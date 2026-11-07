@@ -33,6 +33,10 @@ data "aws_iam_policy_document" "instance" {
     resources = [aws_s3_bucket.backups.arn]
   }
   statement {
+    actions   = ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"]
+    resources = ["${aws_s3_bucket.photos.arn}/proof-of-delivery/*"]
+  }
+  statement {
     actions   = ["ec2:StopInstances"]
     resources = ["*"]
     condition {

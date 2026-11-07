@@ -1,3 +1,4 @@
+# AI-INFLUENCED: Add shared image storage dependencies with Codex.
 # Packaging metadata for the shared library.
 # (Backend service *dependencies* live in each service's requirements.txt;
 #  this file exists only so `pip install -e ../shared` works.)
@@ -8,6 +9,8 @@ description = "Shared contracts (events, auth headers, error envelope) for FoC s
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.7",
+    "boto3>=1.35",
+    "Pillow>=10.4",
 ]
 
 [build-system]

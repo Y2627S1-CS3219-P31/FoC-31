@@ -99,9 +99,16 @@ services:
     env_file: [.env]
     environment:
       DATABASE_URL: ${ORDER_DATABASE_URL}
+      AWS_ENDPOINT_URL_S3: ${AWS_ENDPOINT_URL_S3}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_DEFAULT_REGION: ${ORDER_PHOTO_REGION}
+      ORDER_PHOTO_BUCKET: ${ORDER_PHOTO_BUCKET}
+      ORDER_PHOTO_REGION: ${ORDER_PHOTO_REGION}
     depends_on:
       order-db: {condition: service_healthy}
       rabbitmq: {condition: service_healthy}
+      s3mock: {condition: service_healthy}
     networks: [foc-net]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
@@ -254,6 +261,23 @@ services:
     networks: [foc-net]
     healthcheck:
       test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ==========================================================
+  # Object storage (S3Mock) — S3-compatible store for delivery photos
+  # ==========================================================
+  s3mock:
+    image: adobe/s3mock:5.2.3
+    restart: unless-stopped
+    environment:
+      COM_ADOBE_TESTING_S3MOCK_STORE_INITIAL_BUCKETS: ${ORDER_PHOTO_BUCKET}
+    ports:
+      - "9090:9090"     # S3 API (HTTP)
+    networks: [foc-net]
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://localhost:9090/ >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5

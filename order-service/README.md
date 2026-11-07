@@ -13,7 +13,7 @@ and expiry (backlog: Order Service; project M4).
 - **F2** courier-facing listing + accept; corner cases: only-open orders,
   cannot accept own order, single courier per order, ≤3 concurrent.
 - **F3** courier flow: pickup → deliver → requester approve/complete; courier
-  withdraw; requester cancel-before-pickup.
+  withdraw; requester cancellation of an assigned `ACCEPTED` order before pickup.
 - **F4** cancel `OPEN` and `ACCEPTED` orders when their supplier is deactivated
   (event-driven); orders from `PICKED_UP` onward continue.
 - **F5** lifecycle **state machine** — see `app/services/lifecycle.py`
@@ -21,6 +21,12 @@ and expiry (backlog: Order Service; project M4).
   CANCELLED, EXPIRED`). Invalid transitions are rejected.
 - **F6** expiry sweeper runs every five seconds, expires due orders in batches,
   and publishes `OrderExpired`.
+
+Requester deletion is available only for an unassigned `OPEN` order and removes
+the row after credit release. Requester cancellation is available only for an
+assigned `ACCEPTED` order before pickup and retains the row as `CANCELLED` after
+credit release. Supplier deactivation may independently cancel `OPEN` or
+`ACCEPTED` orders and publishes an Order-owned cancellation fact.
 
 ## Events
 
@@ -195,11 +201,23 @@ F2.4.1).
 `POST /orders/{order_id}/deliver` marks an assigned order as delivered and
 moves it from `PICKED_UP` to `AWAITING_APPROVAL`. It accepts gateway-injected
 `client` and `admin` roles, but the caller's `X-User-Id` must match the
-assigned courier. The order update and `OrderDelivered` outbox record commit
-in one transaction with `awaiting_approval_at`, which starts the 24-hour
-approval clock. The event worker publishes the event after commit. The
-endpoint returns the updated `OrderResponse` and makes no external service
-calls.
+assigned courier. A multipart `photo` file is optional. When supplied, it must
+contain a valid JPEG, PNG, or WebP image, at most 5 MiB and 20 million pixels,
+and is uploaded to a private S3 bucket. Its object key, the order update,
+and the `OrderDelivered` outbox record commit in one database transaction with
+`awaiting_approval_at`, which starts the 24-hour approval clock. Without a
+photo, delivery skips S3 and the photo key remains null. The event worker
+publishes after commit. Invalid images and S3 failures leave the order
+unchanged. If the database transaction fails after upload, the service attempts
+to delete the unreferenced image.
+
+Configure `ORDER_PHOTO_BUCKET` and `ORDER_PHOTO_REGION` before uploading photos.
+The workload needs `s3:PutObject`, `s3:GetObject`, and `s3:DeleteObject` on its
+private photo bucket. Run `alembic upgrade head` to add the nullable photo key
+column. `GET /orders/{order_id}` returns the image as a base64 data URI in
+`proof_of_delivery_photo` to the requester or assigned courier. It returns
+`null` when no photo was supplied and uses `Cache-Control: private, no-store`. Order
+listings omit photo bytes and the private S3 key is never returned.
 
 At runtime, FastAPI also serves the live specification at `/openapi.json` and
 interactive documentation at `/docs`.

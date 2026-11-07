@@ -1,4 +1,4 @@
-<!-- AI-INFLUENCED: Record Order Service photo implementation with Codex. -->
+<!-- AI-INFLUENCED: Record Order Service photo and D3 Postman updates with Codex. -->
 
 # AI Usage Log
 
@@ -53,6 +53,22 @@ Format for each entry:
 - Prompt(s): Implement the team's ArgoCD GitOps design for the FoC k3s cluster
   (full task spec in the PR description).
 - Author review: Validated the helm charts with helm lint and also deployed onto the cluster.
+
+## 20/10/2026 — Alexander Gerald
+
+- Tool: Codex (model: GPT-6)
+- Scope: Restricted requester deletion to unassigned `OPEN` orders and requester
+  cancellation to assigned `ACCEPTED` orders at task initiation and credit-result
+  handling. Preserved independent supplier-deactivation cancellation. Updated
+  focused tests and Order Service lifecycle documentation and diagram.
+- Prompt(s): “Update Order Service so requester deletion applies only to
+  unassigned `OPEN` orders, and requester cancellation only to assigned
+  `ACCEPTED` orders before pickup. Preserve supplier deactivation cancellation.
+  Update relevant tests and documentation. Keep published events as facts about
+  Order Service. Change files only in `order-service/`, except the required
+  `ai/usage-log.md` entry.”
+- Author review: Contributor review pending. Order Service tests, Ruff checks,
+  and `git diff --check` passed.
 
 ## 19/10/2026 — Alexander Gerald
 
@@ -1194,6 +1210,56 @@ commit=False)` so the settlement and its task result commit once,
   UserRegistered event, so `GET /balance` 404s until it exists) rather than
   assert 200 on every poll.
 
+## 2026-11-06 — infra: proof-of-delivery photo storage + order-service schema migration
+
+- Author: johngao122. Tool: Claude Code. Model: Claude Opus 4.8.
+- Task: Branch off `feature/photo-proof`, targeting `feature/photo-proof`. Add
+  the infrastructure the PR #31 photo feature needs, and an in-cluster/compose
+  schema-migration step so the new `orders.proof_of_delivery_photo_key` column
+  reaches existing databases (the app uses `create_all`, which never adds a
+  column to a populated table). Terraform: a dedicated private photos bucket in
+  `infra/terraform/photos.tf` (random suffix, all public-access-block flags,
+  SSE-S3, BucketOwnerEnforced, a deny-non-TLS bucket policy, no versioning, an
+  optional `photo_retention_days` lifecycle rule on the `proof-of-delivery/`
+  prefix) plus an instance-role statement granting Put/Get/DeleteObject on
+  `${photos_bucket_arn}/proof-of-delivery/*` only, new variables/outputs, and
+  the tfvars example. Helm: `ORDER_PHOTO_BUCKET`/`ORDER_PHOTO_REGION` in the
+  order-service chart and the EC2 overlay, and a third photo-bucket argument for
+  `scripts/render-ec2-values.sh`. Compose: a MinIO service plus a one-shot
+  `createbuckets`, order-service pointed at MinIO via `AWS_ENDPOINT_URL_S3`
+  (no shared-code change), and the photo/MinIO vars added to the root
+  `.env.example`. Migration: a new `order-service/app/migrate.py` run from the
+  lifespan after `init_db()`; it widens the Alembic `version_num` column
+  (several revision ids exceed the default VARCHAR(32)), stamps the baseline for
+  un-adopted databases (head when the column already exists, else the penultimate
+  revision), then `alembic upgrade head`. PR #31's migration file was left
+  untouched; the architecture choices (lifespan vs one-shot migrator, MinIO
+  scope) were made by the operator.
+- Files changed: `infra/terraform/photos.tf`, `infra/terraform/iam.tf`,
+  `infra/terraform/variables.tf`, `infra/terraform/outputs.tf`,
+  `infra/terraform/terraform.tfvars.example`,
+  `infra/helm/foc/charts/order-service/values.yaml`,
+  `infra/helm/foc/values-ec2.yaml`, `scripts/render-ec2-values.sh`,
+  `compose.yaml`, `.env.example`, `order-service/app/migrate.py`,
+  `order-service/app/main.py`, `ai/usage-log.md`,
+  `order-service/ai/usage-log.md`.
+- Prompt(s):
+  1. Executable brief for the photo infrastructure and schema-migration step
+     (Terraform/Helm/compose/migration task spec), with the architecture forks
+     resolved by the operator via structured questions.
+- Author review: `terraform fmt -check` and `terraform validate`
+  (`init -backend=false`) pass; `helm lint` passes and `helm template` on the
+  EC2 overlay keeps LOG_LEVEL/SUPPLIER_SERVICE_URL/CREDIT_SERVICE_URL alongside
+  the new photo vars; kubeconform passes both overlays; `shellcheck` passes the
+  render script; `docker compose config` validates the MinIO wiring. The
+  migration was verified against a real Postgres: an existing order DB with no
+  column and no alembic stamp gains the column and is stamped to head; a fresh
+  create_all DB stamps head with no duplicate-column error; both are idempotent
+  on re-run. The full order-service pytest suite passes (including the SQLite
+  migration test). boto3 was confirmed to use path-style addressing against the
+  MinIO endpoint, so `shared/foc_shared/images.py` needed no change. Not run
+  locally: the full compose photo E2E (the sandbox cannot pull the MinIO image;
+  CI pulls it normally).
 ## 06/11/2026 - John
 
 - Tool: Claude Code (model: Claude Opus 4.8)

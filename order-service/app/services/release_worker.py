@@ -130,6 +130,12 @@ async def handle_cancel(
         await _record_cancellation_failed(session, task, task.last_error or "Order not found.")
         return
 
+    if order.status != OrderStatus.ACCEPTED or order.courier_id is None:
+        await _record_cancellation_failed(
+            session, task, "Order can no longer be cancelled by its requester."
+        )
+        return
+
     try:
         assert_transition(OrderStatus(order.status), OrderStatus.CANCELLED)
     except ValueError as exc:

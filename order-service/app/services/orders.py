@@ -1,6 +1,7 @@
 # AI-influenced: Order Service workflows; get_order_for_participant allows assigned courier access.
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from uuid import uuid4
 
@@ -27,6 +28,7 @@ from app.schemas.orders import (
     OrderUpdate,
     SortDirection,
 )
+from app.services import proof_photo
 from app.services.client_manager import get_credit_client, get_supplier_client
 from app.services.clients.supplier.error import SupplierInactiveError
 from app.services.clients.supplier.get_supplier import get_supplier
@@ -52,6 +54,7 @@ ORDER_ACTION_EVENT_TYPES: dict[ReleaseAction, OrderActionEventType] = {
     ReleaseAction.DELETE: "OrderDeletionRequested",
     ReleaseAction.CANCEL: "OrderCancellationRequested",
 }
+logger = logging.getLogger(__name__)
 
 
 def _build_order_action_event(task: OrderReleaseTask) -> OrderActionEvent:
@@ -198,7 +201,11 @@ async def withdraw_order(
         raise OrderWithdrawalError(order_id) from exc
 
 
-async def deliver_order(session: AsyncSession, order_id: str, courier_id: str) -> OrderTable:
+async def deliver_order(
+    session: AsyncSession, order_id: str, courier_id: str, photo: proof_photo.Photo | None
+) -> OrderTable:
+    photo_key = None
+    committed = False
     try:
         async with session.begin():
             order = await order_repository.get_order_for_update(session, order_id)
@@ -214,7 +221,10 @@ async def deliver_order(session: AsyncSession, order_id: str, courier_id: str) -
                 )
 
             assert_transition(current_status, OrderStatus.AWAITING_APPROVAL)
+            if photo is not None:
+                photo_key = await proof_photo.upload(order_id, photo)
             delivered_at = datetime.now(UTC)
+            order.proof_of_delivery_photo_key = photo_key
             order.awaiting_approval_at = delivered_at
             await order_repository.set_status(session, order, OrderStatus.AWAITING_APPROVAL)
             await event_outbox_repository.create_event(
@@ -228,9 +238,18 @@ async def deliver_order(session: AsyncSession, order_id: str, courier_id: str) -
                     order_name=order.name,
                 ),
             )
+        committed = True
         return order
     except SQLAlchemyError as exc:
         raise OrderDeliveryError(order_id) from exc
+    finally:
+        if photo_key and not committed:
+            try:
+                await proof_photo.delete(photo_key)
+            except Exception:
+                logger.exception(
+                    "Could not remove unreferenced delivery photo for order %s", order_id
+                )
 
 
 async def approve_order_for_requester(
@@ -393,7 +412,7 @@ async def get_order_for_participant(
     session: AsyncSession,
     order_id: str,
     user_id: str,
-) -> OrderTable:
+) -> tuple[OrderTable, proof_photo.Photo | None]:
     try:
         order = await order_repository.get_order(session, order_id)
     except SQLAlchemyError as exc:
@@ -405,7 +424,10 @@ async def get_order_for_participant(
     is_courier = order.courier_id is not None and user_id == order.courier_id
     if not (is_requester or is_courier):
         raise OrderAccessDeniedError(order_id)
-    return order
+    photo = None
+    if order.proof_of_delivery_photo_key:
+        photo = await proof_photo.get(order.proof_of_delivery_photo_key)
+    return order, photo
 
 
 async def get_deletion_for_requester(
@@ -435,19 +457,19 @@ async def delete_order_for_requester(
             if order.requester_id != requester_id:
                 raise OrderAccessDeniedError(order_id)
 
+            status = OrderStatus(order.status)
+            if status != OrderStatus.OPEN or order.courier_id is not None:
+                raise OrderStateConflictError(
+                    order_id,
+                    "Only an open order without an assigned courier can be deleted.",
+                )
+
             existing = await release_tasks.get_for_order(session, order_id)
             if existing is not None:
                 if existing.action == ReleaseAction.DELETE.value:
                     return existing
                 raise OrderStateConflictError(
                     order_id, "A different terminal action is already pending."
-                )
-
-            status = OrderStatus(order.status)
-            if status != OrderStatus.OPEN or order.courier_id is not None:
-                raise OrderStateConflictError(
-                    order_id,
-                    "Only an open order without an assigned courier can be deleted.",
                 )
 
             if await update_tasks.get_pending_for_order(session, order_id):
@@ -488,6 +510,12 @@ async def cancel_order_for_requester(
             if order.requester_id != requester_id:
                 raise OrderAccessDeniedError(order_id)
 
+            current_status = OrderStatus(order.status)
+            if current_status != OrderStatus.ACCEPTED or order.courier_id is None:
+                raise OrderStateConflictError(
+                    order_id, "Only an accepted order with an assigned courier can be cancelled."
+                )
+
             existing = await release_tasks.get_for_order(session, order_id)
             if existing is not None:
                 if existing.action != ReleaseAction.CANCEL.value:
@@ -495,12 +523,6 @@ async def cancel_order_for_requester(
                         order_id, "A different terminal action is already pending."
                     )
                 return existing
-
-            current_status = OrderStatus(order.status)
-            if current_status not in (OrderStatus.OPEN, OrderStatus.ACCEPTED):
-                raise OrderStateConflictError(
-                    order_id, "Only an open or accepted order can be cancelled."
-                )
 
             if await update_tasks.get_pending_for_order(session, order_id):
                 raise OrderStateConflictError(

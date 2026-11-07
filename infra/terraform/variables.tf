@@ -19,6 +19,18 @@ variable "backup_retention_days" {
   default = 30
 }
 
+variable "photo_bucket_prefix" {
+  type        = string
+  description = "Prefix for the proof-of-delivery photos bucket; a random suffix makes it globally unique."
+  default     = "cs3219-g31-foc-photos"
+}
+
+variable "photo_retention_days" {
+  type     = number
+  nullable = true
+  default  = null
+}
+
 variable "instance_type" {
   type    = string
   default = "t3.large"

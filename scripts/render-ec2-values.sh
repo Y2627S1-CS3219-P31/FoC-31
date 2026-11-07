@@ -10,6 +10,7 @@ TF_DIR="$REPO_ROOT/infra/terraform"
 
 IP="${1:-$(terraform -chdir="$TF_DIR" output -raw public_ip)}"
 BUCKET="${2:-$(terraform -chdir="$TF_DIR" output -raw backup_bucket)}"
+PHOTO_BUCKET="${3:-$(terraform -chdir="$TF_DIR" output -raw photo_bucket)}"
 
 if ! command -v yq >/dev/null 2>&1; then
   echo "error: yq not found; install mikefarah yq (https://github.com/mikefarah/yq/)" >&2
@@ -23,12 +24,14 @@ fi
 VALUES="$REPO_ROOT/infra/helm/foc/values-ec2.yaml"
 ARGOCD_VALUES="$REPO_ROOT/infra/argocd/bootstrap/argocd-values.yaml"
 
-IP="$IP" BUCKET="$BUCKET" yq -i '
+IP="$IP" BUCKET="$BUCKET" PHOTO_BUCKET="$PHOTO_BUCKET" AWS_REGION="$AWS_REGION" yq -i '
   .["api-gateway"].ingress.host = strenv(IP) + ".nip.io" |
   .["frontend"].ingress.host = strenv(IP) + ".nip.io" |
   .["api-gateway"].env.CORS_ALLOWED_ORIGINS = "https://" + strenv(IP) + ".nip.io" |
   .["frontend"].env.API_BASE_URL = "https://" + strenv(IP) + ".nip.io" |
-  .global.backup.bucket = strenv(BUCKET)
+  .global.backup.bucket = strenv(BUCKET) |
+  .["order-service"].env.ORDER_PHOTO_BUCKET = strenv(PHOTO_BUCKET) |
+  .["order-service"].env.ORDER_PHOTO_REGION = strenv(AWS_REGION)
 ' "$VALUES"
 
 IP="$IP" yq -i '
@@ -37,6 +40,7 @@ IP="$IP" yq -i '
 
 echo "IP:     $IP"
 echo "Bucket: $BUCKET"
+echo "Photo:  $PHOTO_BUCKET"
 echo "Changed:"
 echo "  $VALUES"
 echo "  $ARGOCD_VALUES"

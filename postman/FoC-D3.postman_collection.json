@@ -2,7 +2,7 @@
   "info": {
     "name": "FoC D3 Demo (Order + Credit async via Gateway)",
     "_postman_id": "f0c00d33-0000-4000-8000-000000000d3a",
-    "description": "AI-influenced: Postman collection and polling scripts authored with Claude Code (Claude Opus 4.8); see ai/usage-log.md.\n\nMilestone D3 demo of the Order Service and Credit Service and their async (RabbitMQ/outbox) workflows, exercised end-to-end through the API Gateway (http://localhost:8080), no UI. Folders 00-11 run top to bottom; every email embeds a per-run runId so the whole collection is re-runnable with no manual steps. Auth is a per-request Bearer token (never raw X-User-* headers; the gateway strips those and injects identity from the JWT). Async terminal states are reached by polling (GET re-issues itself via setNextRequest, capped, failing loudly on timeout). OTP codes are read from Mailpit. See postman/README.md.",
+    "description": "AI-influenced: Postman collection and polling scripts authored with Claude Code (Claude Opus 4.8); delivery and cancellation requests updated with Codex; see ai/usage-log.md.\n\nMilestone D3 demo of the Order Service and Credit Service and their async (RabbitMQ/outbox) workflows, exercised end-to-end through the API Gateway (http://localhost:8080), no UI. Folders 00-11 run top to bottom; every email embeds a per-run runId so the whole collection is re-runnable with no manual steps. Auth is a per-request Bearer token (never raw X-User-* headers; the gateway strips those and injects identity from the JWT). Async terminal states are reached by polling (GET re-issues itself via setNextRequest, capped, failing loudly on timeout). OTP codes are read from Mailpit. See postman/README.md.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -2327,7 +2327,7 @@
                 "deliver"
               ]
             },
-            "description": "D3 Part 1.2: delivery moves the order to AWAITING_APPROVAL.",
+            "description": "D3 Part 1.2: delivery without the optional photo moves the order to AWAITING_APPROVAL.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -3786,7 +3786,7 @@
           ]
         },
         {
-          "name": "Cancel order5 -> 202",
+          "name": "Cancel OPEN order5 -> 409",
           "request": {
             "method": "POST",
             "header": [
@@ -3807,7 +3807,7 @@
                 "cancel"
               ]
             },
-            "description": "D3 Part 2.3: cancelling an OPEN order starts an async release (202).",
+            "description": "D3 Part 2.3: requester cancellation requires an assigned ACCEPTED order.",
             "auth": {
               "type": "bearer",
               "bearer": [
@@ -3829,7 +3829,100 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test('D3 Order 2.3: cancel order5 (202)', function () { pm.response.to.have.status(202); });"
+                  "pm.test('D3 Order 2.3: cannot cancel OPEN order5 (409)', function () { pm.response.to.have.status(409); });",
+                  "pm.test('requires an assigned accepted order', function () { pm.expect(pm.response.json().message).to.include('Only an accepted order with an assigned courier can be cancelled'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Courier accept order5 -> 200 ACCEPTED",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId5}}/accept",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId5}}",
+                "accept"
+              ]
+            },
+            "description": "D3 Part 2.3: assign a courier before requester cancellation.",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{courierToken}}",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: accept order5 (200)', function () { pm.response.to.have.status(200); });",
+                  "pm.test('order5 ACCEPTED', function () { pm.expect(pm.response.json().status).to.eql('ACCEPTED'); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cancel accepted order5 -> 202",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/orders/{{orderId5}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "orders",
+                "{{orderId5}}",
+                "cancel"
+              ]
+            },
+            "description": "D3 Part 2.3: cancelling an assigned ACCEPTED order starts an async release (202).",
+            "auth": {
+              "type": "bearer",
+              "bearer": [
+                {
+                  "key": "token",
+                  "value": "{{requesterToken}}",
+                  "type": "string"
+                }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"demo accepted cancel\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('D3 Order 2.3: cancel accepted order5 (202)', function () { pm.response.to.have.status(202); });"
                 ]
               }
             }
@@ -4010,7 +4103,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('D3 Order 2.3: re-cancel (409)', function () { pm.response.to.have.status(409); });",
-                  "pm.test('message: only an open or accepted order', function () { pm.expect(pm.response.json().message).to.include('Only an open or accepted order can be cancelled'); });"
+                  "pm.test('message: only an assigned accepted order', function () { pm.expect(pm.response.json().message).to.include('Only an accepted order with an assigned courier can be cancelled'); });"
                 ]
               }
             }

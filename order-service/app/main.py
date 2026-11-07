@@ -9,6 +9,7 @@ from fastapi import FastAPI
 from app.api.error_handlers import register_exception_handlers
 from app.api.routes import health, orders
 from app.db import engine, init_db
+from app.migrate import run_migrations
 from app.services.approval_consumer import run_approval_consumer
 from app.services.auto_approval_worker import run_auto_approval_sweeper
 from app.services.client_manager import (
@@ -25,6 +26,7 @@ from app.services.update_consumer import run_update_consumer
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     await init_db()
+    await run_migrations()
     _start_remote_clients()
     release_consumer_task = asyncio.create_task(run_release_consumer())
     update_consumer_task = asyncio.create_task(run_update_consumer())

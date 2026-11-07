@@ -1,4 +1,3 @@
-<!-- AI-influenced: authored with OpenCode (Claude Opus); see ai/usage-log.md. -->
 
 # FoC D2 Demo — Postman collection
 
@@ -213,10 +212,10 @@ gateway strips them and injects identity from the JWT).
 | `02 Create + reservation (1.5, 2.3)` | Create reward-20 order → 201 OPEN; reward reserved synchronously (available −20 / reserved +20); insufficient credits → 409; past deadline → 422; timezone-naive deadline → 422. |
 | `03 Query (1.3)` | Order in the courier's available feed; `min_reward`/`max_reward` filters; requester feed excludes own order; get-one requester 200 / unrelated 403 / unknown 404; requester `/requested/ongoing`. |
 | `04 AuthZ + invalid transitions (1.2, 1.3)` | Accept own → 409; pickup before accept → 403; courier approve/cancel others' → 403; no bearer → 401. |
-| `05 Happy path + concurrency (1.2, 1.4, 2.3)` | Accept → ACCEPTED; second courier → 409; pickup → deliver → AWAITING_APPROVAL; re-pickup → 409; approve → 202 (idempotent same `task_id`); poll → COMPLETED; requester reserved −20, courier available +20; completed lists. |
+| `05 Happy path + concurrency (1.2, 1.4, 2.3)` | Accept → ACCEPTED; second courier → 409; pickup → deliver without an optional proof photo → AWAITING_APPROVAL; re-pickup → 409; approve → 202 (idempotent same `task_id`); poll → COMPLETED; requester reserved −20, courier available +20; completed lists. |
 | `06 Withdraw idempotency (1.4)` | Accept then withdraw (`Idempotency-Key`) → OPEN; replay same key → identical body; same key on a different order → 409; withdrawn order courier get-one → 403. |
 | `07 Update / amendment (2.3)` | Full-body PATCH reward 30 → 202 → poll `completed`; reward 30, available −10 / reserved +10; PATCH reward 100000 → 202 → poll `rejected` with `failure_reason`; reward/balance unchanged. |
-| `08 Cancel + delete (2.3)` | OPEN cancel → CANCELLED + credits released + re-cancel 409; ACCEPTED cancel → released; OPEN delete → poll deletion task `completed` + credits released + get-one 404. |
+| `08 Cancel + delete (2.3)` | OPEN cancel → 409; courier accepts → ACCEPTED cancel → CANCELLED + credits released + re-cancel 409; another ACCEPTED cancel → released; OPEN delete → poll deletion task `completed` + credits released + get-one 404. |
 | `09 Expiry (1.2, 2.3)` | Order with deadline now+10s polled until EXPIRED by the sweeper; credits released; accepting it → 409. |
 | `10 Supplier deactivation (1.1)` | Order for the demo supplier; admin deactivate → order polled to CANCELLED + credits released; new order for the inactive supplier → 409 `supplier_inactive`. |
 | `11 Ledger (2.1)` | Requester ledger has `allocation`/`reservation`/`release`/`amendment`/`transfer`; courier ledger has `allocation` + a +20 `transfer`. |
@@ -244,6 +243,10 @@ The full Docker stack must be up and healthy, with `.env` configured for Mailpit
 docker compose up --build -d
 curl -s http://localhost:8080/health      # -> {"status":"ok"}
 ```
+
+The D3 delivery request omits the optional photo, so it works without a photo
+bucket. Uploading a photo through that endpoint still requires a configured
+private S3 bucket.
 
 ## Concurrency demo — `scripts/d3-race.sh`
 

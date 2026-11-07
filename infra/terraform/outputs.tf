@@ -6,6 +6,14 @@ output "backup_bucket_arn" {
   value = aws_s3_bucket.backups.arn
 }
 
+output "photo_bucket" {
+  value = aws_s3_bucket.photos.id
+}
+
+output "photo_bucket_arn" {
+  value = aws_s3_bucket.photos.arn
+}
+
 output "instance_id" {
   value = aws_instance.node.id
 }

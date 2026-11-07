@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+from io import BytesIO
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock
@@ -9,6 +10,7 @@ from unittest.mock import AsyncMock
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from PIL import Image
 
 from app.api.error_handlers import register_exception_handlers
 from app.api.routes import orders as order_routes
@@ -21,6 +23,12 @@ from app.services.errors import (
     OrderStateConflictError,
 )
 from app.services.lifecycle import OrderStatus
+
+
+def _photo_file() -> dict:
+    output = BytesIO()
+    Image.new("RGB", (2, 2), "red").save(output, format="PNG")
+    return {"photo": ("proof.png", output.getvalue(), "image/png")}
 
 
 @pytest.fixture
@@ -130,11 +138,13 @@ def test_deliver_accepts_both_gateway_roles(client, fake_session, monkeypatch, r
     response = client.post(
         "/orders/order-1/deliver",
         headers={"X-User-Id": "courier-1", "X-User-Role": role},
+        files=_photo_file(),
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "AWAITING_APPROVAL"
-    deliver.assert_awaited_once_with(fake_session, "order-1", "courier-1")
+    assert deliver.await_args.args[:3] == (fake_session, "order-1", "courier-1")
+    assert deliver.await_args.args[3].content_type == "image/png"
 
 
 @pytest.mark.parametrize(
@@ -152,7 +162,7 @@ def test_deliver_requires_identity_and_supported_role(
     deliver = AsyncMock()
     monkeypatch.setattr(order_routes.order_service, "deliver_order", deliver)
 
-    response = client.post("/orders/order-1/deliver", headers=headers)
+    response = client.post("/orders/order-1/deliver", headers=headers, files=_photo_file())
 
     assert response.status_code == expected_status
     deliver.assert_not_awaited()
@@ -168,10 +178,42 @@ def test_deliver_maps_database_failure(client, monkeypatch):
     response = client.post(
         "/orders/order-1/deliver",
         headers={"X-User-Id": "courier-1", "X-User-Role": "admin"},
+        files=_photo_file(),
     )
 
     assert response.status_code == 500
     assert response.json()["code"] == "order_delivery_failed"
+
+
+def test_deliver_without_photo(client, fake_session, monkeypatch):
+    order = _stored_order(requester_id="requester-1")
+    order.courier_id = "courier-1"
+    order.status = OrderStatus.AWAITING_APPROVAL
+    deliver = AsyncMock(return_value=order)
+    monkeypatch.setattr(order_routes.order_service, "deliver_order", deliver)
+
+    response = client.post(
+        "/orders/order-1/deliver",
+        headers={"X-User-Id": "courier-1", "X-User-Role": "client"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "AWAITING_APPROVAL"
+    deliver.assert_awaited_once_with(fake_session, "order-1", "courier-1", None)
+
+
+def test_deliver_rejects_invalid_photo(client, monkeypatch):
+    deliver = AsyncMock()
+    monkeypatch.setattr(order_routes.order_service, "deliver_order", deliver)
+    headers = {"X-User-Id": "courier-1", "X-User-Role": "client"}
+    response = client.post(
+        "/orders/order-1/deliver",
+        headers=headers,
+        files={"photo": ("bad.png", b"not an image", "image/png")},
+    )
+    assert response.status_code == 422
+    assert response.json()["code"] == "invalid_order_photo"
+    deliver.assert_not_awaited()
 
 
 @pytest.mark.parametrize(
@@ -463,7 +505,7 @@ def test_get_order_happy_path(
     async def fake_get_order(_session, _order_id, _user_id):
         assert _session is fake_session
         assert _user_id == user_id
-        return order
+        return order, None
 
     monkeypatch.setattr(
         order_routes.order_service,
@@ -473,6 +515,22 @@ def test_get_order_happy_path(
 
     response = client.get("/orders/order-1", headers={"X-User-Id": user_id})
     assert response.status_code == 200
+    assert response.json()["proof_of_delivery_photo"] is None
+    assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_get_order_returns_photo_in_detail(client, monkeypatch):
+    from app.services.proof_photo import Photo
+
+    order = _stored_order()
+    monkeypatch.setattr(
+        order_routes.order_service,
+        "get_order_for_participant",
+        AsyncMock(return_value=(order, Photo(b"photo bytes", "image/jpeg"))),
+    )
+    response = client.get("/orders/order-1", headers={"X-User-Id": "user-1"})
+    assert response.status_code == 200
+    assert response.json()["proof_of_delivery_photo"] == "data:image/jpeg;base64,cGhvdG8gYnl0ZXM="
 
 
 def test_delete_order_returns_accepted_task(

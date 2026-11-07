@@ -1,5 +1,6 @@
 # AI-influenced: updated with Codex; see ai/usage-log.md.
 fastapi>=0.111
+python-multipart>=0.0.9
 uvicorn[standard]>=0.30
 pydantic>=2.7
 pydantic-settings>=2.3

@@ -5,6 +5,16 @@ class OrderServiceError(Exception):
     """Base class for expected Order Service failures."""
 
 
+class InvalidOrderPhotoError(OrderServiceError):
+    def __init__(self, message: str) -> None:
+        super().__init__(message)
+
+
+class OrderPhotoStorageError(OrderServiceError):
+    def __init__(self) -> None:
+        super().__init__("Proof-of-delivery photo storage is unavailable.")
+
+
 class OrderAcceptanceError(OrderServiceError):
     def __init__(self, order_id: str) -> None:
         super().__init__(f"Failed to accept order '{order_id}'.")

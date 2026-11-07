@@ -2,6 +2,46 @@
 
 # AI usage log — Order Service
 
+## 2026-11-06 — Run Alembic migrations from the app lifespan
+
+Tool: Claude Code (model: Claude Opus 4.8). Author: johngao122.
+
+The order-service builds its schema with `Base.metadata.create_all`, which adds
+new columns only on an empty database, so the proof-of-delivery photo column
+never reached existing databases. Added `app/migrate.py` with `run_migrations()`,
+invoked from `app/main.py`'s lifespan immediately after `init_db()`. It runs the
+Alembic command in a worker thread so env.py's internal `asyncio.run()` does not
+collide with the lifespan event loop. Because several revision ids in this repo
+exceed Alembic's default `version_num` VARCHAR(32), it first ensures the
+`alembic_version` table has a VARCHAR(255) column. For a database with no Alembic
+stamp it stamps a baseline before upgrading: head when the column already exists
+(fresh create_all database), otherwise the penultimate revision
+`20261019_supplier_deactivation_inbox` (existing database missing the column),
+then `alembic upgrade head`. PR #31's migration file was left unchanged; the
+lifespan approach and idempotency strategy were decided by the operator.
+
+Author review: verified against a real PostgreSQL that an existing order
+database with no column and no stamp gains `proof_of_delivery_photo_key` and is
+stamped to head, that a fresh create_all database stamps head without a
+duplicate-column error, and that both are idempotent on re-run. The full
+order-service pytest suite passes, including the SQLite migration test.
+
+## 2026-11-06 — Delivery photo proof integration
+
+Tool: Codex (GPT-6). Prompt: “Port delivery photo proof from
+`order/proof-of-delivery-photo` into `feature/photo-proof`. Extract image
+validation and private S3 operations into `shared/foc_shared/images.py` for
+future chat reuse. Keep all other changes within `order-service/`. Preserve
+the required multipart `photo` upload, courier authorization, delivery state
+transition, and participant-only retrieval through order details. Include
+the migration, service-local configuration, focused tests, AI attribution,
+and an entry in `order-service/ai/usage-log.md`."
+
+Codex adapted the existing Order Service upload and retrieval flow to the
+current branch, placed reusable image validation and S3 storage in the shared
+library, and added service tests, migration, and documentation. Author review
+and validation results are recorded in the task exchange.
+
 ## 2026-10-16 — F2.6 courier acceptance
 
 User request: “For F2.6, tell me the pseudocode. Remember that it has to check

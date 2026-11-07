@@ -21,7 +21,10 @@ user-service:
 credit-service:
   image: {repository: credit-service, tag: a5463c0da11e24db69db8e6dbcec641fea158bb8}
 order-service:
-  image: {repository: order-service, tag: a5463c0da11e24db69db8e6dbcec641fea158bb8}
+  image: {repository: order-service, tag: fd8a701f1bd31ea66c5bd58585a3ddee25a14556}
+  env:
+    ORDER_PHOTO_BUCKET: ""
+    ORDER_PHOTO_REGION: ap-southeast-1
 notification-service:
   image: {repository: notification-service, tag: a5463c0da11e24db69db8e6dbcec641fea158bb8}
 api-gateway:

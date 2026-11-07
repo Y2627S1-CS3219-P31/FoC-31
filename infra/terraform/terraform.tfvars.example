@@ -1,3 +1,4 @@
 region                = "ap-southeast-1"
 backup_bucket_prefix  = "cs3219-g31-foc-backups"
 backup_retention_days = 30
+photo_bucket_prefix   = "cs3219-g31-foc-photos"

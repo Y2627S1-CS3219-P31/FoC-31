@@ -32,6 +32,7 @@ from app.services.clients.supplier.error import (
     UnexpectedSupplierResponseError,
 )
 from app.services.errors import (
+    InvalidOrderPhotoError,
     OrderAcceptanceError,
     OrderAccessDeniedError,
     OrderApprovalError,
@@ -41,6 +42,7 @@ from app.services.errors import (
     OrderNotEditableError,
     OrderNotFoundError,
     OrderPersistenceError,
+    OrderPhotoStorageError,
     OrderPickupError,
     OrderRetrievalError,
     OrderStateConflictError,
@@ -61,6 +63,17 @@ class ErrorMapping:
 
 
 ERROR_MAPPINGS: dict[type[Exception], ErrorMapping] = {
+    InvalidOrderPhotoError: ErrorMapping(
+        HTTPStatus.UNPROCESSABLE_ENTITY,
+        "invalid_order_photo",
+        "The proof-of-delivery photo is invalid.",
+        expose_exception_message=True,
+    ),
+    OrderPhotoStorageError: ErrorMapping(
+        HTTPStatus.SERVICE_UNAVAILABLE,
+        "order_photo_unavailable",
+        "Proof-of-delivery photo storage is unavailable.",
+    ),
     OrderAcceptanceError: ErrorMapping(
         HTTPStatus.INTERNAL_SERVER_ERROR,
         "order_acceptance_failed",

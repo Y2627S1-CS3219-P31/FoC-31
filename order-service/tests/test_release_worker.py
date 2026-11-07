@@ -125,6 +125,26 @@ async def test_credit_released_cancels_order_and_records_final_event(maker) -> N
         assert event_task.payload["reason"] == "requester_cancelled"
 
 
+@pytest.mark.parametrize("status", [OrderStatus.OPEN, OrderStatus.ACCEPTED])
+async def test_credit_released_rejects_cancellation_without_assigned_accepted_order(
+    maker, status: OrderStatus
+) -> None:
+    task_id = await _seed_task(maker, ReleaseAction.CANCEL, status=status)
+    if status == OrderStatus.ACCEPTED:
+        async with maker() as session, session.begin():
+            (await session.get(OrderTable, "order-1")).courier_id = None
+
+    async with maker() as session:
+        assert await release_worker.process_release_result(session, _result(task_id=task_id))
+
+    async with maker() as session:
+        order = await session.get(OrderTable, "order-1")
+        assert order.status == status
+        assert (await session.get(OrderReleaseTask, task_id)).status == FAILED
+        events = (await session.scalars(select(OrderEventOutbox))).all()
+        assert [item.payload["event_type"] for item in events] == ["OrderCancellationFailed"]
+
+
 @pytest.mark.parametrize("deadline_offset_seconds", [-60, 60])
 async def test_credit_result_does_not_drive_order_expiry(
     maker, deadline_offset_seconds: int
